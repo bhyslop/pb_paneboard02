@@ -1,0 +1,18 @@
+[package]
+name = "paneboard-poc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+core-foundation = "0.10"
+core-foundation-sys = "0.8"
+libc = "0.2"
+lazy_static = "1.4"
+quick-xml = "0.31"
+dirs = "5.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSArray", "NSDictionary"] }
+objc2-app-kit = { version = "0.3", features = ["NSWorkspace", "NSScreen", "NSRunningApplication"] }
+block2 = "0.6"

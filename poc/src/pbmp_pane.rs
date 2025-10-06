@@ -1,0 +1,976 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025 Scale Invariant
+
+#![cfg(target_os = "macos")]
+
+use core_foundation::base::{kCFAllocatorDefault, TCFType};
+use core_foundation::runloop::kCFRunLoopDefaultMode;
+use core_foundation::string::CFString;
+use core_foundation_sys::base::CFTypeRef;
+use std::ffi::c_void;
+use std::sync::atomic::{AtomicI64, AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
+
+use crate::pbgc_core::Quad;
+
+// Import types and functions from the new modules
+use crate::pbmba_ax::{
+    AxElement, AxError, FrontmostInfo,
+    AXUIElementRef, AXObserverRef,
+    KAX_ERROR_SUCCESS, KAX_ERROR_NOT_IMPLEMENTED, KAX_ERROR_CANNOT_COMPLETE,
+    AXUIElementCreateApplication, AXUIElementCopyAttributeValue, AXUIElementSetAttributeValue,
+    AXUIElementPerformAction, AXObserverCreate, AXObserverAddNotification,
+    AXObserverRemoveNotification, AXObserverGetRunLoopSource,
+    CFRunLoopGetMain,
+    CFRunLoopAddSource, CFRunLoopRemoveSource, CFAbsoluteTimeGetCurrent,
+    CFRunLoopTimerCreate, CFRunLoopAddTimer, CFRunLoopTimerContext,
+    _AXUIElementGetWindow, CFArrayGetCount, CFArrayGetValueAtIndex,
+    kCFBooleanTrue,
+    ax_attr_title, ax_attr_role, ax_attr_windows, ax_attr_main, ax_action_raise,
+};
+
+use crate::pbmbd_display::{
+    VisibleFrame, Rect,
+    visible_frame_main_display, visible_frame_for_screen,
+    get_all_screens, get_display_for_window, get_display_for_window_with_validation,
+};
+
+use crate::pbgx_layout::{LayoutManager, Combo};
+
+// Need to import CFRelease separately as it's used in multiple places
+use core_foundation::base::CFRelease;
+
+use lazy_static::lazy_static;
+use std::collections::HashMap;
+
+// Block lifetime tracking for memory leak detection
+pub static BLOCK_LIFETIME_COUNT: AtomicI64 = AtomicI64::new(0);
+
+// One-time warning flag for visibleFrame validation
+static VISIBLE_FRAME_WARNING_SHOWN: AtomicBool = AtomicBool::new(false);
+
+// Global layout manager and sequence state
+lazy_static! {
+    static ref LAYOUT_MANAGER: LayoutManager = LayoutManager::load_from_file();
+    static ref SEQUENCE_STATE: Mutex<HashMap<String, usize>> = Mutex::new(HashMap::new());
+}
+
+// Frontmost app info captured at chord time
+// Tiling job with frontmost context
+#[derive(Clone, Debug)]
+pub struct TilingJob {
+    pub quad: Quad,
+    pub frontmost: FrontmostInfo,
+    pub attempt: u32, // 0 = first attempt, 1-3 = retries
+    pub start_time: Option<Instant>, // Track total wall time for retry budget
+    pub key_name: Option<String>, // Key name for layout sequence tracking
+    pub combo_index: Option<usize>, // Combo index within sequence
+    pub custom_combo: Option<Combo>, // Custom combo from layout config
+}
+
+// Observer context for timeout and job tracking
+pub struct ObserverContext {
+    pub job: TilingJob,
+    pub start_time: f64,
+    pub timeout_ms: u32,
+    pub observer: AXObserverRef,
+    pub runloop_source: *mut c_void,
+    pub active: bool, // flag to prevent double cleanup
+}
+
+pub type SharedObserverContext = Arc<Mutex<ObserverContext>>;
+
+/// Window metadata from enumeration (used during prepopulation)
+/// Note: Does not store AXUIElementRef to avoid dangling pointer issues
+#[derive(Debug, Clone)]
+pub struct EnumeratedWindow {
+    pub window_id: u32,
+    pub title: String,
+    pub role: Option<String>,
+}
+
+/// Get the next combo for a given key, advancing the sequence index
+/// Returns (combo, index) if sequence exists, None otherwise
+pub fn get_next_combo_for_key(key_name: &str) -> Option<(Combo, usize)> {
+    // Look up sequence in layout manager
+    let sequence = LAYOUT_MANAGER.get_sequence(key_name)?;
+
+    if sequence.is_empty() {
+        return None;
+    }
+
+    // Get and advance the index for this key
+    let mut state = SEQUENCE_STATE.lock().unwrap();
+    let current_index = state.entry(key_name.to_string()).or_insert(0);
+    let combo = sequence[*current_index % sequence.len()].clone();
+    let index = *current_index;
+
+    // Advance for next press
+    let next_index = (*current_index + 1) % sequence.len();
+    *current_index = next_index;
+
+    eprintln!("DEBUG: [LAYOUT] Sequence state for {}: used={}, next={}, total={}",
+              key_name, index, next_index, sequence.len());
+
+    Some((combo, index))
+}
+
+/// Reset all sequence indices to 0 (called on modifier release)
+pub fn reset_all_sequence_indices() {
+    let mut state = SEQUENCE_STATE.lock().unwrap();
+    if !state.is_empty() {
+        eprintln!("DEBUG: [LAYOUT] Resetting indices: {:?}", state);
+    }
+    state.clear();
+    eprintln!("DEBUG: [LAYOUT] All sequence indices reset to 0");
+}
+
+/// Reset a specific key's sequence index to 0
+pub fn reset_sequence_index(key_name: &str) {
+    let mut state = SEQUENCE_STATE.lock().unwrap();
+    state.insert(key_name.to_string(), 0);
+}
+
+/// Focus a specific window by window ID using AX APIs
+/// Returns true on success, false on failure
+pub unsafe fn focus_window_by_id(pid: u32, window_id: u32) -> bool {
+    eprintln!("DEBUG: Focusing window_id={} for pid={}", window_id, pid);
+
+    // Create app element
+    let app_element = AXUIElementCreateApplication(pid);
+    if app_element.is_null() {
+        eprintln!("DEBUG: Failed to create app element for pid={}", pid);
+        return false;
+    }
+
+    // Query kAXWindowsAttribute
+    let windows_attr = ax_attr_windows();
+    let mut windows_array: CFTypeRef = std::ptr::null();
+    let rc = AXUIElementCopyAttributeValue(
+        app_element,
+        windows_attr.as_concrete_TypeRef() as CFTypeRef,
+        &mut windows_array,
+    );
+
+    if rc != KAX_ERROR_SUCCESS || windows_array.is_null() {
+        eprintln!("DEBUG: AXWindows query failed for pid={}, error={}", pid, rc);
+        CFRelease(app_element as CFTypeRef);
+        return false;
+    }
+
+    // Iterate through CFArray to find target window
+    let count = CFArrayGetCount(windows_array);
+    let mut target_element: AXUIElementRef = std::ptr::null();
+    let mut found = false;
+
+    for i in 0..count {
+        let window_element = CFArrayGetValueAtIndex(windows_array, i) as AXUIElementRef;
+        if window_element.is_null() {
+            continue;
+        }
+
+        // Get window ID
+        let mut wid: u32 = 0;
+        let wid_rc = _AXUIElementGetWindow(window_element, &mut wid);
+        if wid_rc == 0 && wid == window_id {
+            target_element = window_element;
+            found = true;
+            break;
+        }
+    }
+
+    if !found {
+        eprintln!("DEBUG: Window with window_id={} not found in enumeration", window_id);
+        CFRelease(windows_array);
+        CFRelease(app_element as CFTypeRef);
+        return false;
+    }
+
+    // Now we have a valid element reference - use it immediately before releasing the array
+
+    // Set AXMain attribute to true
+    let main_attr = ax_attr_main();
+    let set_main_rc = AXUIElementSetAttributeValue(
+        target_element,
+        main_attr.as_concrete_TypeRef() as CFTypeRef,
+        kCFBooleanTrue,
+    );
+
+    if set_main_rc != KAX_ERROR_SUCCESS {
+        eprintln!("DEBUG: AXMain set failed with code {}", set_main_rc);
+    }
+
+    // Perform AXRaise action
+    let raise_action = ax_action_raise();
+    let raise_rc = AXUIElementPerformAction(
+        target_element,
+        raise_action.as_concrete_TypeRef() as CFTypeRef,
+    );
+
+    // Cleanup
+    CFRelease(windows_array);
+    CFRelease(app_element as CFTypeRef);
+
+    if raise_rc != KAX_ERROR_SUCCESS {
+        eprintln!("DEBUG: AXRaise failed with code {}", raise_rc);
+        return false;
+    }
+
+    eprintln!("DEBUG: Window focus succeeded (window_id={})", window_id);
+    true
+}
+
+/// Enumerate all windows for a given app PID
+/// Queries kAXWindowsAttribute and filters by role
+/// Returns Vec of window metadata (empty on failure or no windows)
+pub unsafe fn enumerate_app_windows(pid: u32) -> Vec<EnumeratedWindow> {
+    let mut result = Vec::new();
+
+    // Create app element
+    let app_element = AXUIElementCreateApplication(pid);
+    if app_element.is_null() {
+        eprintln!("DEBUG: [enumerate_app_windows] Failed to create app element for pid={}", pid);
+        return result;
+    }
+
+    // Query kAXWindowsAttribute
+    let windows_attr = ax_attr_windows();
+    let mut windows_array: CFTypeRef = std::ptr::null();
+    let rc = AXUIElementCopyAttributeValue(
+        app_element,
+        windows_attr.as_concrete_TypeRef() as CFTypeRef,
+        &mut windows_array,
+    );
+
+    if rc != KAX_ERROR_SUCCESS {
+        eprintln!("DEBUG: [enumerate_app_windows] AXWindows query failed for pid={}, error={}", pid, rc);
+        CFRelease(app_element as CFTypeRef);
+        return result;
+    }
+
+    if windows_array.is_null() {
+        eprintln!("DEBUG: [enumerate_app_windows] AXWindows returned null for pid={}", pid);
+        CFRelease(app_element as CFTypeRef);
+        return result;
+    }
+
+    // Iterate through CFArray
+    let count = CFArrayGetCount(windows_array);
+    eprintln!("DEBUG: [enumerate_app_windows] Found {} window(s) for pid={}", count, pid);
+
+    for i in 0..count {
+        let window_element = CFArrayGetValueAtIndex(windows_array, i) as AXUIElementRef;
+        if window_element.is_null() {
+            continue;
+        }
+
+        // Check role - only accept "AXWindow"
+        let role_attr = ax_attr_role();
+        let mut role_value: CFTypeRef = std::ptr::null();
+        let role_rc = AXUIElementCopyAttributeValue(
+            window_element,
+            role_attr.as_concrete_TypeRef() as CFTypeRef,
+            &mut role_value,
+        );
+
+        let role_str = if role_rc == KAX_ERROR_SUCCESS && !role_value.is_null() {
+            let cf_str = CFString::wrap_under_get_rule(role_value as *const core_foundation::string::__CFString);
+            let role = cf_str.to_string();
+            CFRelease(role_value);
+            Some(role)
+        } else {
+            None
+        };
+
+        // Filter: only include AXWindow role
+        if role_str.as_deref() != Some("AXWindow") {
+            eprintln!("DEBUG: [enumerate_app_windows] Skipping window with role={:?}", role_str);
+            continue;
+        }
+
+        // Get window ID
+        let mut window_id: u32 = 0;
+        let wid_rc = _AXUIElementGetWindow(window_element, &mut window_id);
+        if wid_rc != 0 || window_id == 0 {
+            eprintln!("DEBUG: [enumerate_app_windows] Failed to get window ID (rc={}), skipping", wid_rc);
+            continue;
+        }
+
+        // Get title (best effort)
+        let title_attr = ax_attr_title();
+        let mut title_value: CFTypeRef = std::ptr::null();
+        let title_rc = AXUIElementCopyAttributeValue(
+            window_element,
+            title_attr.as_concrete_TypeRef() as CFTypeRef,
+            &mut title_value,
+        );
+
+        let title = if title_rc == KAX_ERROR_SUCCESS && !title_value.is_null() {
+            let cf_str = CFString::wrap_under_get_rule(title_value as *const core_foundation::string::__CFString);
+            let t = cf_str.to_string();
+            CFRelease(title_value);
+            if t.is_empty() {
+                format!("<win:{}>", window_id)
+            } else {
+                t
+            }
+        } else {
+            format!("<win:{}>", window_id)
+        };
+
+        eprintln!("DEBUG: [enumerate_app_windows] Found window: window_id={} title=\"{}\"", window_id, title);
+
+        result.push(EnumeratedWindow {
+            window_id,
+            title,
+            role: role_str,
+        });
+    }
+
+    // Cleanup
+    CFRelease(windows_array);
+    CFRelease(app_element as CFTypeRef);
+
+    result
+}
+
+// Get focused window using PID-targeted approach
+pub unsafe fn get_focused_window_by_pid(pid: u32) -> Result<AxElement, String> {
+    eprintln!("DEBUG: get_focused_window_by_pid({}) starting...", pid);
+
+    let app = AxElement::from_pid(pid).map_err(|e| {
+        eprintln!("DEBUG: AXUIElementCreateApplication(pid={}) failed: {:?}", pid, e);
+        format!("ax_create_app_pid_failed(pid={})", pid)
+    })?;
+
+    let win = app.focused_window().map_err(|e| {
+        let msg = match e {
+            AxError::Permission => {
+                eprintln!("DEBUG: AXFocusedWindow failed: Permission denied (code -25204)");
+                "ax_permission_missing_or_revoked".to_string()
+            }
+            AxError::Platform(code) => {
+                if code == KAX_ERROR_NOT_IMPLEMENTED {
+                    eprintln!("DEBUG: AXFocusedWindow failed (code=-25212, not ready yet)");
+                    "ax_not_ready_retry_needed".to_string()
+                } else if code == KAX_ERROR_CANNOT_COMPLETE {
+                    eprintln!("DEBUG: AXFocusedWindow failed (code=-25205, cannot complete)");
+                    "ax_cannot_complete_retry_needed".to_string()
+                } else {
+                    eprintln!("DEBUG: AXFocusedWindow failed: AX error code {}", code);
+                    format!("ax_focused_window_failed(code={})", code)
+                }
+            }
+            _ => {
+                eprintln!("DEBUG: AXFocusedWindow failed: {:?}", e);
+                "no_focused_window".to_string()
+            }
+        };
+        msg
+    })?;
+
+    // Get window title for debugging
+    let win_title = win.get_title().unwrap_or_else(|| "<no window title>".to_string());
+    eprintln!("DEBUG: Focused window: \"{}\"", win_title);
+
+    Ok(win)
+}
+
+// Check if error should trigger AXObserver approach
+pub fn should_use_observer_on_error(error_msg: &str) -> bool {
+    error_msg.contains("ax_not_ready_retry_needed") ||
+    error_msg.contains("ax_cannot_complete_retry_needed")
+}
+
+// Move window to previous display (wrapping)
+// Per spec: preserve window rect exactly, just reparent to adjacent display
+pub fn move_window_to_prev_display(pid: u32, bundle_id: &str) {
+    unsafe {
+        let screens = get_all_screens();
+        if screens.is_empty() {
+            println!("MOVE: PREV | FAILED reason=no_screens");
+            return;
+        }
+
+        // If only one screen, do nothing
+        if screens.len() == 1 {
+            eprintln!("DEBUG: Only one display, ignoring PageUp");
+            return;
+        }
+
+        // Get focused window
+        let win = match get_focused_window_by_pid(pid) {
+            Ok(w) => w,
+            Err(reason) => {
+                println!("MOVE: PREV | FAILED reason={}", reason);
+                return;
+            }
+        };
+
+        // Get current window rect
+        let current_rect = match win.get_current_rect() {
+            Some(r) => r,
+            None => {
+                println!("MOVE: PREV | FAILED reason=cannot_get_current_rect");
+                return;
+            }
+        };
+
+        // Find which screen the window is currently on (by window center point)
+        let win_center_x = current_rect.x + current_rect.w / 2.0;
+        let win_center_y = current_rect.y + current_rect.h / 2.0;
+
+        let current_screen_idx = screens.iter().position(|screen| {
+            if let Some(vf) = visible_frame_for_screen(screen) {
+                win_center_x >= vf.min_x && win_center_x < vf.min_x + vf.width &&
+                win_center_y >= vf.min_y && win_center_y < vf.min_y + vf.height
+            } else {
+                false
+            }
+        }).unwrap_or(0);
+
+        // Calculate previous display index (wrapping)
+        let prev_idx = if current_screen_idx == 0 {
+            screens.len() - 1
+        } else {
+            current_screen_idx - 1
+        };
+
+        // Get current and target screen visible frames
+        let current_vf = visible_frame_for_screen(&screens[current_screen_idx]).unwrap();
+        let target_vf = match visible_frame_for_screen(&screens[prev_idx]) {
+            Some(vf) => vf,
+            None => {
+                println!("MOVE: PREV | FAILED reason=no_visible_frame");
+                return;
+            }
+        };
+
+        // Calculate offset within current screen
+        let offset_x = current_rect.x - current_vf.min_x;
+        let offset_y = current_rect.y - current_vf.min_y;
+
+        // Apply same offset to target screen to preserve relative position
+        let new_x = target_vf.min_x + offset_x;
+        let new_y = target_vf.min_y + offset_y;
+
+        // Move window to new position (size unchanged)
+        match win.set_position(new_x, new_y) {
+            Ok(()) => {
+                println!(
+                    "MOVE: PREV | SUCCESS | app=\"{}\" from_display={} to_display={} frame=({:.0},{:.0},{:.0},{:.0})",
+                    bundle_id, current_screen_idx, prev_idx, new_x, new_y, current_rect.w, current_rect.h
+                );
+            }
+            Err(e) => {
+                let reason = match e {
+                    AxError::Permission => "ax_permission_missing_or_revoked",
+                    AxError::Platform(code) => {
+                        eprintln!("DEBUG: set_position failed with code {}", code);
+                        "ax_error"
+                    }
+                    _ => "ax_error",
+                };
+                println!("MOVE: PREV | FAILED reason={}", reason);
+            }
+        }
+    }
+}
+
+// Move window to next display (wrapping)
+// Per spec: preserve window rect exactly, just reparent to adjacent display
+pub fn move_window_to_next_display(pid: u32, bundle_id: &str) {
+    unsafe {
+        let screens = get_all_screens();
+        if screens.is_empty() {
+            println!("MOVE: NEXT | FAILED reason=no_screens");
+            return;
+        }
+
+        // If only one screen, do nothing
+        if screens.len() == 1 {
+            eprintln!("DEBUG: Only one display, ignoring PageDown");
+            return;
+        }
+
+        // Get focused window
+        let win = match get_focused_window_by_pid(pid) {
+            Ok(w) => w,
+            Err(reason) => {
+                println!("MOVE: NEXT | FAILED reason={}", reason);
+                return;
+            }
+        };
+
+        // Get current window rect
+        let current_rect = match win.get_current_rect() {
+            Some(r) => r,
+            None => {
+                println!("MOVE: NEXT | FAILED reason=cannot_get_current_rect");
+                return;
+            }
+        };
+
+        // Find which screen the window is currently on (by window center point)
+        let win_center_x = current_rect.x + current_rect.w / 2.0;
+        let win_center_y = current_rect.y + current_rect.h / 2.0;
+
+        let current_screen_idx = screens.iter().position(|screen| {
+            if let Some(vf) = visible_frame_for_screen(screen) {
+                win_center_x >= vf.min_x && win_center_x < vf.min_x + vf.width &&
+                win_center_y >= vf.min_y && win_center_y < vf.min_y + vf.height
+            } else {
+                false
+            }
+        }).unwrap_or(0);
+
+        // Calculate next display index (wrapping)
+        let next_idx = (current_screen_idx + 1) % screens.len();
+
+        // Get current and target screen visible frames
+        let current_vf = visible_frame_for_screen(&screens[current_screen_idx]).unwrap();
+        let target_vf = match visible_frame_for_screen(&screens[next_idx]) {
+            Some(vf) => vf,
+            None => {
+                println!("MOVE: NEXT | FAILED reason=no_visible_frame");
+                return;
+            }
+        };
+
+        // Calculate offset within current screen
+        let offset_x = current_rect.x - current_vf.min_x;
+        let offset_y = current_rect.y - current_vf.min_y;
+
+        // Apply same offset to target screen to preserve relative position
+        let new_x = target_vf.min_x + offset_x;
+        let new_y = target_vf.min_y + offset_y;
+
+        // Move window to new position (size unchanged)
+        match win.set_position(new_x, new_y) {
+            Ok(()) => {
+                println!(
+                    "MOVE: NEXT | SUCCESS | app=\"{}\" from_display={} to_display={} frame=({:.0},{:.0},{:.0},{:.0})",
+                    bundle_id, current_screen_idx, next_idx, new_x, new_y, current_rect.w, current_rect.h
+                );
+            }
+            Err(e) => {
+                let reason = match e {
+                    AxError::Permission => "ax_permission_missing_or_revoked",
+                    AxError::Platform(code) => {
+                        eprintln!("DEBUG: set_position failed with code {}", code);
+                        "ax_error"
+                    }
+                    _ => "ax_error",
+                };
+                println!("MOVE: NEXT | FAILED reason={}", reason);
+            }
+        }
+    }
+}
+
+pub fn rect_for_quad(vf: VisibleFrame, q: Quad) -> Rect {
+    let w2 = (vf.width / 2.0).floor();
+    let h2 = (vf.height / 2.0).floor();
+    match q {
+        Quad::UL => Rect { x: vf.min_x, y: vf.min_y, w: w2, h: h2 },
+        Quad::UR => Rect { x: vf.mid_x(), y: vf.min_y, w: w2, h: h2 },
+        Quad::LL => Rect { x: vf.min_x, y: vf.mid_y(), w: w2, h: h2 },
+        Quad::LR => Rect { x: vf.mid_x(), y: vf.mid_y(), w: w2, h: h2 },
+    }
+}
+
+/// Convert a Combo (percentage-based) to a Rect (pixel-based) for given visible frame
+pub fn rect_from_combo(vf: VisibleFrame, combo: &Combo) -> Rect {
+    let x = vf.min_x + (vf.width * combo.x / 100.0);
+    let y = vf.min_y + (vf.height * combo.y / 100.0);
+    let w = vf.width * combo.width / 100.0;
+    let h = vf.height * combo.height / 100.0;
+
+    Rect { x, y, w, h }
+}
+
+// Safe wrapper to set window rect using RAII and Position → Size policy with debug logging
+pub fn set_window_rect_safe(win: &AxElement, r: Rect) -> Result<(), String> {
+    unsafe {
+        eprintln!("DEBUG: Using Position→Size policy (global experiment)");
+        eprintln!("DEBUG: set_window_rect_safe() target: ({:.0},{:.0},{:.0},{:.0})", r.x, r.y, r.w, r.h);
+
+        // Get current rect before any changes
+        if let Some(before_rect) = win.get_current_rect() {
+            eprintln!("DEBUG: Before resize - current rect: ({:.0},{:.0},{:.0},{:.0})",
+                     before_rect.x, before_rect.y, before_rect.w, before_rect.h);
+        } else {
+            eprintln!("DEBUG: Before resize - could not get current rect");
+        }
+
+        // Policy: Position first, then size (Chrome-safe practice)
+        eprintln!("DEBUG: Setting position to ({:.0},{:.0})", r.x, r.y);
+        win.set_position(r.x, r.y).map_err(|e| {
+            let msg = match e {
+                AxError::Permission => {
+                    eprintln!("DEBUG: AXPosition failed: Permission denied (code -25204)");
+                    "ax_permission_missing_or_revoked".to_string()
+                }
+                AxError::Platform(code) => {
+                    eprintln!("DEBUG: AXPosition failed: AX error code {}", code);
+                    format!("ax_error(code={}, op=AXPosition)", code)
+                }
+                _ => {
+                    eprintln!("DEBUG: AXPosition failed: {:?}", e);
+                    "ax_error(code=-1, op=AXPosition)".to_string()
+                }
+            };
+            msg
+        })?;
+
+        // Check rect after position change
+        if let Some(after_pos_rect) = win.get_current_rect() {
+            eprintln!("DEBUG: After position change - current rect: ({:.0},{:.0},{:.0},{:.0})",
+                     after_pos_rect.x, after_pos_rect.y, after_pos_rect.w, after_pos_rect.h);
+        } else {
+            eprintln!("DEBUG: After position change - could not get current rect");
+        }
+
+        eprintln!("DEBUG: Setting size to ({:.0},{:.0})", r.w, r.h);
+        win.set_size(r.w, r.h).map_err(|e| {
+            let msg = match e {
+                AxError::Permission => {
+                    eprintln!("DEBUG: AXSize failed: Permission denied (code -25204)");
+                    "ax_permission_missing_or_revoked".to_string()
+                }
+                AxError::Constrained => {
+                    eprintln!("DEBUG: AXSize failed: Size constrained or window is fullscreen");
+                    "size_constrained_or_fullscreen".to_string()
+                }
+                AxError::Platform(code) => {
+                    eprintln!("DEBUG: AXSize failed: AX error code {}", code);
+                    format!("ax_error(code={}, op=AXSize)", code)
+                }
+            };
+            msg
+        })?;
+
+        // Get final rect after both changes
+        if let Some(final_rect) = win.get_current_rect() {
+            eprintln!("DEBUG: Final rect after size change: ({:.0},{:.0},{:.0},{:.0})",
+                     final_rect.x, final_rect.y, final_rect.w, final_rect.h);
+
+            // Check if the final rect matches what we requested
+            let pos_matches = (final_rect.x - r.x).abs() < 1.0 && (final_rect.y - r.y).abs() < 1.0;
+            let size_matches = (final_rect.w - r.w).abs() < 1.0 && (final_rect.h - r.h).abs() < 1.0;
+
+            if !pos_matches || !size_matches {
+                eprintln!("DEBUG: Final rect does not exactly match target (app constraints likely)");
+            } else {
+                eprintln!("DEBUG: SUCCESS - Final rect matches target");
+            }
+        } else {
+            eprintln!("DEBUG: Final rect - could not get current rect");
+        }
+
+        Ok(())
+    }
+}
+
+// Cleanup helper for observer resources
+pub unsafe fn cleanup_locked(ctx: &mut ObserverContext) {
+    // Remove notifications before releasing observer
+    let focused = CFString::from_static_string("AXFocusedWindowChanged");
+    let app_element = AXUIElementCreateApplication(ctx.job.frontmost.pid);
+    AXObserverRemoveNotification(ctx.observer, app_element, focused.as_concrete_TypeRef() as CFTypeRef);
+    CFRelease(app_element as CFTypeRef);
+
+    // Remove and release runloop source
+    CFRunLoopRemoveSource(CFRunLoopGetMain(), ctx.runloop_source, kCFRunLoopDefaultMode as *mut c_void);
+    CFRelease(ctx.runloop_source as CFTypeRef);
+
+    // Release observer
+    CFRelease(ctx.observer as CFTypeRef);
+}
+
+// Timer callback for observer timeout
+pub extern "C" fn observer_timeout_callback(_timer: *mut c_void, info: *mut c_void) {
+    unsafe {
+        if !info.is_null() {
+            let ctx_arc = Arc::from_raw(info as *const Mutex<ObserverContext>);
+            let mut guard = match ctx_arc.lock() {
+                Ok(guard) => guard,
+                Err(_) => return,
+            };
+
+            if guard.active {
+                let tag = match guard.job.quad {
+                    Quad::UL => "UL",
+                    Quad::UR => "UR",
+                    Quad::LL => "LL",
+                    Quad::LR => "LR",
+                };
+                guard.active = false;
+                cleanup_locked(&mut *guard);
+                println!("TILE: {tag} | FAILED reason=not_ready_timeout");
+            }
+        }
+    }
+}
+
+// AXObserver callback - called when focus changes
+pub extern "C" fn ax_observer_callback(
+    _observer: AXObserverRef,
+    element: AXUIElementRef,
+    _notif: CFTypeRef,
+    refcon: *mut c_void,
+) {
+    if refcon.is_null() {
+        return;
+    }
+
+    let arc = unsafe { Arc::from_raw(refcon as *const Mutex<ObserverContext>) };
+    let ctx = arc.clone();
+    std::mem::forget(arc); // keep raw pointer valid
+
+    let mut guard = match ctx.lock() {
+        Ok(g) => g,
+        Err(_) => return,
+    };
+
+    if !guard.active {
+        return; // already handled or timeout
+    }
+
+    unsafe {
+        let tag = match guard.job.quad {
+            Quad::UL => "UL",
+            Quad::UR => "UR",
+            Quad::LL => "LL",
+            Quad::LR => "LR",
+        };
+
+        // Get the display frame for the window
+        let win_elem = AxElement(element);
+        let current_rect = win_elem.get_current_rect();
+        std::mem::forget(win_elem); // prevent CFRelease
+
+        let vf = if let Some(rect) = current_rect {
+            get_display_for_window(rect).unwrap_or_else(|| {
+                visible_frame_main_display().expect("Main display should exist")
+            })
+        } else {
+            visible_frame_main_display().expect("Main display should exist")
+        };
+
+        // Use custom combo if present, otherwise fall back to quad
+        let r = if let Some(ref combo) = guard.job.custom_combo {
+            rect_from_combo(vf, combo)
+        } else {
+            rect_for_quad(vf, guard.job.quad)
+        };
+
+        let log_suffix = if let (Some(ref key), Some(idx)) = (&guard.job.key_name, guard.job.combo_index) {
+            format!(" | key={} combo={}", key, idx)
+        } else {
+            String::new()
+        };
+
+        let win = AxElement(element);
+        match set_window_rect_safe(&win, r) {
+            Ok(()) => println!("TILE: {tag} | SUCCESS after_observer=yes{} app=\"{}\"", log_suffix, guard.job.frontmost.bundle_id),
+            Err(e) => println!("TILE: {tag} | FAILED reason={}", e),
+        }
+        std::mem::forget(win); // prevent CFRelease
+
+        guard.active = false;
+        cleanup_locked(&mut *guard);
+    }
+}
+
+// Tile window to quadrant using job struct
+pub fn tile_window_quadrant(job: TilingJob) {
+    let tag = match job.quad {
+        Quad::UL => "UL",
+        Quad::UR => "UR",
+        Quad::LL => "LL",
+        Quad::LR => "LR",
+    };
+
+    let key_info = if let (Some(ref key), Some(idx)) = (&job.key_name, job.combo_index) {
+        format!(" key={} combo={}", key, idx)
+    } else {
+        String::new()
+    };
+
+    eprintln!("DEBUG: tile_window_quadrant({}{}) for pid={}, app=\"{}\"", tag, key_info, job.frontmost.pid, job.frontmost.bundle_id);
+
+    // Get focused window using PID-targeted approach
+    let win = match unsafe { get_focused_window_by_pid(job.frontmost.pid) } {
+        Ok(w) => w,
+        Err(reason) => {
+            // Check if we should use observer approach
+            if should_use_observer_on_error(&reason) && job.attempt == 0 {
+                eprintln!("DEBUG: Will use AXObserver approach due to: {}", reason);
+                unsafe { tile_window_with_observer(job) };
+            } else {
+                println!("TILE: {} | FAILED reason={}", tag, reason);
+            }
+            return;
+        }
+    };
+
+    unsafe {
+        // Get the display frame for the window with validation
+        let current_rect = win.get_current_rect();
+        let vf = if let Some(rect) = current_rect {
+            // Use validation version to get both visible and full frames
+            if let Some((visible, full, delta_y)) = get_display_for_window_with_validation(rect) {
+                // Log validation info per spec
+                eprintln!(
+                    "DEBUG: visible=({:.0},{:.0},{:.0},{:.0}) screen=({:.0},{:.0},{:.0},{:.0}) delta_y={:.0}",
+                    visible.min_x, visible.min_y, visible.width, visible.height,
+                    full.min_x, full.min_y, full.width, full.height,
+                    delta_y
+                );
+
+                // One-time warning if delta_y != 0
+                if delta_y != 0.0 && !VISIBLE_FRAME_WARNING_SHOWN.swap(true, Ordering::Relaxed) {
+                    eprintln!("NOTE: visibleFrame correction applied (menu bar height: {:.0}px)", delta_y);
+                }
+
+                visible
+            } else {
+                visible_frame_main_display().expect("Main display should exist")
+            }
+        } else {
+            visible_frame_main_display().expect("Main display should exist")
+        };
+
+        // Use custom combo if present, otherwise fall back to quad
+        let r = if let Some(ref combo) = job.custom_combo {
+            rect_from_combo(vf, combo)
+        } else {
+            rect_for_quad(vf, job.quad)
+        };
+
+        let log_suffix = if let (Some(ref key), Some(idx)) = (&job.key_name, job.combo_index) {
+            format!(" | key={} combo={}", key, idx)
+        } else {
+            String::new()
+        };
+
+        match set_window_rect_safe(&win, r) {
+            Ok(()) => println!("TILE: {} | SUCCESS{} app=\"{}\"", tag, log_suffix, job.frontmost.bundle_id),
+            Err(reason) => {
+                // Check if we should retry with observer
+                if reason.contains("not_ready") || reason.contains("cannot_complete") {
+                    if job.attempt == 0 {
+                        eprintln!("DEBUG: Will use AXObserver approach due to: {}", reason);
+                        tile_window_with_observer(job);
+                    } else {
+                        println!("TILE: {} | FAILED reason={}", tag, reason);
+                    }
+                } else {
+                    println!("TILE: {} | FAILED reason={}", tag, reason);
+                }
+            }
+        }
+    }
+}
+
+// Tile window using AXObserver approach
+unsafe fn tile_window_with_observer(job: TilingJob) {
+    eprintln!("DEBUG: tile_window_with_observer() starting for app={}", job.frontmost.bundle_id);
+
+    let tag = match job.quad {
+        Quad::UL => "UL",
+        Quad::UR => "UR",
+        Quad::LL => "LL",
+        Quad::LR => "LR",
+    };
+
+    // Create observer for the app
+    let mut observer: AXObserverRef = std::ptr::null();
+    let rc = AXObserverCreate(
+        job.frontmost.pid as i32,
+        ax_observer_callback,
+        &mut observer,
+    );
+
+    if rc != KAX_ERROR_SUCCESS || observer.is_null() {
+        eprintln!("DEBUG: AXObserverCreate failed with code {}", rc);
+        println!("TILE: {} | FAILED reason=observer_create_failed", tag);
+        return;
+    }
+
+    // Add notification for focused window changes
+    let app_element = AXUIElementCreateApplication(job.frontmost.pid);
+    let notification = CFString::from_static_string("AXFocusedWindowChanged");
+
+    // Create context with timeout tracking
+    let ctx = ObserverContext {
+        job: job.clone(),
+        start_time: CFAbsoluteTimeGetCurrent(),
+        timeout_ms: 500,
+        observer,
+        runloop_source: AXObserverGetRunLoopSource(observer),
+        active: true,
+    };
+
+    let ctx_arc = Arc::new(Mutex::new(ctx));
+    let ctx_ptr = Arc::into_raw(ctx_arc.clone());
+
+    let rc = AXObserverAddNotification(
+        observer,
+        app_element,
+        notification.as_concrete_TypeRef() as CFTypeRef,
+        ctx_ptr as *mut c_void,
+    );
+
+    if rc != KAX_ERROR_SUCCESS {
+        eprintln!("DEBUG: AXObserverAddNotification failed with code {}", rc);
+        CFRelease(app_element as CFTypeRef);
+        CFRelease(observer as CFTypeRef);
+
+        // Clean up the Arc
+        let _ = Arc::from_raw(ctx_ptr);
+
+        println!("TILE: {} | FAILED reason=observer_notification_failed", tag);
+        return;
+    }
+
+    // Add observer to runloop
+    let runloop_source = AXObserverGetRunLoopSource(observer);
+    CFRunLoopAddSource(
+        CFRunLoopGetMain(),
+        runloop_source,
+        kCFRunLoopDefaultMode as *mut c_void,
+    );
+
+    // Set up timeout timer
+    let timer_ctx = CFRunLoopTimerContext {
+        version: 0,
+        info: ctx_ptr as *mut c_void,
+        retain: None,
+        release: None,
+        copy_description: None,
+    };
+
+    let timer = CFRunLoopTimerCreate(
+        kCFAllocatorDefault,
+        CFAbsoluteTimeGetCurrent() + 0.5,
+        0.0,
+        0,
+        0,
+        observer_timeout_callback,
+        &timer_ctx,
+    );
+
+    CFRunLoopAddTimer(
+        CFRunLoopGetMain(),
+        timer,
+        kCFRunLoopDefaultMode as *mut c_void,
+    );
+
+    // Clean up app element
+    CFRelease(app_element as CFTypeRef);
+
+    eprintln!("DEBUG: AXObserver installed for PID {}, waiting for focus change", job.frontmost.pid);
+}
