@@ -42,7 +42,6 @@ pub struct VisibleFrame {
 impl VisibleFrame {
     pub fn mid_x(&self) -> f64 { self.min_x + self.width / 2.0 }
     pub fn mid_y(&self) -> f64 { self.min_y + self.height / 2.0 }
-    pub fn max_y(&self) -> f64 { self.min_y + self.height }
 }
 
 // NSRect structure for Objective-C interop
@@ -259,49 +258,4 @@ pub unsafe fn get_display_for_window_with_validation(window_rect: Rect) -> Optio
         }
     }
     None
-}
-
-// ============================================================================================
-// Overlay Frame Calculations
-// ============================================================================================
-
-/// Calculate overlay frame for a given screen
-///
-/// This centralizes the overlay positioning logic used by both Alt-Tab and Clipboard overlays.
-/// Returns NSRect in the screen's local coordinate space.
-///
-/// # Parameters
-/// - `screen`: The NSScreen to place the overlay on
-/// - `width_ratio`: Ratio of screen width (e.g., 0.9 for 90%)
-/// - `height_ratio`: Ratio of screen height (e.g., 0.5 for 50%)
-/// - `max_width`: Optional maximum width in points (pass f64::MAX for no limit)
-pub unsafe fn overlay_frame(
-    screen: &NSScreen,
-    width_ratio: f64,
-    height_ratio: f64,
-    max_width: f64
-) -> NSRect {
-    // Get visible frame (respects menu bar & Dock)
-    let vf: NSRect = msg_send![screen, visibleFrame];
-    let sf: NSRect = msg_send![screen, frame];
-
-    // Convert global visibleFrame.origin to local-to-this-screen origin
-    let local_x = vf.origin.x - sf.origin.x;
-    let local_y = vf.origin.y - sf.origin.y;
-
-    // Calculate overlay dimensions
-    let overlay_height = vf.size.y * height_ratio;
-    let overlay_width = (vf.size.x * width_ratio).min(max_width);
-
-    // Center horizontally, align to bottom of visible area
-    NSRect {
-        origin: Pt {
-            x: local_x + (vf.size.x - overlay_width) / 2.0,
-            y: local_y,
-        },
-        size: Pt {
-            x: overlay_width,
-            y: overlay_height,
-        },
-    }
 }
