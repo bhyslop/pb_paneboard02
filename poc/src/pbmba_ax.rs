@@ -343,6 +343,18 @@ impl AxElement {
             false
         }
     }
+
+    pub unsafe fn set_minimized(&self, minimized: bool) -> Result<(), AxError> {
+        let attr = ax_attr_minimized();
+        let value = if minimized { kCFBooleanTrue } else { kCFBooleanFalse };
+        let rc = AXUIElementSetAttributeValue(self.0, attr.as_concrete_TypeRef() as CFTypeRef, value);
+
+        if rc != KAX_ERROR_SUCCESS {
+            Err(if rc == -25204 { AxError::Permission } else { AxError::Platform(rc) })
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl Drop for AxElement {

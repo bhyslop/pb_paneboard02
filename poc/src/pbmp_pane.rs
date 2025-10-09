@@ -26,8 +26,8 @@ use crate::pbmba_ax::{
     CFRunLoopAddSource, CFRunLoopRemoveSource, CFAbsoluteTimeGetCurrent,
     CFRunLoopTimerCreate, CFRunLoopAddTimer, CFRunLoopTimerContext,
     _AXUIElementGetWindow, CFArrayGetCount, CFArrayGetValueAtIndex,
-    kCFBooleanTrue,
-    ax_attr_title, ax_attr_role, ax_attr_windows, ax_attr_main, ax_action_raise,
+    kCFBooleanTrue, kCFBooleanFalse,
+    ax_attr_title, ax_attr_role, ax_attr_windows, ax_attr_main, ax_attr_minimized, ax_action_raise,
 };
 
 use crate::pbmbd_display::{
@@ -188,6 +188,35 @@ pub unsafe fn focus_window_by_id(pid: u32, window_id: u32) -> bool {
     }
 
     // Now we have a valid element reference - use it immediately before releasing the array
+
+    // Check if window is minimized and restore it if needed
+    let minimized_attr = ax_attr_minimized();
+    let mut minimized_ref: CFTypeRef = std::ptr::null();
+    let minimized_rc = AXUIElementCopyAttributeValue(
+        target_element,
+        minimized_attr.as_concrete_TypeRef() as CFTypeRef,
+        &mut minimized_ref,
+    );
+
+    if minimized_rc == KAX_ERROR_SUCCESS && !minimized_ref.is_null() {
+        let is_minimized = minimized_ref as usize == 1; // Simplified CFBoolean check
+        CFRelease(minimized_ref);
+
+        if is_minimized {
+            // Restore the window (set AXMinimized to false)
+            let restore_rc = AXUIElementSetAttributeValue(
+                target_element,
+                minimized_attr.as_concrete_TypeRef() as CFTypeRef,
+                kCFBooleanFalse,
+            );
+
+            if restore_rc == KAX_ERROR_SUCCESS {
+                println!("ALT_TAB: restored minimized window before focus");
+            } else {
+                eprintln!("ALT_TAB: failed to restore minimized window (code={})", restore_rc);
+            }
+        }
+    }
 
     // Set AXMain attribute to true
     let main_attr = ax_attr_main();

@@ -630,12 +630,13 @@ PaneBoard performs a **live validation pass** over all known MRU entries:
 1. For each tracked `(pid, window_id)` pair:
    * Attempt to query its `AXRole` via `AXUIElementCopyAttributeValue`.
    * If the call fails or the role is not `"AXWindow"`, remove the entry.
+   * **Minimized windows are not restored** during this validation pass; they remain in the MRU stack if still valid AXWindow objects.
 2. After validation, log one summary line:
    ```
    MRU: pruned <N> stale entries (pre-session validation)
    ```
 
-This pruning step occurs **once per session start** and keeps the MRU overlay synchronized with the system's actual window state without adding background polling or runtime overhead.
+This pruning step occurs **once per session start** and keeps the MRU overlay synchronized with the system's actual window state without adding background polling or runtime overhead. Minimized window restoration happens only at **focus commit time** (see Focus Commit Policy).
 
 **Mechanism:**
 * Use a Swift shim for `NSWorkspaceDidActivateApplication` to detect app activation/termination.
@@ -757,6 +758,15 @@ On **Command release**, PaneBoard commits the currently highlighted entry:
   * Find the target window by matching window_id.
   * Call `AXUIElementSetAttributeValue(window, kAXMainAttribute, kCFBooleanTrue)` to mark as main.
   * Call `AXUIElementPerformAction(window, kAXRaiseAction)` to bring window forward.
+
+* **Minimized windows:**
+  * If the target window is minimized (`AXMinimized = true`), PaneBoard automatically restores it (`AXMinimized = false`) before performing focus and raise actions.
+  * This ensures that selecting a minimized window from the switcher visibly brings it forward as the active window.
+  * The restoration occurs only at **focus commit time**, not during MRU validation, so background pruning remains lightweight.
+  * Log line:
+    ```
+    ALT_TAB: restored minimized window before focus
+    ```
 
 * **Window already focused**:
   * No action needed if the focused window already matches the target window_id.
