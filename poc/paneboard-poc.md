@@ -744,6 +744,47 @@ This phase adds a **barebones popup overlay** to visualize Alt-Tab navigation an
 * **Placement:** occupy the **lower half of the *visible frame* of every display** (respects menu bar and Dock placement).
   * **Implementation note (macOS):** When initializing `NSWindow` with the `screen:` parameter, provide the `contentRect` in that screen's **local coordinate space** (not global). Compute it by subtracting `screen.frame.origin` from `screen.visibleFrame.origin`.
 
+#### 🔧 Text Column Order Revision (Overlay Display)
+
+**Purpose**
+Simplify and clarify the text shown in each Alt-Tab entry by presenting human-relevant information first and technical identifiers last.
+
+**Change Summary**
+
+| Column | New Content                                            | Example                                           |
+| ------ | ------------------------------------------------------ | ------------------------------------------------- |
+| ①      | **Window title** (entire `AXTitle`, unquoted)          | `ChatGPT – pnb_PaneBoard – Google Chrome – Brad`  |
+| ②      | **App identifier reversed** (e.g. `chrome.google.com`) | Derived from `bundleId` by reversing dot segments |
+| ③      | **Activation state**                                   | `[KNOWN]`, `[GUESS]`, `[FULLSCREEN]`              |
+
+**Resulting layout example**
+
+```
+1. ChatGPT – pnb_PaneBoard – Google Chrome – Brad | chrome.google.com [KNOWN]
+2. ✳ Git Commit | iterm2.googlecode.com [KNOWN]
+3. src | finder.apple.com [GUESS]
+```
+
+**Implementation Notes (developer)**
+
+1. In `drawAltTabEntries()` inside `pbmbo_observer.swift`, replace text construction with:
+
+   ```swift
+   let reversedBundle = entry.bundleId
+       .split(separator: ".")
+       .reversed()
+       .joined(separator: ".")
+   let text = "\(index + 1). \(entry.title) | \(reversedBundle) [\(entry.activationState)]"
+   ```
+2. Remove the quotation marks previously surrounding the title.
+3. Keep existing truncation (`.byTruncatingTail`) and highlight rendering unchanged.
+4. Console debug printouts remain in their original full format for traceability.
+
+**Rationale**
+Placing the full title first improves recognition speed, while reversing the bundle identifier reads more naturally and groups related apps visually. The activation tag stays visible for internal validation but can be hidden in future user-facing builds.
+
+---
+
 **Focus Commit Policy (macOS)**
 
 On **Command release**, PaneBoard commits the currently highlighted entry:

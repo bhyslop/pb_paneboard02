@@ -401,7 +401,11 @@ class OverlayContentView: NSView {
                 .foregroundColor: NSColor.white
             ]
 
-            let text = "\(index + 1). \(entry.bundleId) | \"\(entry.title)\" [\(entry.activationState)]"
+            let reversedBundle = entry.bundleId
+                .split(separator: ".")
+                .reversed()
+                .joined(separator: ".")
+            let text = "\(index + 1). \(entry.title) | \(reversedBundle) [\(entry.activationState)]"
             let textXPos = padding + 10 + iconSize + iconTextSpacing
             let textHeight = text.size(withAttributes: attrs).height
             let textYOffset = (lineHeight - textHeight) / 2
