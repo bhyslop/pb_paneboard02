@@ -26,11 +26,6 @@ pub struct FrontmostInfo {
 pub struct FocusedWindowInfo {
     pub window_id: u32,
     pub title: String,
-    pub role: Option<String>,
-    pub subrole: Option<String>,
-    pub rect: Option<crate::pbmbd_display::Rect>,
-    pub is_fullscreen: bool,
-    pub is_minimized: bool,
 }
 
 // AX types
@@ -62,7 +57,6 @@ extern "C" {
 
     // AX basics
     pub fn AXUIElementCreateApplication(pid: u32) -> AXUIElementRef;
-    pub fn AXUIElementCreateSystemWide() -> AXUIElementRef;
     pub fn AXUIElementCopyAttributeValue(element: AXUIElementRef, attr: CFTypeRef, out: *mut CFTypeRef) -> i32;
     pub fn AXUIElementSetAttributeValue(element: AXUIElementRef, attr: CFTypeRef, value: CFTypeRef) -> i32;
     pub fn AXUIElementPerformAction(element: AXUIElementRef, action: CFTypeRef) -> i32;
@@ -291,21 +285,6 @@ impl AxElement {
         }
     }
 
-    pub unsafe fn is_fullscreen(&self) -> bool {
-        let mut fs_ref: CFTypeRef = std::ptr::null();
-        let attr = ax_attr_fullscreen();
-        let rc = AXUIElementCopyAttributeValue(self.0, attr.as_concrete_TypeRef() as CFTypeRef, &mut fs_ref);
-
-        if rc == KAX_ERROR_SUCCESS && !fs_ref.is_null() {
-            // CFBoolean value - check if it's kCFBooleanTrue
-            let is_true = fs_ref as usize == 1; // Simplified check
-            CFRelease(fs_ref);
-            is_true
-        } else {
-            false
-        }
-    }
-
     pub unsafe fn get_window_id(&self) -> Option<u32> {
         let mut window_id: u32 = 0;
         let rc = _AXUIElementGetWindow(self.0, &mut window_id);
@@ -316,45 +295,6 @@ impl AxElement {
         }
     }
 
-    pub unsafe fn get_subrole(&self) -> Option<String> {
-        let mut subrole_ref: CFTypeRef = std::ptr::null();
-        let attr = ax_attr_subrole();
-        let rc = AXUIElementCopyAttributeValue(self.0, attr.as_concrete_TypeRef() as CFTypeRef, &mut subrole_ref);
-
-        if rc == KAX_ERROR_SUCCESS && !subrole_ref.is_null() {
-            let cf_string = CFString::wrap_under_create_rule(subrole_ref as *const _);
-            Some(cf_string.to_string())
-        } else {
-            None
-        }
-    }
-
-    pub unsafe fn is_minimized(&self) -> bool {
-        let mut min_ref: CFTypeRef = std::ptr::null();
-        let attr = ax_attr_minimized();
-        let rc = AXUIElementCopyAttributeValue(self.0, attr.as_concrete_TypeRef() as CFTypeRef, &mut min_ref);
-
-        if rc == KAX_ERROR_SUCCESS && !min_ref.is_null() {
-            // CFBoolean value - check if it's kCFBooleanTrue
-            let is_true = min_ref as usize == 1; // Simplified check
-            CFRelease(min_ref);
-            is_true
-        } else {
-            false
-        }
-    }
-
-    pub unsafe fn set_minimized(&self, minimized: bool) -> Result<(), AxError> {
-        let attr = ax_attr_minimized();
-        let value = if minimized { kCFBooleanTrue } else { kCFBooleanFalse };
-        let rc = AXUIElementSetAttributeValue(self.0, attr.as_concrete_TypeRef() as CFTypeRef, value);
-
-        if rc != KAX_ERROR_SUCCESS {
-            Err(if rc == -25204 { AxError::Permission } else { AxError::Platform(rc) })
-        } else {
-            Ok(())
-        }
-    }
 }
 
 impl Drop for AxElement {
@@ -388,24 +328,12 @@ pub unsafe fn ax_attr_role() -> CFString {
     CFString::from_static_string("AXRole")
 }
 
-pub unsafe fn ax_attr_fullscreen() -> CFString {
-    CFString::from_static_string("AXFullScreen")
-}
-
 pub unsafe fn ax_attr_windows() -> CFString {
     CFString::from_static_string("AXWindows")
 }
 
-pub unsafe fn ax_attr_subrole() -> CFString {
-    CFString::from_static_string("AXSubrole")
-}
-
 pub unsafe fn ax_attr_minimized() -> CFString {
     CFString::from_static_string("AXMinimized")
-}
-
-pub unsafe fn ax_attr_focused_application() -> CFString {
-    CFString::from_static_string("AXFocusedApplication")
 }
 
 pub unsafe fn ax_attr_main() -> CFString {
@@ -471,19 +399,10 @@ pub unsafe fn get_focused_window_info(pid: u32) -> Result<FocusedWindowInfo, AxE
 
     // Get window properties
     let title = win.get_title().unwrap_or_else(|| String::from("<no title>"));
-    let subrole = win.get_subrole();
-    let rect = win.get_current_rect();
-    let is_fullscreen = win.is_fullscreen();
-    let is_minimized = win.is_minimized();
 
     Ok(FocusedWindowInfo {
         window_id,
         title,
-        role,
-        subrole,
-        rect,
-        is_fullscreen,
-        is_minimized,
     })
 }
 

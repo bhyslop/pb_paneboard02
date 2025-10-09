@@ -18,8 +18,6 @@ extern "C" {
         callback: extern "C" fn(text: *const std::os::raw::c_char, length: i32),
     );
 
-    fn pbmso_stop_clipboard_monitor();
-
     fn pbmso_set_clipboard_text(text: *const std::os::raw::c_char);
 }
 

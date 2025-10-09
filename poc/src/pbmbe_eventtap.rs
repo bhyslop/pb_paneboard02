@@ -8,7 +8,6 @@ use core_foundation::runloop::kCFRunLoopDefaultMode;
 use core_foundation_sys::base::CFTypeRef;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
 
 use crate::pbmbk_keymap::*;
 use crate::pbgk_keylog::{KEY_LOGGING_ENABLED, update_key_state};
@@ -435,7 +434,6 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
                     quad: q,
                     frontmost,
                     attempt: 0, // First attempt
-                    start_time: Some(Instant::now()),
                     key_name: Some(key_name.to_string()),
                     combo_index,
                     custom_combo,

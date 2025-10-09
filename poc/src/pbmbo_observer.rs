@@ -300,11 +300,6 @@ extern "C" fn prepopulation_callback(pid: i32, bundle: *const std::os::raw::c_ch
                             identity: identity.clone(),
                             bundle_id: bundle_id.clone(),
                             title: enumerated_win.title.clone(),
-                            role: enumerated_win.role.clone(),
-                            subrole: None,
-                            rect: None,
-                            is_fullscreen: false,
-                            is_minimized: false,
                             activation_state: ActivationState::Known,
                         };
 

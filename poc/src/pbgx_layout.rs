@@ -22,18 +22,10 @@ pub struct Combo {
     pub height: f64,
 }
 
-/// A sequence of combos mapped to a key
-#[derive(Debug, Clone)]
-pub struct Sequence {
-    pub key: String,
-    pub combos: Vec<Combo>,
-}
-
 /// Layout manager holding all sequences
 #[derive(Debug)]
 pub struct LayoutManager {
     sequences: HashMap<String, Vec<Combo>>,
-    warned_coords: bool, // Track if we've already warned about coordinate clamping
 }
 
 impl LayoutManager {
@@ -41,7 +33,6 @@ impl LayoutManager {
     pub fn new() -> Self {
         Self {
             sequences: Self::default_quadrants(),
-            warned_coords: false,
         }
     }
 
@@ -234,11 +225,11 @@ impl LayoutManager {
         if sequences.is_empty() {
             Err("no valid sequences found".to_string())
         } else {
-            Ok(Self { sequences, warned_coords })
+            Ok(Self { sequences })
         }
     }
 
-    /// Clamp coordinate to [0, 100] range with one-time warning
+    /// Clamp coordinate to [0, 100] range
     fn clamp_coord(value: f64, name: &str, warned: &mut bool) -> f64 {
         if value < 0.0 {
             if !*warned {
@@ -260,11 +251,6 @@ impl LayoutManager {
     /// Look up sequence by key name
     pub fn get_sequence(&self, key: &str) -> Option<&Vec<Combo>> {
         self.sequences.get(key)
-    }
-
-    /// Get all keys
-    pub fn keys(&self) -> Vec<&String> {
-        self.sequences.keys().collect()
     }
 }
 
