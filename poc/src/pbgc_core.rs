@@ -3,16 +3,6 @@
 
 use std::collections::HashSet;
 
-// State mask bits for atomic sharing
-pub const STATE_LEFT_ALT: u32 = 1 << 0;
-pub const STATE_RIGHT_ALT: u32 = 1 << 1;
-pub const STATE_LEFT_SHIFT: u32 = 1 << 2;
-pub const STATE_RIGHT_SHIFT: u32 = 1 << 3;
-pub const STATE_LEFT_CMD: u32 = 1 << 4;
-pub const STATE_RIGHT_CMD: u32 = 1 << 5;
-pub const STATE_LEFT_CTRL: u32 = 1 << 6;
-pub const STATE_RIGHT_CTRL: u32 = 1 << 7;
-
 #[derive(Clone, PartialEq)]
 pub struct KeyState {
     pub left_shift: bool,

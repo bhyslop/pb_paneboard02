@@ -8,9 +8,8 @@ use core_foundation::runloop::kCFRunLoopDefaultMode;
 use core_foundation::string::CFString;
 use core_foundation_sys::base::CFTypeRef;
 use std::ffi::c_void;
-use std::sync::atomic::{AtomicI64, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 
 use crate::pbgc_core::Quad;
 
@@ -26,8 +25,8 @@ use crate::pbmba_ax::{
     CFRunLoopAddSource, CFRunLoopRemoveSource, CFAbsoluteTimeGetCurrent,
     CFRunLoopTimerCreate, CFRunLoopAddTimer, CFRunLoopTimerContext,
     _AXUIElementGetWindow, CFArrayGetCount, CFArrayGetValueAtIndex,
-    kCFBooleanTrue,
-    ax_attr_title, ax_attr_role, ax_attr_windows, ax_attr_main, ax_action_raise,
+    kCFBooleanTrue, kCFBooleanFalse,
+    ax_attr_title, ax_attr_role, ax_attr_windows, ax_attr_main, ax_attr_minimized, ax_action_raise,
 };
 
 use crate::pbmbd_display::{
@@ -43,9 +42,6 @@ use core_foundation::base::CFRelease;
 
 use lazy_static::lazy_static;
 use std::collections::HashMap;
-
-// Block lifetime tracking for memory leak detection
-pub static BLOCK_LIFETIME_COUNT: AtomicI64 = AtomicI64::new(0);
 
 // One-time warning flag for visibleFrame validation
 static VISIBLE_FRAME_WARNING_SHOWN: AtomicBool = AtomicBool::new(false);
@@ -63,7 +59,6 @@ pub struct TilingJob {
     pub quad: Quad,
     pub frontmost: FrontmostInfo,
     pub attempt: u32, // 0 = first attempt, 1-3 = retries
-    pub start_time: Option<Instant>, // Track total wall time for retry budget
     pub key_name: Option<String>, // Key name for layout sequence tracking
     pub combo_index: Option<usize>, // Combo index within sequence
     pub custom_combo: Option<Combo>, // Custom combo from layout config
@@ -72,14 +67,10 @@ pub struct TilingJob {
 // Observer context for timeout and job tracking
 pub struct ObserverContext {
     pub job: TilingJob,
-    pub start_time: f64,
-    pub timeout_ms: u32,
     pub observer: AXObserverRef,
     pub runloop_source: *mut c_void,
     pub active: bool, // flag to prevent double cleanup
 }
-
-pub type SharedObserverContext = Arc<Mutex<ObserverContext>>;
 
 /// Window metadata from enumeration (used during prepopulation)
 /// Note: Does not store AXUIElementRef to avoid dangling pointer issues
@@ -87,7 +78,6 @@ pub type SharedObserverContext = Arc<Mutex<ObserverContext>>;
 pub struct EnumeratedWindow {
     pub window_id: u32,
     pub title: String,
-    pub role: Option<String>,
 }
 
 /// Get the next combo for a given key, advancing the sequence index
@@ -124,12 +114,6 @@ pub fn reset_all_sequence_indices() {
     }
     state.clear();
     eprintln!("DEBUG: [LAYOUT] All sequence indices reset to 0");
-}
-
-/// Reset a specific key's sequence index to 0
-pub fn reset_sequence_index(key_name: &str) {
-    let mut state = SEQUENCE_STATE.lock().unwrap();
-    state.insert(key_name.to_string(), 0);
 }
 
 /// Focus a specific window by window ID using AX APIs
@@ -188,6 +172,35 @@ pub unsafe fn focus_window_by_id(pid: u32, window_id: u32) -> bool {
     }
 
     // Now we have a valid element reference - use it immediately before releasing the array
+
+    // Check if window is minimized and restore it if needed
+    let minimized_attr = ax_attr_minimized();
+    let mut minimized_ref: CFTypeRef = std::ptr::null();
+    let minimized_rc = AXUIElementCopyAttributeValue(
+        target_element,
+        minimized_attr.as_concrete_TypeRef() as CFTypeRef,
+        &mut minimized_ref,
+    );
+
+    if minimized_rc == KAX_ERROR_SUCCESS && !minimized_ref.is_null() {
+        let is_minimized = minimized_ref as usize == 1; // Simplified CFBoolean check
+        CFRelease(minimized_ref);
+
+        if is_minimized {
+            // Restore the window (set AXMinimized to false)
+            let restore_rc = AXUIElementSetAttributeValue(
+                target_element,
+                minimized_attr.as_concrete_TypeRef() as CFTypeRef,
+                kCFBooleanFalse,
+            );
+
+            if restore_rc == KAX_ERROR_SUCCESS {
+                println!("ALT_TAB: restored minimized window before focus");
+            } else {
+                eprintln!("ALT_TAB: failed to restore minimized window (code={})", restore_rc);
+            }
+        }
+    }
 
     // Set AXMain attribute to true
     let main_attr = ax_attr_main();
@@ -324,7 +337,6 @@ pub unsafe fn enumerate_app_windows(pid: u32) -> Vec<EnumeratedWindow> {
         result.push(EnumeratedWindow {
             window_id,
             title,
-            role: role_str,
         });
     }
 
@@ -907,8 +919,6 @@ unsafe fn tile_window_with_observer(job: TilingJob) {
     // Create context with timeout tracking
     let ctx = ObserverContext {
         job: job.clone(),
-        start_time: CFAbsoluteTimeGetCurrent(),
-        timeout_ms: 500,
         observer,
         runloop_source: AXObserverGetRunLoopSource(observer),
         active: true,

@@ -150,31 +150,3 @@ pub fn vk_to_hid_usage(vk: u16) -> Option<u32> {
         _ => None, // Unknown or untracked keycode
     }
 }
-
-// Convert key name string to HID usage code (for layout config)
-// Returns None for unknown key names
-pub fn key_name_to_hid_usage(name: &str) -> Option<u32> {
-    match name {
-        "Insert" => Some(0x49),
-        "Delete" => Some(0x4C),
-        "Home" => Some(0x4A),
-        "End" => Some(0x4D),
-        "PageUp" | "PgUp" => Some(0x4B),
-        "PageDown" | "PgDn" => Some(0x4E),
-        _ => None,
-    }
-}
-
-// Convert HID usage code to virtual keycode (for event tap matching)
-// Returns None for unmapped HID codes
-pub fn hid_usage_to_vk(hid: u32) -> Option<u16> {
-    match hid {
-        0x49 => Some(KVK_HELP_INSERT),
-        0x4C => Some(KVK_FWD_DELETE),
-        0x4A => Some(KVK_HOME),
-        0x4D => Some(KVK_END),
-        0x4B => Some(KVK_PAGE_UP),
-        0x4E => Some(KVK_PAGE_DOWN),
-        _ => None,
-    }
-}
