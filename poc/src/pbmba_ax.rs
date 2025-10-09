@@ -487,3 +487,72 @@ pub unsafe fn ax_trusted_or_die() {
         std::process::exit(1);
     }
 }
+
+/// Validate that a window still exists and has AXWindow role
+/// Used for MRU pruning to remove stale entries
+/// Returns true if window exists and is a valid AXWindow, false otherwise
+pub unsafe fn validate_window_exists(pid: u32, window_id: u32) -> bool {
+    // Skip validation for placeholder entries (window_id=0)
+    if window_id == 0 {
+        return true;
+    }
+
+    // Create app element
+    let app_element = AXUIElementCreateApplication(pid);
+    if app_element.is_null() {
+        return false;
+    }
+
+    // Query kAXWindowsAttribute
+    let windows_attr = ax_attr_windows();
+    let mut windows_array: CFTypeRef = std::ptr::null();
+    let rc = AXUIElementCopyAttributeValue(
+        app_element,
+        windows_attr.as_concrete_TypeRef() as CFTypeRef,
+        &mut windows_array,
+    );
+
+    if rc != KAX_ERROR_SUCCESS || windows_array.is_null() {
+        CFRelease(app_element as CFTypeRef);
+        return false;
+    }
+
+    // Iterate through CFArray to find target window
+    let count = CFArrayGetCount(windows_array);
+    let mut found = false;
+
+    for i in 0..count {
+        let window_element = CFArrayGetValueAtIndex(windows_array, i) as AXUIElementRef;
+        if window_element.is_null() {
+            continue;
+        }
+
+        // Get window ID
+        let mut wid: u32 = 0;
+        let wid_rc = _AXUIElementGetWindow(window_element, &mut wid);
+        if wid_rc == 0 && wid == window_id {
+            // Found the window - now check its role
+            let role_attr = ax_attr_role();
+            let mut role_value: CFTypeRef = std::ptr::null();
+            let role_rc = AXUIElementCopyAttributeValue(
+                window_element,
+                role_attr.as_concrete_TypeRef() as CFTypeRef,
+                &mut role_value,
+            );
+
+            if role_rc == KAX_ERROR_SUCCESS && !role_value.is_null() {
+                let role_cfstr = CFString::wrap_under_get_rule(role_value as *const _);
+                let role_str = role_cfstr.to_string();
+                found = role_str == "AXWindow";
+                CFRelease(role_value);
+            }
+            break;
+        }
+    }
+
+    // Cleanup
+    CFRelease(windows_array);
+    CFRelease(app_element as CFTypeRef);
+
+    found
+}

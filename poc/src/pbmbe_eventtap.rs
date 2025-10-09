@@ -220,10 +220,31 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
             let mut session = ALT_TAB_SESSION.lock().unwrap();
 
             // Start session on first Tab press
-            if !session.active {
+            let is_new_session = !session.active;
+            if is_new_session {
                 session.active = true;
+                drop(session); // Release lock before calling prune (which locks MRU_STACK)
+
                 println!("ALT_TAB: session start");
+
+                // Prune stale MRU entries at session start
+                let pruned = crate::pbmsm_mru::prune_stale_mru_entries();
+                if pruned > 0 {
+                    println!("MRU: pruned {} stale entries (pre-session validation)", pruned);
+                }
+
+                // Re-acquire session lock
+                session = ALT_TAB_SESSION.lock().unwrap();
             }
+
+            // Get fresh snapshot after pruning (if new session)
+            let (snapshot, mru_count) = if is_new_session {
+                let fresh_snapshot = get_mru_snapshot();
+                let fresh_count = fresh_snapshot.len();
+                (fresh_snapshot, fresh_count)
+            } else {
+                (snapshot, mru_count)
+            };
 
             if mru_count == 0 {
                 // No windows to show - reset session state

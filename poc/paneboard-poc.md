@@ -617,6 +617,26 @@ This design provides:
 PaneBoard maintains its own **Most Recently Used (MRU) stack** of windows, updated whenever focus changes.
 This stack is independent of Mission Control or Spaces.
 
+#### MRU Validation and Pruning (New for Repair)
+
+**Problem:**
+Some applications destroy windows without emitting reliable `AXWindow` teardown events.
+As a result, defunct window entries can persist in the MRU stack and appear in the switcher overlay even though the windows are no longer visible.
+
+**Repair Strategy:**
+At the **start of each Alt-Tab session** (the first `Tab` press while Command is held),
+PaneBoard performs a **live validation pass** over all known MRU entries:
+
+1. For each tracked `(pid, window_id)` pair:
+   * Attempt to query its `AXRole` via `AXUIElementCopyAttributeValue`.
+   * If the call fails or the role is not `"AXWindow"`, remove the entry.
+2. After validation, log one summary line:
+   ```
+   MRU: pruned <N> stale entries (pre-session validation)
+   ```
+
+This pruning step occurs **once per session start** and keeps the MRU overlay synchronized with the system's actual window state without adding background polling or runtime overhead.
+
 **Mechanism:**
 * Use a Swift shim for `NSWorkspaceDidActivateApplication` to detect app activation/termination.
 * On app activation, attach a per-app AXObserver to listen for `AXFocusedWindowChanged`.
@@ -698,6 +718,7 @@ This phase adds a **barebones popup overlay** to visualize Alt-Tab navigation an
 
   * Holding `Command` begins a session.
   * First `Tab` press while `Command` is held shows the popup on **every display**.
+  * Before displaying the popup, the MRU stack undergoes a pre-session validation pass to prune stale windows as described above.
   * On the first Tab press while Command is held, the highlight advances immediately to the next MRU entry (index 1). The overlay still shows the full MRU stack, but the current window is skipped.
 * **Forward paging:**
 

@@ -185,3 +185,21 @@ pub unsafe fn seed_mru_with_current_focus() {
         update_mru_with_focus(frontmost.pid, frontmost.bundle_id);
     }
 }
+
+/// Prune stale MRU entries at Alt-Tab session start
+/// Validates each (pid, window_id) pair and removes entries that no longer exist
+/// Returns count of pruned entries
+pub unsafe fn prune_stale_mru_entries() -> usize {
+    use crate::pbmba_ax::validate_window_exists;
+
+    let mut stack = MRU_STACK.lock().unwrap();
+    let initial_count = stack.len();
+
+    // Retain only entries that still correspond to live windows
+    stack.retain(|entry| {
+        validate_window_exists(entry.identity.pid, entry.identity.window_id)
+    });
+
+    let pruned_count = initial_count - stack.len();
+    pruned_count
+}
