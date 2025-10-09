@@ -1,0 +1,180 @@
+PANEBOARD SYMBOL RENAME CHECKLIST
+
+Legend: → means "rename to"
+[P] = private (needs z prefix)
+Methods not listed (stay with their types)
+
+=== pbgc_core.rs ===
+KeyState → pbgc_KeyState
+usage_to_key_name → pbgc_usage_to_key_name
+Quad → pbgc_Quad
+
+=== pbgr_retry.rs ===
+(empty file, skip)
+
+=== pbgk_keylog.rs ===
+KEY_STATE → PBGK_KEY_STATE
+KEY_LOGGING_ENABLED → PBGK_KEY_LOGGING_ENABLED
+update_key_state → pbgk_update_key_state
+
+=== pbgx_layout.rs ===
+DEFAULT_LAYOUT_XML → PBGX_DEFAULT_LAYOUT_XML
+Combo → pbgx_Combo
+LayoutManager → pbgx_LayoutManager
+
+=== pbmba_ax.rs ===
+FrontmostInfo → pbmba_FrontmostInfo
+FocusedWindowInfo → pbmba_FocusedWindowInfo
+AXUIElementRef → pbmba_AXUIElementRef (type alias, consider keeping for FFI clarity)
+AXValueRef → pbmba_AXValueRef (type alias, consider keeping for FFI clarity)
+AXObserverRef → pbmba_AXObserverRef (type alias, consider keeping for FFI clarity)
+AXObserverCallback → pbmba_AXObserverCallback (type alias)
+KAX_ERROR_SUCCESS → PBMBA_KAX_ERROR_SUCCESS
+KAX_ERROR_PERMISSION_DENIED → PBMBA_KAX_ERROR_PERMISSION_DENIED
+KAX_ERROR_CANNOT_COMPLETE → PBMBA_KAX_ERROR_CANNOT_COMPLETE
+KAX_ERROR_NOT_IMPLEMENTED → PBMBA_KAX_ERROR_NOT_IMPLEMENTED
+KAX_VALUE_TYPE_CGPOINT → PBMBA_KAX_VALUE_TYPE_CGPOINT [P]
+KAX_VALUE_TYPE_CGSIZE → PBMBA_KAX_VALUE_TYPE_CGSIZE [P]
+CFRunLoopTimerContext → pbmba_CFRunLoopTimerContext
+Pt → pbmba_Pt [P]
+AxError → pbmba_AxError
+AxElement → pbmba_AxElement
+ax_attr_focused_window → pbmba_ax_attr_focused_window
+ax_attr_position → pbmba_ax_attr_position
+ax_attr_size → pbmba_ax_attr_size
+ax_attr_title → pbmba_ax_attr_title
+ax_attr_role → pbmba_ax_attr_role
+ax_attr_windows → pbmba_ax_attr_windows
+ax_attr_minimized → pbmba_ax_attr_minimized
+ax_attr_main → pbmba_ax_attr_main
+ax_action_raise → pbmba_ax_action_raise
+get_frontmost_app_info → pbmba_get_frontmost_app_info
+get_focused_window_info → pbmba_get_focused_window_info
+check_ax_permissions → pbmba_check_ax_permissions
+ax_trusted_or_die → pbmba_ax_trusted_or_die
+validate_window_exists → pbmba_validate_window_exists
+
+=== pbmbd_display.rs ===
+Rect → pbmbd_Rect
+Pt → pbmbd_Pt [P]
+VisibleFrame → pbmbd_VisibleFrame
+NSRect → pbmbd_NSRect [P]
+visible_frame_main_display → pbmbd_visible_frame_main_display
+note_if_multi_display → pbmbd_note_if_multi_display
+get_menu_bar_height → pbmbd_get_menu_bar_height
+get_all_screens → pbmbd_get_all_screens
+visible_frame_for_screen → pbmbd_visible_frame_for_screen
+full_frame_for_screen → pbmbd_full_frame_for_screen
+get_display_for_window → pbmbd_get_display_for_window
+get_display_for_window_with_validation → pbmbd_get_display_for_window_with_validation
+
+=== pbmbe_eventtap.rs ===
+WARNED_UNKNOWN_ONCE → PBMBE_WARNED_UNKNOWN_ONCE [P]
+CTRL_SHIFT_WAS_HELD → PBMBE_CTRL_SHIFT_WAS_HELD [P]
+tap_cb → zpbmbe_tap_cb [P]
+run_quadrant_poc → pbmbe_run_quadrant_poc
+
+=== pbmbk_keymap.rs ===
+KVK_HELP_INSERT → PBMBK_KVK_HELP_INSERT
+KVK_FWD_DELETE → PBMBK_KVK_FWD_DELETE
+KVK_HOME → PBMBK_KVK_HOME
+KVK_END → PBMBK_KVK_END
+KVK_PAGE_UP → PBMBK_KVK_PAGE_UP
+KVK_PAGE_DOWN → PBMBK_KVK_PAGE_DOWN
+VK_C → PBMBK_VK_C
+VK_V → PBMBK_VK_V
+VK_X → PBMBK_VK_X
+K_CG_KEYBOARD_EVENT_AUTOREPEAT → PBMBK_K_CG_KEYBOARD_EVENT_AUTOREPEAT
+K_CG_SESSION_EVENT_TAP → PBMBK_K_CG_SESSION_EVENT_TAP
+K_CG_HEAD_INSERT_EVENT_TAP → PBMBK_K_CG_HEAD_INSERT_EVENT_TAP
+K_CG_EVENT_TAP_OPTION_DEFAULT → PBMBK_K_CG_EVENT_TAP_OPTION_DEFAULT
+K_CG_EVENT_KEY_DOWN → PBMBK_K_CG_EVENT_KEY_DOWN
+K_CG_EVENT_KEY_UP → PBMBK_K_CG_EVENT_KEY_UP
+K_CG_EVENT_FLAGS_CHANGED → PBMBK_K_CG_EVENT_FLAGS_CHANGED
+CG_EVENT_MASK_KEYBOARD → PBMBK_CG_EVENT_MASK_KEYBOARD
+K_CG_KEYCODE_FIELD_KEYCODE → PBMBK_K_CG_KEYCODE_FIELD_KEYCODE
+K_CG_EVENT_FLAG_MASK_CONTROL → PBMBK_K_CG_EVENT_FLAG_MASK_CONTROL
+K_CG_EVENT_FLAG_MASK_SHIFT → PBMBK_K_CG_EVENT_FLAG_MASK_SHIFT
+K_CG_EVENT_FLAG_MASK_COMMAND → PBMBK_K_CG_EVENT_FLAG_MASK_COMMAND
+K_CG_EVENT_FLAG_MASK_ALTERNATE → PBMBK_K_CG_EVENT_FLAG_MASK_ALTERNATE
+known_poc_key → pbmbk_known_poc_key
+chord_to_quad → pbmbk_chord_to_quad
+vk_to_hid_usage → pbmbk_vk_to_hid_usage
+
+=== pbmbo_overlay.rs ===
+strings_to_ffi → pbmbo_strings_to_ffi
+
+=== pbmcl_clipboard.rs ===
+CLIPBOARD_HISTORY → PBMCL_CLIPBOARD_HISTORY
+CLIPBOARD_SESSION → PBMCL_CLIPBOARD_SESSION
+ClipboardSession → pbmcl_ClipboardSession
+clipboard_change_callback → zpbmcl_clipboard_change_callback [P]
+start_clipboard_monitoring → pbmcl_start_clipboard_monitoring
+set_clipboard_text → pbmcl_set_clipboard_text
+show_clipboard_overlay → pbmcl_show_clipboard_overlay
+hide_clipboard_overlay → pbmcl_hide_clipboard_overlay
+handle_clipboard_navigation → pbmcl_handle_clipboard_navigation
+
+=== pbmp_pane.rs ===
+VISIBLE_FRAME_WARNING_SHOWN → PBMP_VISIBLE_FRAME_WARNING_SHOWN [P]
+LAYOUT_MANAGER → PBMP_LAYOUT_MANAGER [P]
+SEQUENCE_STATE → PBMP_SEQUENCE_STATE [P]
+TilingJob → pbmp_TilingJob
+ObserverContext → pbmp_ObserverContext
+EnumeratedWindow → pbmp_EnumeratedWindow
+get_next_combo_for_key → pbmp_get_next_combo_for_key
+reset_all_sequence_indices → pbmp_reset_all_sequence_indices
+focus_window_by_id → pbmp_focus_window_by_id
+enumerate_app_windows → pbmp_enumerate_app_windows
+get_focused_window_by_pid → pbmp_get_focused_window_by_pid
+should_use_observer_on_error → pbmp_should_use_observer_on_error
+move_window_to_prev_display → pbmp_move_window_to_prev_display
+move_window_to_next_display → pbmp_move_window_to_next_display
+rect_for_quad → pbmp_rect_for_quad
+rect_from_combo → pbmp_rect_from_combo
+set_window_rect_safe → pbmp_set_window_rect_safe
+cleanup_locked → pbmp_cleanup_locked
+observer_timeout_callback → pbmp_observer_timeout_callback
+ax_observer_callback → pbmp_ax_observer_callback
+tile_window_quadrant → pbmp_tile_window_quadrant
+tile_window_with_observer → zpbmp_tile_window_with_observer [P]
+
+=== pbmsm_mru.rs ===
+WindowIdentity → pbmsm_WindowIdentity
+ActivationState → pbmsm_ActivationState
+MruWindowEntry → pbmsm_MruWindowEntry
+MRU_STACK → PBMSM_MRU_STACK
+update_mru_with_focus → pbmsm_update_mru_with_focus
+get_mru_snapshot → pbmsm_get_mru_snapshot
+add_enumerated_window_to_mru → pbmsm_add_enumerated_window_to_mru
+add_app_to_mru_as_guess → pbmsm_add_app_to_mru_as_guess
+prune_stale_mru_entries → pbmsm_prune_stale_mru_entries
+
+=== pbmbo_observer.rs ===
+KAX_ERROR_SUCCESS → PBMBO_KAX_ERROR_SUCCESS [P]
+SendObserver → zpbmbo_SendObserver [P]
+ACTIVE_OBSERVERS → PBMBO_ACTIVE_OBSERVERS [P]
+PID_TO_BUNDLE → PBMBO_PID_TO_BUNDLE [P]
+MRU_OBSERVER → PBMBO_MRU_OBSERVER [P]
+window_focus_callback → zpbmbo_window_focus_callback [P]
+create_observer_for_app → pbmbo_create_observer_for_app
+remove_observer_for_app → pbmbo_remove_observer_for_app
+setup_mru_observer → pbmbo_setup_mru_observer
+focus_change_callback → zpbmbo_focus_change_callback [P]
+app_terminated_callback → zpbmbo_app_terminated_callback [P]
+prepopulation_callback → zpbmbo_prepopulation_callback [P]
+setup_workspace_observer → pbmbo_setup_workspace_observer
+
+=== pbmsa_alttab.rs ===
+ALT_TAB_SESSION → PBMSA_ALT_TAB_SESSION
+AltTabSession → pbmsa_AltTabSession
+show_alt_tab_overlay → pbmsa_show_alt_tab_overlay
+update_alt_tab_highlight → pbmsa_update_alt_tab_highlight
+hide_alt_tab_overlay_and_cleanup → pbmsa_hide_alt_tab_overlay_and_cleanup
+defer_alt_tab_commit → pbmsa_defer_alt_tab_commit
+commit_alt_tab_switch → pbmsa_commit_alt_tab_switch
+
+=== pbmsb_browser.rs ===
+CHROMIUM_BUNDLE_IDS → PBMSB_CHROMIUM_BUNDLE_IDS [P]
+is_chromium_based → pbmsb_is_chromium_based
+
