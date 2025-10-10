@@ -260,21 +260,31 @@ macOS **universally reserves ~31 pixels** at the top of every display for the me
 After recognizing a hotkey, move/resize the **currently focused window** into fixed quadrants of the **window's current display's visible frame** (excludes menu bar & Dock). This PoC **consumes** the chords (no bleed-through to apps).
 
 **Chord policy (macOS PoC)**
-All chords: **Control+Shift** (⌃⇧) + key
+All chords: **Control + Shift + Option** (⌃⇧⌥) on macOS / **Control + Shift + Alt** on Windows & Linux — physically identical triple-modifier chord.
+
+*Each action is invoked by holding the triple-modifier chord (⌃⇧⌥ / Ctrl Shift Alt) plus the listed key.*
 
 | Chord     | Action                         |
 |-----------|--------------------------------|
-| ⌃⇧Insert  | Upper-left quadrant            |
-| ⌃⇧Delete  | Lower-left quadrant            |
-| ⌃⇧Home    | Upper-right quadrant           |
-| ⌃⇧End     | Lower-right quadrant           |
-| ⌃⇧PageUp  | Move focused window to the previous display (keep size/position) |
-| ⌃⇧PageDn  | Move focused window to the next display (keep size/position)     |
+| ⌃⇧⌥Insert  | Upper-left quadrant            |
+| ⌃⇧⌥Delete  | Lower-left quadrant            |
+| ⌃⇧⌥Home    | Upper-right quadrant           |
+| ⌃⇧⌥End     | Lower-right quadrant           |
+| ⌃⇧⌥PageUp  | Move focused window to the previous display (keep size/position) |
+| ⌃⇧⌥PageDn  | Move focused window to the next display (keep size/position)     |
 
 *Notes:*
 - **Insert**: On macOS, external PC "Insert" often maps to `kVK_Help (0x72)`; this PoC uses that surrogate. Not all PC keyboards emit this mapping.
 - **Delete**: Refers to **Forward Delete** (`kVK_ForwardDelete (0x75)`), not Backspace (`0x33`). Only external keyboards typically have dedicated Forward Delete.
 - **PageUp/PageDown**: Move the focused window to the previous/next display in a ring (wrapping). The window's rect is preserved exactly as-is.
+
+#### Modifier Chord Consistency Across Platforms
+
+* **Physically identical:** the same three-key cluster under the left hand on ANSI keyboards.
+* macOS labels **Option (⌥)**; Windows / Linux label **Alt**.
+* PaneBoard treats them as equivalent for all layout and pane operations.
+* The chord is unreserved at OS level and safe for global capture.
+* Holding the triple-modifier alone (no fourth key) for > 500 ms displays a contextual "help overlay" describing available actions.
 
 **Hard decisions (PoC-specific):**
 - **No fallbacks.** If an edge case is hit, print one line and do nothing.
@@ -313,7 +323,8 @@ All chords: **Control+Shift** (⌃⇧) + key
   `TILE: UL | FAILED reason=ax_error(code=…, op=…)`
   `TILE: UL | FAILED reason=size_constrained_or_fullscreen`
 - Chord consume (on key-down):
-  `BLOCKED: ctrl+shift+Insert`
+  `BLOCKED: ctrl+shift+option+Insert` (macOS)
+  `BLOCKED: ctrl+shift+alt+Insert` (Windows/Linux)
 
 **PoC exit criteria:**
 1) Each chord repositions the focused window to the correct quadrant.
@@ -341,7 +352,7 @@ If absent, PaneBoard falls back to a built-in 2×2 quadrant default matching Win
 
 **Modifier Chord**
 
-All sequences share the **global Ctrl+Shift (⌃⇧) chord**. Modifiers are not configurable per-sequence.
+All sequences share the **global Ctrl + Shift + Option / Alt triple-modifier chord**. Modifiers are not configurable per-sequence.
 
 **Schema Structure**
 
@@ -537,7 +548,7 @@ This design provides:
    * Compute from `NSScreen.main.visibleFrame`. Quadrant rects are 50/50 splits with integer floors; **Position → Size** sequencing; abort on any AX failure to keep idempotence.
 
 8. **Chord Policy (unchanged from PoC draft)**
-   * **Ctrl+Shift** plus {Insert, Delete(Forward), Home, End} → {UL, LL, UR, LR}; consume on key-down; no repeats.
+   * **Ctrl+Shift+Option (macOS) / Ctrl+Shift+Alt (Windows/Linux)** plus {Insert, Delete(Forward), Home, End} → {UL, LL, UR, LR}; consume on key-down; no repeats.
 
 9. **Non-Goals for this cycle**
    * No private APIs (CGS/SkyLight), no SIP tweaks, no Spaces moves. Multi-display moves (PgUp/PgDn) are **in scope** and fully functional.
@@ -547,7 +558,7 @@ This design provides:
 * **Per-chord logs:**
   * Success: `TILE: <UL|UR|LL|LR> | SUCCESS | app="<bundle>" frame=(x,y,w,h) within visible=(x,y,w,h)` (may include `attempt=N` suffix)
   * Failures: `TILE: <UL|UR|LL|LR> | FAILED reason=ax_error(code=…, op=…)` or `size_constrained_or_fullscreen` (may include `attempt=N` suffix)
-  * Consume: `BLOCKED: ctrl+shift+<Key>`
+  * Consume: `BLOCKED: ctrl+shift+option+<Key>` (macOS) / `BLOCKED: ctrl+shift+alt+<Key>` (Windows/Linux)
   * Diagnostics: Chromium app detection is logged to debug output only
 * **Observer lifecycle:** `OBS: start(pid=…), notif=<FocusedWindowChanged> | timeout=<ms> | end(status=success|timeout)`
 
@@ -604,10 +615,11 @@ This design provides:
 
 * Success: `TILE: <UL|UR|LL|LR> | SUCCESS | app="<bundle>" frame=(x,y,w,h) within visible=(x,y,w,h)` (may include `attempt=N` suffix)
 * Failures: `TILE: <UL|UR|LL|LR> | FAILED reason=ax_error(code=…, op=…)` or `size_constrained_or_fullscreen` (may include `attempt=N` suffix)
-* Consume: `BLOCKED: ctrl+shift+Insert`
+* Consume: `BLOCKED: ctrl+shift+option+Insert` (macOS) / `BLOCKED: ctrl+shift+alt+Insert` (Windows/Linux)
 * Diagnostics: Chromium app detection is logged to debug output only
 * One-time notes:
-  * `NOTE: ctrl+shift on unrecognized keycode=0xNN. On some PC keyboards, Insert may not map to 0x72.`
+  * `NOTE: ctrl+shift+option on unrecognized keycode=0xNN. On some PC keyboards, Insert may not map to 0x72.` (macOS)
+  * `NOTE: ctrl+shift+alt on unrecognized keycode=0xNN. On some PC keyboards, Insert may not map to the expected code.` (Windows/Linux)
 
 ---
 
