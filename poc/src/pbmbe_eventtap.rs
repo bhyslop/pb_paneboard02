@@ -320,20 +320,20 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
             return std::ptr::null_mut(); // Block the event
         }
 
-        // ===== CTRL+SHIFT Release: Reset Layout Sequence Indices =====
-        // Track when Ctrl+Shift chord is released to reset all sequence indices per spec
-        static CTRL_SHIFT_WAS_HELD: AtomicBool = AtomicBool::new(false);
+        // ===== CTRL+SHIFT+OPTION Release: Reset Layout Sequence Indices =====
+        // Track when Ctrl+Shift+Option chord is released to reset all sequence indices per spec
+        static CTRL_SHIFT_OPT_WAS_HELD: AtomicBool = AtomicBool::new(false);
 
         if event_type == K_CG_EVENT_FLAGS_CHANGED {
-            let ctrl_shift_held = has_ctrl && has_shift;
-            let was_held = CTRL_SHIFT_WAS_HELD.load(Ordering::Acquire);
+            let ctrl_shift_opt_held = has_ctrl && has_shift && has_opt;
+            let was_held = CTRL_SHIFT_OPT_WAS_HELD.load(Ordering::Acquire);
 
-            if was_held && !ctrl_shift_held {
-                // Ctrl+Shift released - reset all sequence indices
+            if was_held && !ctrl_shift_opt_held {
+                // Ctrl+Shift+Option released - reset all sequence indices
                 reset_all_sequence_indices();
             }
 
-            CTRL_SHIFT_WAS_HELD.store(ctrl_shift_held, Ordering::Release);
+            CTRL_SHIFT_OPT_WAS_HELD.store(ctrl_shift_opt_held, Ordering::Release);
         }
 
         // Early exit for non-keydown events (chord interception only acts on keydown)
@@ -344,25 +344,25 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
         let is_repeat = CGEventGetIntegerValueField(event, K_CG_KEYBOARD_EVENT_AUTOREPEAT) != 0;
         if is_repeat { return event; }
 
-        // ===== CTRL+SHIFT: Quadrant Tiling =====
-        // Require ctrl+shift held, reject cmd/opt to prevent ambiguity with app shortcuts
-        let need = K_CG_EVENT_FLAG_MASK_CONTROL | K_CG_EVENT_FLAG_MASK_SHIFT;
-        let reject = K_CG_EVENT_FLAG_MASK_COMMAND | K_CG_EVENT_FLAG_MASK_ALTERNATE;
+        // ===== CTRL+SHIFT+OPTION: Quadrant Tiling =====
+        // Require ctrl+shift+option held, reject cmd to prevent ambiguity with app shortcuts
+        let need = K_CG_EVENT_FLAG_MASK_CONTROL | K_CG_EVENT_FLAG_MASK_SHIFT | K_CG_EVENT_FLAG_MASK_ALTERNATE;
+        let reject = K_CG_EVENT_FLAG_MASK_COMMAND;
 
         // Debug logging for modifier flags
-        if has_ctrl || has_shift {
+        if has_ctrl || has_shift || has_opt {
             eprintln!("DEBUG: flags=0x{:08x}, ctrl={}, shift={}, cmd={}, opt={}, need=0x{:08x}", flags, has_ctrl, has_shift, has_cmd, has_opt, need);
         }
 
         if (flags & need) != need { return event; }
         if (flags & reject) != 0 { return event; }
 
-        // Always log ctrl+shift keypresses to help diagnose keycode issues
-        eprintln!("DEBUG: ctrl+shift+keycode=0x{:02x}", keycode);
+        // Always log ctrl+shift+option keypresses to help diagnose keycode issues
+        eprintln!("DEBUG: ctrl+shift+option+keycode=0x{:02x}", keycode);
 
         // Check for unknown keycode warning
         if !known_poc_key(keycode) && !WARNED_UNKNOWN_ONCE.swap(true, Ordering::AcqRel) {
-            eprintln!("NOTE: ctrl+shift on unrecognized keycode=0x{:02x}. On some PC keyboards, Insert may not map to 0x72.", keycode);
+            eprintln!("NOTE: ctrl+shift+option on unrecognized keycode=0x{:02x}. On some PC keyboards, Insert may not map to 0x72.", keycode);
             return event;
         }
 
@@ -377,7 +377,7 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
                          frontmost.bundle_id, frontmost.pid, chromium_tag);
 
                 // Consume the chord
-                println!("BLOCKED: ctrl+shift+{}", key_name);
+                println!("BLOCKED: ctrl+shift+option+{}", key_name);
 
                 // Execute display move directly (no deferred job needed for simple moves)
                 if keycode == KVK_PAGE_UP {
@@ -423,9 +423,9 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
 
                 // Consume the chord and enqueue the tiling job for main runloop processing
                 let log_msg = if let Some(idx) = combo_index {
-                    format!("ctrl+shift+{} (combo={})", key_name, idx)
+                    format!("ctrl+shift+option+{} (combo={})", key_name, idx)
                 } else {
-                    format!("ctrl+shift+{}", key_name)
+                    format!("ctrl+shift+option+{}", key_name)
                 };
                 println!("BLOCKED: {}", log_msg);
 
@@ -472,7 +472,7 @@ pub unsafe fn run_quadrant_poc() -> ! {
     };
 
     eprintln!("PaneBoard Quadrant Tiling + Alt-Tab MRU + Clipboard Memory PoC");
-    eprintln!("Ctrl+Shift+Insert/Delete/Home/End to tile focused window");
+    eprintln!("Ctrl+Shift+Option+Insert/Delete/Home/End to tile focused window");
     eprintln!("Command+Tab to show MRU window list");
     eprintln!("Ctrl+C/X/V for copy/cut/paste, Ctrl+Shift+V for clipboard history");
 

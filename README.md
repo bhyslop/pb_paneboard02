@@ -90,17 +90,20 @@ Resize the focused window to screen quadrants using:
 
 | Shortcut | Action |
 |----------|--------|
-| **⌃⇧ Insert** | Upper-left quadrant |
-| **⌃⇧ Delete** | Lower-left quadrant |
-| **⌃⇧ Home** | Upper-right quadrant |
-| **⌃⇧ End** | Lower-right quadrant |
-| **⌃⇧ Page Up** | Move window to previous display |
-| **⌃⇧ Page Down** | Move window to next display |
+| **⌃⇧⌥ Insert** | Upper-left quadrant |
+| **⌃⇧⌥ Delete** | Lower-left quadrant |
+| **⌃⇧⌥ Home** | Upper-right quadrant |
+| **⌃⇧⌥ End** | Lower-right quadrant |
+| **⌃⇧⌥ Page Up** | Move window to previous display |
+| **⌃⇧⌥ Page Down** | Move window to next display |
+
+**Chord:** Control + Shift + Option (⌃⇧⌥) on macOS / Control + Shift + Alt on Windows & Linux — physically identical triple-modifier chord.
 
 *Notes:*
 - **Insert** on PC keyboards often maps to **Help (0x72)** on macOS
 - **Delete** means **Forward Delete**, not Backspace
 - Quadrants respect the menu bar and Dock (use screen visible frame)
+- The triple-modifier chord is unreserved at OS level and safe for global capture
 
 ## Architecture
 
