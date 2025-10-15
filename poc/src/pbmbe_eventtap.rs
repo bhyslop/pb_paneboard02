@@ -29,7 +29,7 @@ use crate::pbmp_pane::{
     move_window_to_prev_display, move_window_to_next_display,
     get_next_combo_for_key, reset_all_sequence_indices,
 };
-use crate::pbmbd_display::{note_if_multi_display};
+use crate::pbmbd_display::{print_all_display_info};
 use crate::pbmba_ax::{
     ax_trusted_or_die, get_frontmost_app_info,
     CFRunLoopGetCurrent, CFRunLoopRun, CFRunLoopAddSource,
@@ -543,8 +543,8 @@ pub unsafe fn run_quadrant_poc() -> ! {
     eprintln!("Option+Tab to show MRU window list");
     eprintln!("Ctrl+C/X/V for copy/cut/paste, Ctrl+Shift+V for clipboard history");
 
-    // Multi-display notice right after banner (before setup chatter)
-    note_if_multi_display();
+    // Print comprehensive display information
+    print_all_display_info();
 
     // Setup MRU tracking
     eprintln!("DEBUG: Initializing MRU tracker...");

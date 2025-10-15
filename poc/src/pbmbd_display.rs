@@ -86,6 +86,7 @@ pub unsafe fn visible_frame_main_display() -> Option<VisibleFrame> {
 }
 
 // Note if there are multiple displays
+#[allow(dead_code)]
 pub fn note_if_multi_display() {
     unsafe {
         let mut count: u32 = 0;
@@ -258,4 +259,205 @@ pub unsafe fn get_display_for_window_with_validation(window_rect: Rect) -> Optio
         }
     }
     None
+}
+
+// ===== CGDisplay FFI declarations for detailed display information =====
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+struct CGSize {
+    width: f64,
+    height: f64,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+#[allow(dead_code)]
+struct CGRect {
+    origin: Pt,
+    size: CGSize,
+}
+
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    fn CGMainDisplayID() -> u32;
+    fn CGDisplayIsMain(display: u32) -> bool;
+    fn CGDisplayIsBuiltin(display: u32) -> bool;
+    fn CGDisplayIsActive(display: u32) -> bool;
+    fn CGDisplayIsOnline(display: u32) -> bool;
+    fn CGDisplayIsAsleep(display: u32) -> bool;
+    fn CGDisplaySerialNumber(display: u32) -> u32;
+    fn CGDisplayUnitNumber(display: u32) -> u32;
+    fn CGDisplayVendorNumber(display: u32) -> u32;
+    fn CGDisplayModelNumber(display: u32) -> u32;
+    fn CGDisplayRotation(display: u32) -> f64;
+    fn CGDisplayScreenSize(display: u32) -> CGSize;
+    #[allow(dead_code)]
+    fn CGDisplayBounds(display: u32) -> CGRect;
+    fn CGDisplayCopyDisplayMode(display: u32) -> *mut std::ffi::c_void;
+    fn CGDisplayModeGetWidth(mode: *mut std::ffi::c_void) -> usize;
+    fn CGDisplayModeGetHeight(mode: *mut std::ffi::c_void) -> usize;
+    fn CGDisplayModeGetPixelWidth(mode: *mut std::ffi::c_void) -> usize;
+    fn CGDisplayModeGetPixelHeight(mode: *mut std::ffi::c_void) -> usize;
+    fn CGDisplayModeGetRefreshRate(mode: *mut std::ffi::c_void) -> f64;
+    fn CGDisplayModeRelease(mode: *mut std::ffi::c_void);
+}
+
+// Print comprehensive information about all connected displays
+#[allow(unexpected_cfgs)]
+pub unsafe fn print_all_display_info() {
+    let _mtm = MainThreadMarker::new_unchecked();
+    let screens = get_all_screens();
+
+    if screens.is_empty() {
+        eprintln!("No displays detected");
+        return;
+    }
+
+    let _main_display_id = CGMainDisplayID();
+
+    eprintln!("\n========== CONNECTED DISPLAYS ==========");
+
+    for (idx, screen) in screens.iter().enumerate() {
+        eprintln!("\n--- Display {} ---", idx);
+
+        // Get localized name (macOS 10.15+)
+        {
+            use objc2::msg_send;
+            use objc2_foundation::NSString;
+            let name: *const NSString = msg_send![screen, localizedName];
+            if !name.is_null() {
+                let name_str = unsafe { &*name };
+                eprintln!("  Name: {}", name_str);
+            } else {
+                eprintln!("  Name: <unavailable>");
+            }
+        }
+
+        // Get CGDirectDisplayID from device description
+        let device_desc = screen.deviceDescription();
+        let display_id: u32 = {
+            use objc2::msg_send;
+            use objc2_foundation::NSNumber;
+            let key = objc2_foundation::ns_string!("NSScreenNumber");
+            let screen_num: *const NSNumber = msg_send![&device_desc, objectForKey: key];
+            if !screen_num.is_null() {
+                let num_value: u32 = msg_send![screen_num, unsignedIntValue];
+                num_value
+            } else {
+                0
+            }
+        };
+
+        eprintln!("  Display ID: {} (0x{:x})", display_id, display_id);
+
+        // Display state flags
+        let is_main = CGDisplayIsMain(display_id);
+        let is_builtin = CGDisplayIsBuiltin(display_id);
+        let is_active = CGDisplayIsActive(display_id);
+        let is_online = CGDisplayIsOnline(display_id);
+        let is_asleep = CGDisplayIsAsleep(display_id);
+
+        eprintln!("  Main: {}, Built-in: {}, Active: {}, Online: {}, Asleep: {}",
+                  is_main, is_builtin, is_active, is_online, is_asleep);
+
+        // Geometry from NSScreen
+        let frame: NSRect = msg_send![screen, frame];
+        let visible: NSRect = msg_send![screen, visibleFrame];
+
+        eprintln!("  Frame (NSScreen): ({:.0}, {:.0}, {:.0}, {:.0})",
+                  frame.origin.x, frame.origin.y, frame.size.x, frame.size.y);
+        eprintln!("  Visible Frame: ({:.0}, {:.0}, {:.0}, {:.0})",
+                  visible.origin.x, visible.origin.y, visible.size.x, visible.size.y);
+
+        // Backing scale factor (Retina)
+        let scale: f64 = msg_send![screen, backingScaleFactor];
+        eprintln!("  Backing Scale Factor: {:.1}x", scale);
+
+        // Resolution in points and pixels
+        let points_w = frame.size.x;
+        let points_h = frame.size.y;
+        let pixels_w = points_w * scale;
+        let pixels_h = points_h * scale;
+
+        eprintln!("  Resolution: {:.0}x{:.0} points ({:.0}x{:.0} pixels)",
+                  points_w, points_h, pixels_w, pixels_h);
+
+        // CGDisplay mode information (more accurate pixel dimensions and refresh rate)
+        if display_id != 0 {
+            let mode = CGDisplayCopyDisplayMode(display_id);
+            if !mode.is_null() {
+                let mode_width = CGDisplayModeGetWidth(mode);
+                let mode_height = CGDisplayModeGetHeight(mode);
+                let pixel_width = CGDisplayModeGetPixelWidth(mode);
+                let pixel_height = CGDisplayModeGetPixelHeight(mode);
+                let refresh_rate = CGDisplayModeGetRefreshRate(mode);
+
+                eprintln!("  Display Mode: {}x{} points, {}x{} pixels",
+                          mode_width, mode_height, pixel_width, pixel_height);
+
+                if refresh_rate > 0.0 {
+                    eprintln!("  Refresh Rate: {:.2} Hz", refresh_rate);
+                } else {
+                    eprintln!("  Refresh Rate: default/adaptive");
+                }
+
+                CGDisplayModeRelease(mode);
+            }
+
+            // Rotation
+            let rotation = CGDisplayRotation(display_id);
+            if rotation != 0.0 {
+                eprintln!("  Rotation: {:.0}°", rotation);
+            } else {
+                eprintln!("  Rotation: 0° (normal)");
+            }
+
+            // Physical size
+            let phys_size = CGDisplayScreenSize(display_id);
+            if phys_size.width > 0.0 && phys_size.height > 0.0 {
+                eprintln!("  Physical Size: {:.1}mm x {:.1}mm ({:.1}\" diagonal)",
+                          phys_size.width, phys_size.height,
+                          ((phys_size.width * phys_size.width + phys_size.height * phys_size.height).sqrt() / 25.4));
+            } else {
+                eprintln!("  Physical Size: <unavailable>");
+            }
+
+            // Hardware identifiers
+            let serial = CGDisplaySerialNumber(display_id);
+            let vendor = CGDisplayVendorNumber(display_id);
+            let model = CGDisplayModelNumber(display_id);
+            let unit = CGDisplayUnitNumber(display_id);
+
+            eprintln!("  Hardware IDs: Vendor=0x{:x}, Model=0x{:x}, Serial=0x{:x}, Unit={}",
+                      vendor, model, serial, unit);
+
+            // Color depth from device description
+            {
+                use objc2::msg_send;
+                use objc2_foundation::NSNumber;
+                let key = objc2_foundation::ns_string!("NSDeviceBitsPerSample");
+                let bits_per_sample: *const NSNumber = msg_send![&device_desc, objectForKey: key];
+                if !bits_per_sample.is_null() {
+                    let bits: i64 = msg_send![bits_per_sample, integerValue];
+                    eprintln!("  Color Depth: {} bits per sample", bits);
+                }
+            }
+
+            // Color space
+            if let Some(color_space) = screen.colorSpace() {
+                if let Some(name) = color_space.localizedName() {
+                    eprintln!("  Color Space: {}", name);
+                }
+            }
+
+            // EDR capabilities (macOS 10.15+)
+            let max_edr: f64 = msg_send![screen, maximumPotentialExtendedDynamicRangeColorComponentValue];
+            if max_edr > 1.0 {
+                eprintln!("  Max EDR: {:.1}x (Extended Dynamic Range capable)", max_edr);
+            }
+        }
+    }
+
+    eprintln!("\n========================================\n");
 }
