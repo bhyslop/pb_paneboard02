@@ -3,11 +3,11 @@
            elementFormDefault="qualified"
            attributeFormDefault="unqualified">
 
-  <!-- ░░ Root ░░ -->
-  <xs:element name="Schema">
+  <!-- 🟦 Root: complete definition of PaneBoard layouts and contexts -->
+  <xs:element name="Form">
     <xs:complexType>
       <xs:sequence>
-        <xs:element ref="Profile"   minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element ref="Space"    minOccurs="0" maxOccurs="unbounded"/>
         <xs:element ref="Partition" minOccurs="0" maxOccurs="unbounded"/>
         <xs:element ref="Layout"    minOccurs="0" maxOccurs="unbounded"/>
         <xs:element ref="Binding"   minOccurs="0" maxOccurs="unbounded"/>
@@ -15,18 +15,18 @@
     </xs:complexType>
   </xs:element>
 
-  <!-- ░░ Profiles ░░ -->
-  <xs:element name="Profile">
+  <!-- 🟩 Spaces: physical environments / monitor contexts -->
+  <xs:element name="Space">
     <xs:complexType>
       <xs:sequence>
-        <xs:element name="Match"   type="ProfileRule" minOccurs="0" maxOccurs="unbounded"/>
-        <xs:element name="Exclude" type="ProfileRule" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="Match"   type="SpaceRule" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="Exclude" type="SpaceRule" minOccurs="0" maxOccurs="unbounded"/>
       </xs:sequence>
       <xs:attribute name="name" type="xs:string" use="required"/>
     </xs:complexType>
   </xs:element>
 
-  <xs:complexType name="ProfileRule">
+  <xs:complexType name="SpaceRule">
     <xs:attribute name="nameContains" type="xs:string" use="optional"/>
     <xs:attribute name="whenOrientation" use="optional">
       <xs:simpleType>
@@ -40,7 +40,7 @@
     <xs:attribute name="minPixelHeight" type="xs:positiveInteger" use="optional"/>
   </xs:complexType>
 
-  <!-- ░░ Partitions ░░ -->
+  <!-- 🟨 Partitions: reusable geometric patterns -->
   <xs:element name="Partition">
     <xs:complexType>
       <xs:sequence>
@@ -64,14 +64,14 @@
     </xs:restriction>
   </xs:simpleType>
 
-  <!-- ░░ Layouts ░░ -->
+  <!-- 🟥 Layouts: compositional applications of partitions -->
   <xs:element name="Layout">
     <xs:complexType>
       <xs:sequence>
         <xs:element name="Apply" type="ApplyType" minOccurs="1" maxOccurs="1"/>
       </xs:sequence>
       <xs:attribute name="id" type="xs:string" use="required"/>
-      <xs:attribute name="profile" type="xs:string" use="optional"/>
+      <xs:attribute name="space" type="xs:string" use="optional"/> <!-- references Space -->
     </xs:complexType>
   </xs:element>
 
@@ -92,7 +92,7 @@
     <xs:attribute name="minPixelHeight" type="xs:positiveInteger" use="optional"/>
   </xs:complexType>
 
-  <!-- ░░ Bindings ░░ -->
+  <!-- 🟪 Bindings: user actions mapped to layouts -->
   <xs:element name="Binding">
     <xs:complexType>
       <xs:attribute name="key" type="xs:string" use="required"/>
