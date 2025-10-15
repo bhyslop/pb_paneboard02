@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           elementFormDefault="qualified"
+           attributeFormDefault="unqualified">
+
+  <!-- ░░ Root ░░ -->
+  <xs:element name="Schema">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="Profile"   minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element ref="Partition" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element ref="Layout"    minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element ref="Binding"   minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- ░░ Profiles ░░ -->
+  <xs:element name="Profile">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Match"   type="ProfileRule" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="Exclude" type="ProfileRule" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:complexType name="ProfileRule">
+    <xs:attribute name="nameContains" type="xs:string" use="optional"/>
+    <xs:attribute name="whenOrientation" use="optional">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="portrait"/>
+          <xs:enumeration value="landscape"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <xs:attribute name="minPixelWidth"  type="xs:positiveInteger" use="optional"/>
+    <xs:attribute name="minPixelHeight" type="xs:positiveInteger" use="optional"/>
+  </xs:complexType>
+
+  <!-- ░░ Partitions ░░ -->
+  <xs:element name="Partition">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Region" type="RegionType" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:complexType name="RegionType">
+    <xs:attribute name="x"      type="PercentType" use="required"/>
+    <xs:attribute name="y"      type="PercentType" use="required"/>
+    <xs:attribute name="width"  type="PercentType" use="required"/>
+    <xs:attribute name="height" type="PercentType" use="required"/>
+  </xs:complexType>
+
+  <xs:simpleType name="PercentType">
+    <xs:restriction base="xs:decimal">
+      <xs:minInclusive value="0"/>
+      <xs:maxInclusive value="100"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- ░░ Layouts ░░ -->
+  <xs:element name="Layout">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Apply" type="ApplyType" minOccurs="1" maxOccurs="1"/>
+      </xs:sequence>
+      <xs:attribute name="id" type="xs:string" use="required"/>
+      <xs:attribute name="profile" type="xs:string" use="optional"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:complexType name="ApplyType">
+    <xs:sequence>
+      <xs:element name="Apply" type="ApplyType" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="partition" type="xs:string" use="optional"/>
+    <xs:attribute name="whenOrientation" use="optional">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="portrait"/>
+          <xs:enumeration value="landscape"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <xs:attribute name="minPixelWidth"  type="xs:positiveInteger" use="optional"/>
+    <xs:attribute name="minPixelHeight" type="xs:positiveInteger" use="optional"/>
+  </xs:complexType>
+
+  <!-- ░░ Bindings ░░ -->
+  <xs:element name="Binding">
+    <xs:complexType>
+      <xs:attribute name="key" type="xs:string" use="required"/>
+      <xs:attribute name="layout" type="xs:string" use="required"/>
+      <xs:attribute name="traverse" use="optional">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <!-- 8 legal traversal tokens -->
+            <xs:enumeration value="xfyf"/>
+            <xs:enumeration value="xfyr"/>
+            <xs:enumeration value="xryf"/>
+            <xs:enumeration value="xryr"/>
+            <xs:enumeration value="yfxf"/>
+            <xs:enumeration value="yfxr"/>
+            <xs:enumeration value="yrxf"/>
+            <xs:enumeration value="yrxr"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:attribute>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>
