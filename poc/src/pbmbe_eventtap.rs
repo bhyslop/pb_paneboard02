@@ -16,6 +16,7 @@ use crate::pbmsa_alttab::{
     ALT_TAB_SESSION,
     show_alt_tab_overlay, update_alt_tab_highlight,
     hide_alt_tab_overlay_and_cleanup, defer_alt_tab_commit,
+    cancel_alt_tab_session,
 };
 use crate::pbmcl_clipboard::{
     CLIPBOARD_SESSION, start_clipboard_monitoring,
@@ -76,6 +77,26 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
         let has_shift = (flags & K_CG_EVENT_FLAG_MASK_SHIFT) != 0;
         let has_cmd = (flags & K_CG_EVENT_FLAG_MASK_COMMAND) != 0;
         let has_opt = (flags & K_CG_EVENT_FLAG_MASK_ALTERNATE) != 0;
+
+        // ===== MOUSE CLICK: Cancel Alt-Tab session if active =====
+        // Check for any mouse button down event during active Alt-Tab session
+        let is_mouse_down = matches!(event_type,
+            K_CG_EVENT_LEFT_MOUSE_DOWN | K_CG_EVENT_RIGHT_MOUSE_DOWN | K_CG_EVENT_OTHER_MOUSE_DOWN
+        );
+
+        if is_mouse_down {
+            let session_active = {
+                let session = ALT_TAB_SESSION.lock().unwrap();
+                session.active
+            };
+
+            if session_active {
+                // Mouse click during Alt-Tab session - cancel immediately
+                cancel_alt_tab_session();
+                // Consume the click to prevent conflicting activation
+                return std::ptr::null_mut();
+            }
+        }
 
         // ===== CLIPBOARD: Ctrl chord forwarding & Ctrl+Shift+V =====
         // Handle clipboard overlay navigation if active
@@ -545,12 +566,12 @@ pub unsafe fn run_quadrant_poc() -> ! {
 
     eprintln!("Ctrl-C to quit...");
 
-    // Create event tap with tighter unsafe scopes
+    // Create event tap with tighter unsafe scopes (includes keyboard + mouse events)
     let tap = CGEventTapCreate(
         K_CG_SESSION_EVENT_TAP,
         K_CG_HEAD_INSERT_EVENT_TAP,
         K_CG_EVENT_TAP_OPTION_DEFAULT,
-        CG_EVENT_MASK_KEYBOARD,
+        CG_EVENT_MASK_ALL,
         tap_cb,
         std::ptr::null_mut(),
     );

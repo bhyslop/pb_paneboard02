@@ -807,6 +807,13 @@ This phase adds a **barebones popup overlay** to visualize Alt-Tab navigation an
 * **Session end:**
 
   * Releasing `Option` triggers immediate cleanup (see below).
+* **Mouse click cancellation:**
+
+  * **Any mouse click** (left, right, middle, or other button) during an active Alt-Tab session **immediately cancels the session**.
+  * Cancellation means: hide all overlays, reset session state, clear highlight index.
+  * The mouse click may be consumed or passed through (implementation chooses simplest path).
+  * **No focus switch occurs** when a session is cancelled by mouse click.
+  * This prevents conflicting activation when the user clicks a window while the overlay is visible.
 
 **Popup Design**
 
@@ -910,6 +917,7 @@ This guarantees each session is independent, no carryover occurs, and debugging 
   * `ALT_TAB: forward step -> index=N app=<bundle> win="<title>"`
   * `ALT_TAB: backward step -> index=N app=<bundle> win="<title>"`
   * `ALT_TAB: cleanup | overlays hidden, state reset`
+  * `ALT_TAB: cancelled | reason=mouse_click` (when mouse click cancels session)
 
 * Focus commit (on Option release):
   * `ALT_TAB: switch | SUCCESS app="<bundle>" win="<title>"`

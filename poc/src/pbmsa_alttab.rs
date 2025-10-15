@@ -154,6 +154,32 @@ pub unsafe fn hide_alt_tab_overlay_and_cleanup() {
     println!("ALT_TAB: cleanup | overlays hidden, state reset");
 }
 
+/// Cancel Alt-Tab session without performing focus switch
+/// Called when mouse click occurs during active session
+pub unsafe fn cancel_alt_tab_session() {
+    use block2::StackBlock;
+
+    // Create block that calls Swift function to hide overlay
+    let block = StackBlock::new(|| {
+        pbmbo_hide_alt_tab_overlay();
+    });
+
+    // Schedule on main runloop
+    let main_runloop = crate::pbmba_ax::CFRunLoopGetMain();
+    crate::pbmba_ax::CFRunLoopPerformBlock(
+        main_runloop,
+        core_foundation::runloop::kCFRunLoopDefaultMode as CFTypeRef,
+        &*block as *const _ as *const c_void,
+    );
+    crate::pbmba_ax::CFRunLoopWakeUp(main_runloop);
+
+    // Reset session state (can do this immediately)
+    let mut session = ALT_TAB_SESSION.lock().unwrap();
+    *session = AltTabSession::default();
+
+    println!("ALT_TAB: cancelled | reason=mouse_click");
+}
+
 /// Defer Alt-Tab switch commit to main runloop for thread safety
 /// Called when Alt key is released during an active session
 pub unsafe fn defer_alt_tab_commit(target_entry: MruWindowEntry) {
