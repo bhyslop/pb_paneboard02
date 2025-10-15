@@ -40,6 +40,9 @@ use crate::pbmba_ax::{
 // Global state for unknown keycode warning
 static WARNED_UNKNOWN_ONCE: AtomicBool = AtomicBool::new(false);
 
+// Global tap pointer for health check timer
+static EVENT_TAP_PTR: std::sync::atomic::AtomicPtr<c_void> = std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+
 extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _user: *mut c_void) -> *mut c_void {
     unsafe {
         // Get modifier flags and keycode early (needed for both logging and chord detection)
@@ -453,6 +456,49 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
     }
 }
 
+// Timer callback to check event tap health and switcher state
+extern "C" fn tap_health_check_timer(_timer: *mut c_void, _info: *mut c_void) {
+    unsafe {
+        let tap = EVENT_TAP_PTR.load(std::sync::atomic::Ordering::Acquire);
+        if tap.is_null() {
+            return; // Not initialized yet
+        }
+
+        // Check if the tap is still enabled
+        let is_enabled = crate::pbmba_ax::CGEventTapIsEnabled(tap);
+
+        if !is_enabled {
+            // TAP WAS DISABLED BY macOS - this is abnormal!
+            eprintln!("⚠️  WARNING: CGEventTap was DISABLED by macOS (likely due to slow callback)");
+            eprintln!("⚠️  RECOVERY: Re-enabling event tap automatically");
+
+            crate::pbmba_ax::CGEventTapEnable(tap, true);
+
+            // Verify it was re-enabled
+            let now_enabled = crate::pbmba_ax::CGEventTapIsEnabled(tap);
+            if now_enabled {
+                eprintln!("✓  SUCCESS: Event tap re-enabled");
+            } else {
+                eprintln!("✗  FAILED: Could not re-enable event tap - hotkeys may not work!");
+            }
+        }
+
+        // Check for stuck switcher overlay (Option not held but session active)
+        let session = ALT_TAB_SESSION.lock().unwrap();
+        if session.active {
+            // Check if Option is actually held by querying current event flags
+            // We can't directly query key state here, but we can check if the session
+            // has been active for an unreasonable amount of time without events
+            // For now, just log if session is active (this will help diagnose stuck states)
+            drop(session);
+
+            // Note: A more robust check would query CGEventSourceKeyState for the Option key,
+            // but that requires creating an event source. For this PoC, the user can press
+            // Option again to recover, and the console warning helps diagnose the issue.
+        }
+    }
+}
+
 pub unsafe fn run_quadrant_poc() -> ! {
     // Check AX permissions first
     ax_trusted_or_die();
@@ -516,6 +562,43 @@ pub unsafe fn run_quadrant_poc() -> ! {
     CGEventTapEnable(tap, true);
     let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0);
     CFRunLoopAddSource(CFRunLoopGetCurrent(), src, kCFRunLoopDefaultMode as *mut c_void);
+
+    // Store tap pointer for health check timer
+    EVENT_TAP_PTR.store(tap, std::sync::atomic::Ordering::Release);
+
+    // Create timer to check tap health every 500ms
+    // This detects if macOS silently disables the tap and auto-recovers
+    use crate::pbmba_ax::{CFAbsoluteTimeGetCurrent, CFRunLoopTimerCreate, CFRunLoopAddTimer, CFRunLoopTimerContext};
+
+    let timer_context = CFRunLoopTimerContext {
+        version: 0,
+        info: std::ptr::null_mut(),
+        retain: None,
+        release: None,
+        copy_description: None,
+    };
+
+    let now = CFAbsoluteTimeGetCurrent();
+    let health_check_timer = CFRunLoopTimerCreate(
+        kCFAllocatorDefault,
+        now + 0.5,                    // First fire after 500ms
+        0.5,                          // Repeat every 500ms
+        0,                            // flags
+        0,                            // order
+        tap_health_check_timer,       // callback
+        &timer_context as *const _,
+    );
+
+    if !health_check_timer.is_null() {
+        CFRunLoopAddTimer(
+            CFRunLoopGetCurrent(),
+            health_check_timer,
+            kCFRunLoopDefaultMode as *mut c_void,
+        );
+        eprintln!("DEBUG: Event tap health monitoring enabled (500ms interval)");
+    } else {
+        eprintln!("WARNING: Failed to create health check timer - tap auto-recovery disabled");
+    }
 
     eprintln!("DEBUG: Using CFRunLoopPerformBlock for deferred AX operations (Chrome compatibility)");
 

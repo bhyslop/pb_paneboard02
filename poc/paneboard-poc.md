@@ -206,6 +206,68 @@ This refactoring achieves:
 * **Tab session tracking** → block both keyDown and matching keyUp
   - Track forward/reverse state: `TAB_BLOCK_ACTIVE` values (0=inactive, 1=forward, 2=reverse)
 
+#### CGEventTap Reliability & Auto-Recovery (macOS)
+
+**Problem discovered:**
+macOS can **silently disable a CGEventTap** if the callback function takes longer than ~500ms to process an event. This is a protective measure to prevent system hangs, but it creates a critical failure mode: once disabled, the tap stops receiving events entirely.
+
+**Observable symptoms:**
+* Alt-Tab switcher overlay becomes stuck on screen (cannot close)
+* Overlay remains visible and on top, but does not respond to keyboard input
+* User can still interact with windows underneath the overlay (`ignoresMouseEvents = true`)
+* Hotkeys (quadrant tiling, clipboard history) stop working
+* No error or warning is logged when the tap is disabled
+
+**Root cause:**
+When any of the following occurs during event processing:
+* AX operations take too long (e.g., enumerating windows, querying geometry)
+* System is under heavy load
+* App switching triggers cascading AX queries
+* Other security/monitoring tools interfere with event delivery
+
+...macOS decides the tap is unresponsive and disables it automatically. The tap does **not** recover on its own.
+
+**Why this affects the switcher overlay:**
+The cleanup logic for the Alt-Tab switcher depends on receiving the **Option key release** event via `CGEventFlagsChanged`. If the tap is disabled before that event arrives, the cleanup code never runs, leaving the overlay stuck visible with `session.active = true`.
+
+**Solution implemented:**
+PaneBoard now runs a **periodic health check timer** (every 500ms) on the main runloop that:
+
+1. Calls `CGEventTapIsEnabled(tap)` to verify the tap is still active
+2. If disabled:
+   - Logs a prominent console warning: `⚠️  WARNING: CGEventTap was DISABLED by macOS`
+   - Automatically re-enables the tap via `CGEventTapEnable(tap, true)`
+   - Verifies recovery and logs outcome (`✓ SUCCESS` or `✗ FAILED`)
+3. Continues monitoring indefinitely
+
+**Implementation notes:**
+* Timer is created with `CFRunLoopTimerCreate` and added to the default runloop mode
+* Tap pointer is stored in `static EVENT_TAP_PTR: AtomicPtr<c_void>` for timer access
+* Health check runs independently of event processing (not in the tap callback)
+* First check occurs 500ms after startup; repeats every 500ms thereafter
+* Timer setup is logged: `DEBUG: Event tap health monitoring enabled (500ms interval)`
+
+**Logging contract:**
+```
+⚠️  WARNING: CGEventTap was DISABLED by macOS (likely due to slow callback)
+⚠️  RECOVERY: Re-enabling event tap automatically
+✓  SUCCESS: Event tap re-enabled
+```
+
+or:
+
+```
+✗  FAILED: Could not re-enable event tap - hotkeys may not work!
+```
+
+**Future improvements considered:**
+* Detect stuck switcher state by querying actual Option key state via `CGEventSourceKeyState`
+* Add escape hatch (ESC key) to force-close stuck overlays
+* Monitor app activation during active Alt-Tab session to detect unexpected focus loss
+
+**Outcome:**
+PaneBoard now automatically recovers from CGEventTap disablement, maintaining hotkey functionality and preventing permanent overlay lock-ups. Console warnings alert the developer/user to abnormal system behavior.
+
 #### Outcome
 * PaneBoard PoC successfully demonstrates *simultaneous capture + selective blocking*.
 * Tested across Mac and PC keyboards (with Option/Command remap).
