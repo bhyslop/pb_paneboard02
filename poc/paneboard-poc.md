@@ -153,15 +153,15 @@ This refactoring achieves:
 ### Developer Notes (PoC Learnings)
 
 #### Key Insight
-* **Successful Command+Tab takeover requires hybrid approach**
+* **Successful Option+Tab takeover requires hybrid approach**
   - IOHID for authoritative state tracking (L/R modifiers, chord order)
   - CGEventTap for surgical blocking decisions (respects semantic modifiers)
   - Atomic coordination between the two layers (`AtomicU32` state mask)
 
 #### Capture vs Blocking
 * **Capture** (IOHIDManager): always sees raw HID events, cannot stop delivery.
-* **Blocking** (CGEventTap): can veto key events, but only at CG layers and with Accessibility permission; watches for **Command key flags** (`kCGEventFlagMaskCommand`).
-* PaneBoard uses IOHID for fidelity (L/R modifiers, chord order) and CGEventTap for selective veto (e.g. ⌘+Tab).
+* **Blocking** (CGEventTap): can veto key events, but only at CG layers and with Accessibility permission; watches for **Option key flags** (`kCGEventFlagMaskAlternate`).
+* PaneBoard uses IOHID for fidelity (L/R modifiers, chord order) and CGEventTap for selective veto (e.g. ⌥+Tab).
 
 #### Permissions & Debugging
 * **Input Monitoring** → required for IOHID.
@@ -179,10 +179,10 @@ This refactoring achieves:
 * **For blocking, use CGEvent flags** (respects Option/Command swaps via `CGEventGetFlags()`).
 * For chord tracking, IOHID remains the source of truth.
 * **Critical constants**:
-  - `K_CG_EVENT_FLAG_MASK_COMMAND: u64 = 1 << 20` (Command) — **primary modifier for Alt-Tab takeover**
+  - `K_CG_EVENT_FLAG_MASK_ALTERNATE: u64 = 1 << 19` (Option) — **primary modifier for Alt-Tab takeover**
   - `K_CG_EVENT_FLAG_MASK_SHIFT: u64 = 1 << 17` (Shift)
   - `K_CG_EVENT_FLAG_MASK_CONTROL: u64 = 1 << 18` (Control)
-  - `K_CG_EVENT_FLAG_MASK_ALTERNATE: u64 = 1 << 19` (Option) — not used for Alt-Tab in current implementation
+  - `K_CG_EVENT_FLAG_MASK_COMMAND: u64 = 1 << 20` (Command) — not used for Alt-Tab in current implementation
 
 #### Phantom Events (0xFFFFFFFF)
 * Caused by IOHID ScanCode array elements with undefined usage.
@@ -190,13 +190,13 @@ This refactoring achieves:
 * Outcome: clean chord state (`a s d`) without phantom entries.
 
 #### Escape Hatch
-* Current PoC: holding both ⌘ keys suspends blocking (`BLOCKING: suspended/resumed`).
+* Current PoC: holding both ⌥ keys suspends blocking (`BLOCKING: suspended/resumed`).
 * Future: add timed long-press (2s) for safer recovery.
 
 #### Logging Conventions
 * Normal state: `lsh rsh ... || Keys: ...` (from IOHID).
-* Blocked chord: `BLOCKED: cmd+tab (forward)` or `BLOCKED: cmd+shift+tab (reverse)`.
-* Blocked keyup: `BLOCKED: cmd+tab (keyup)` or `BLOCKED: cmd+shift+tab (keyup)`.
+* Blocked chord: `BLOCKED: option+tab (forward)` or `BLOCKED: option+shift+tab (reverse)`.
+* Blocked keyup: `BLOCKED: option+tab (keyup)` or `BLOCKED: option+shift+tab (keyup)`.
 * Escape state: `BLOCKING: suspended/resumed`.
 
 #### Gotchas Avoided
@@ -210,7 +210,7 @@ This refactoring achieves:
 * PaneBoard PoC successfully demonstrates *simultaneous capture + selective blocking*.
 * Tested across Mac and PC keyboards (with Option/Command remap).
 * Behavior is consistent, predictable, and respects macOS permission model.
-* **Command+Tab takeover works identically** regardless of System Settings → Keyboard → Modifier Keys remapping.
+* **Option+Tab takeover works identically** regardless of System Settings → Keyboard → Modifier Keys remapping.
 * **Chrome window tiling now works reliably** with proper Position → Size sequencing! 🎉
 
 #### NSScreen.visibleFrame Unreliability (macOS Bug)
@@ -658,7 +658,7 @@ This pruning step occurs **once per session start** and keeps the MRU overlay sy
 * On startup, PaneBoard prepopulates MRU by enumerating all `.regular` apps. For each app, it attempts to list all top-level windows via `AXUIElementCopyAttributeValues(kAXWindowsAttribute, …)`. Some apps delay or restrict window reporting (iTerm2, Chrome, Electron). Such windows may appear as placeholders or not at all until first focus. MRU stabilizes naturally as focus events arrive. Entries seeded at startup are marked `GUESS`. When a window activates, it flips to `KNOWN`.
 
 **Display Trigger:**
-* When **Command is held** and **Tab is pressed**, show a popup list of all known windows in MRU order.
+* When **Option is held** and **Tab is pressed**, show a popup list of all known windows in MRU order.
 * Each entry shows app bundle name (or PID), window title (if accessible), and status (`KNOWN` or `GUESS`).
 
 **Fullscreen / Spaces Policy:**
@@ -679,7 +679,7 @@ This pruning step occurs **once per session start** and keeps the MRU overlay sy
 * Some windows report empty titles until first focus.
 
 **Outcome:**
-* The Command-Tab popup shows the **current MRU ordering** of all accessible windows.
+* The Option-Tab popup shows the **current MRU ordering** of all accessible windows.
 * Entries clearly indicate whether a window is fully known (AX-tracked) or only partially observed.
 
 ---
@@ -715,7 +715,7 @@ This pruning step occurs **once per session start** and keeps the MRU overlay sy
 
 **Outcome**
 * MRU PoC successfully tracks window focus history with true window-level tracking (not just app-level).
-* Command+Tab displays ASCII snapshot (bundle ID, title, KNOWN/FULLSCREEN status).
+* Option+Tab displays ASCII snapshot (bundle ID, title, KNOWN/FULLSCREEN status).
 * Baby step complete: no cycling or activation yet (future work).
 
 ---
@@ -723,28 +723,28 @@ This pruning step occurs **once per session start** and keeps the MRU overlay sy
 ### Alt-Tab Popup with Focus Switching
 
 **Scope**
-This phase adds a **barebones popup overlay** to visualize Alt-Tab navigation and commits focus changes on Command release.
+This phase adds a **barebones popup overlay** to visualize Alt-Tab navigation and commits focus changes on Option release.
 
 **Behavior**
 
 * **Session start:**
 
-  * Holding `Command` begins a session.
-  * First `Tab` press while `Command` is held shows the popup on **every display**.
+  * Holding `Option` begins a session.
+  * First `Tab` press while `Option` is held shows the popup on **every display**.
   * Before displaying the popup, the MRU stack undergoes a pre-session validation pass to prune stale windows as described above.
-  * On the first Tab press while Command is held, the highlight advances immediately to the next MRU entry (index 1). The overlay still shows the full MRU stack, but the current window is skipped.
+  * On the first Tab press while Option is held, the highlight advances immediately to the next MRU entry (index 1). The overlay still shows the full MRU stack, but the current window is skipped.
 * **Forward paging:**
 
   * Each subsequent Tab press moves the highlight forward through the MRU stack, starting from index 1.
 * **Backward paging:**
 
-  * Each `Shift+Tab` press (while Command held) moves the highlight **backward** through the MRU stack.
+  * Each `Shift+Tab` press (while Option held) moves the highlight **backward** through the MRU stack.
 * **Auto-repeat suppression:**
 
-  * Tab and Shift+Tab are handled **once per physical key press**. Key auto-repeat events generated by the system are discarded during a Command-Tab session.
+  * Tab and Shift+Tab are handled **once per physical key press**. Key auto-repeat events generated by the system are discarded during an Option-Tab session.
 * **Session end:**
 
-  * Releasing `Command` triggers immediate cleanup (see below).
+  * Releasing `Option` triggers immediate cleanup (see below).
 
 **Popup Design**
 
@@ -799,7 +799,7 @@ Placing the full title first improves recognition speed, while reversing the bun
 
 **Focus Commit Policy (macOS)**
 
-On **Command release**, PaneBoard commits the currently highlighted entry:
+On **Option release**, PaneBoard commits the currently highlighted entry:
 
 * **Cross-app switch** (target PID ≠ frontmost PID):
   * Activate the app via `NSRunningApplication.activate(withOptions: .activateIgnoringOtherApps)`.
@@ -828,16 +828,16 @@ This ensures per-window switching works correctly (e.g., cycling between multipl
 
 **Cleanup & State Management**
 
-At **Command release**, always:
+At **Option release**, always:
 
 * Commit focus change (if a target was highlighted).
 * Hide popup overlays on all displays.
 * Reset current highlight index to `None`.
 * Ensure no stale session state survives into the next run.
 
-On **new Command session**, the first Tab advances immediately to index 1 (skipping the current window).
+On **new Option session**, the first Tab advances immediately to index 1 (skipping the current window).
 
-Treat **early termination** cases (e.g. Command released before Tab, or Command released while Shift still down) identically: immediately hide popup and clear state.
+Treat **early termination** cases (e.g. Option released before Tab, or Option released while Shift still down) identically: immediately hide popup and clear state.
 
 This guarantees each session is independent, no carryover occurs, and debugging shows clear lifecycle boundaries.
 
@@ -849,7 +849,7 @@ This guarantees each session is independent, no carryover occurs, and debugging 
   * `ALT_TAB: backward step -> index=N app=<bundle> win="<title>"`
   * `ALT_TAB: cleanup | overlays hidden, state reset`
 
-* Focus commit (on Command release):
+* Focus commit (on Option release):
   * `ALT_TAB: switch | SUCCESS app="<bundle>" win="<title>"`
   * `ALT_TAB: switch | FAILED reason=<reason>`
   * `ALT_TAB: switch | WARNING failed to focus window_id=<id>`

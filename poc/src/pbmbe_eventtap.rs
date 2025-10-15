@@ -132,14 +132,14 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
             }
         }
 
-        // ===== COMMAND+TAB: Alt-Tab Session Management =====
+        // ===== OPTION+TAB: Alt-Tab Session Management =====
         // Must come BEFORE early return for non-keydown events
 
-        // Check for Command key state changes and Tab navigation
+        // Check for Option key state changes and Tab navigation
         let snapshot = get_mru_snapshot();
         let mru_count = snapshot.len();
 
-        // Check for Command release via flags changed or keyup events
+        // Check for Option release via flags changed or keyup events
         if event_type == K_CG_EVENT_FLAGS_CHANGED || event_type == K_CG_EVENT_KEY_UP {
             let session_active = {
                 let session = ALT_TAB_SESSION.lock().unwrap();
@@ -148,12 +148,12 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
             };
 
             if session_active {
-                eprintln!("DEBUG: [ALT_TAB] checking flags: event_type={} keycode={} has_cmd={} has_shift={}",
-                         event_type, keycode, has_cmd, has_shift);
+                eprintln!("DEBUG: [ALT_TAB] checking flags: event_type={} keycode={} has_opt={} has_shift={}",
+                         event_type, keycode, has_opt, has_shift);
 
-                // If Command is no longer held, commit switch and cleanup
-                if !has_cmd {
-                    eprintln!("DEBUG: [ALT_TAB] Command released (detected via flags)");
+                // If Option is no longer held, commit switch and cleanup
+                if !has_opt {
+                    eprintln!("DEBUG: [ALT_TAB] Option released (detected via flags)");
 
                     // Defensive bounds check: verify MRU snapshot is non-empty
                     if snapshot.is_empty() {
@@ -207,8 +207,8 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
             return event;
         }
 
-        // Check for Tab key (48) while Command is held (only on keydown)
-        if event_type == K_CG_EVENT_KEY_DOWN && keycode == 48 && has_cmd && !has_opt && !has_ctrl {
+        // Check for Tab key (48) while Option is held (only on keydown)
+        if event_type == K_CG_EVENT_KEY_DOWN && keycode == 48 && has_opt && !has_cmd && !has_ctrl {
             // Ignore auto-repeat to prevent uncontrolled cycling
             let is_repeat = CGEventGetIntegerValueField(event, K_CG_KEYBOARD_EVENT_AUTOREPEAT) != 0;
             if is_repeat {
@@ -252,7 +252,7 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
                 session.highlight_index = None;
                 drop(session);
                 eprintln!("ALT_TAB: no windows available");
-                println!("BLOCKED: cmd+tab (no windows)");
+                println!("BLOCKED: option+tab (no windows)");
                 return std::ptr::null_mut();
             }
 
@@ -278,11 +278,11 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
                 if has_shift {
                     println!("ALT_TAB: backward step -> index={} app={} win=\"{}\"",
                              initial_idx, entry.bundle_id, entry.title);
-                    println!("BLOCKED: cmd+shift+tab");
+                    println!("BLOCKED: option+shift+tab");
                 } else {
                     println!("ALT_TAB: forward step -> index={} app={} win=\"{}\"",
                              initial_idx, entry.bundle_id, entry.title);
-                    println!("BLOCKED: cmd+tab");
+                    println!("BLOCKED: option+tab");
                 }
                 return std::ptr::null_mut();
             }
@@ -310,11 +310,11 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
             if has_shift {
                 println!("ALT_TAB: backward step -> index={} app={} win=\"{}\"",
                          new_idx, entry.bundle_id, entry.title);
-                println!("BLOCKED: cmd+shift+tab");
+                println!("BLOCKED: option+shift+tab");
             } else {
                 println!("ALT_TAB: forward step -> index={} app={} win=\"{}\"",
                          new_idx, entry.bundle_id, entry.title);
-                println!("BLOCKED: cmd+tab");
+                println!("BLOCKED: option+tab");
             }
 
             return std::ptr::null_mut(); // Block the event
@@ -473,7 +473,7 @@ pub unsafe fn run_quadrant_poc() -> ! {
 
     eprintln!("PaneBoard Quadrant Tiling + Alt-Tab MRU + Clipboard Memory PoC");
     eprintln!("Ctrl+Shift+Option+Insert/Delete/Home/End to tile focused window");
-    eprintln!("Command+Tab to show MRU window list");
+    eprintln!("Option+Tab to show MRU window list");
     eprintln!("Ctrl+C/X/V for copy/cut/paste, Ctrl+Shift+V for clipboard history");
 
     // Multi-display notice right after banner (before setup chatter)
