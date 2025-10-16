@@ -114,10 +114,133 @@
     <xs:attribute name="underHeight" type="MeasureReference" use="optional"/>
   </xs:complexType>
 
+  <!--
+    KeyType: Valid unmodified keys for bindings
+
+    Rationale:
+    - Only keys present on both full-size Mac and PC keyboards
+    - Excludes platform-specific keys (eject, insert, printscreen)
+    - Excludes modifier keys (shift, alt, option, command, control)
+    - Excludes fn-chord-dependent keys (Mac fn+delete → PC delete handled separately)
+    - Letters are lowercase; shifted variants handled by modifier configuration
+    - Punctuation spelled out for clarity (e.g., "period" not ".")
+    - Includes numpad for users with full keyboards
+    - Function keys limited to F1-F12 (ubiquitous on both platforms)
+  -->
+  <xs:simpleType name="KeyType">
+    <xs:restriction base="xs:string">
+      <!-- Letters (lowercase) -->
+      <xs:enumeration value="a"/>
+      <xs:enumeration value="b"/>
+      <xs:enumeration value="c"/>
+      <xs:enumeration value="d"/>
+      <xs:enumeration value="e"/>
+      <xs:enumeration value="f"/>
+      <xs:enumeration value="g"/>
+      <xs:enumeration value="h"/>
+      <xs:enumeration value="i"/>
+      <xs:enumeration value="j"/>
+      <xs:enumeration value="k"/>
+      <xs:enumeration value="l"/>
+      <xs:enumeration value="m"/>
+      <xs:enumeration value="n"/>
+      <xs:enumeration value="o"/>
+      <xs:enumeration value="p"/>
+      <xs:enumeration value="q"/>
+      <xs:enumeration value="r"/>
+      <xs:enumeration value="s"/>
+      <xs:enumeration value="t"/>
+      <xs:enumeration value="u"/>
+      <xs:enumeration value="v"/>
+      <xs:enumeration value="w"/>
+      <xs:enumeration value="x"/>
+      <xs:enumeration value="y"/>
+      <xs:enumeration value="z"/>
+
+      <!-- Digits (unshifted) -->
+      <xs:enumeration value="0"/>
+      <xs:enumeration value="1"/>
+      <xs:enumeration value="2"/>
+      <xs:enumeration value="3"/>
+      <xs:enumeration value="4"/>
+      <xs:enumeration value="5"/>
+      <xs:enumeration value="6"/>
+      <xs:enumeration value="7"/>
+      <xs:enumeration value="8"/>
+      <xs:enumeration value="9"/>
+
+      <!-- Function keys (F1-F12 only, ubiquitous) -->
+      <xs:enumeration value="f1"/>
+      <xs:enumeration value="f2"/>
+      <xs:enumeration value="f3"/>
+      <xs:enumeration value="f4"/>
+      <xs:enumeration value="f5"/>
+      <xs:enumeration value="f6"/>
+      <xs:enumeration value="f7"/>
+      <xs:enumeration value="f8"/>
+      <xs:enumeration value="f9"/>
+      <xs:enumeration value="f10"/>
+      <xs:enumeration value="f11"/>
+      <xs:enumeration value="f12"/>
+
+      <!-- Navigation: arrows -->
+      <xs:enumeration value="up"/>
+      <xs:enumeration value="down"/>
+      <xs:enumeration value="left"/>
+      <xs:enumeration value="right"/>
+
+      <!-- Navigation: other -->
+      <xs:enumeration value="home"/>
+      <xs:enumeration value="end"/>
+      <xs:enumeration value="pageup"/>
+      <xs:enumeration value="pagedown"/>
+
+      <!-- Editing/Control -->
+      <xs:enumeration value="escape"/>
+      <xs:enumeration value="tab"/>
+      <xs:enumeration value="space"/>
+      <xs:enumeration value="enter"/>
+      <xs:enumeration value="backspace"/>
+      <xs:enumeration value="delete"/>
+
+      <!-- Punctuation (unshifted, spelled out) -->
+      <xs:enumeration value="grave"/>
+      <xs:enumeration value="minus"/>
+      <xs:enumeration value="equals"/>
+      <xs:enumeration value="leftbracket"/>
+      <xs:enumeration value="rightbracket"/>
+      <xs:enumeration value="backslash"/>
+      <xs:enumeration value="semicolon"/>
+      <xs:enumeration value="apostrophe"/>
+      <xs:enumeration value="comma"/>
+      <xs:enumeration value="period"/>
+      <xs:enumeration value="slash"/>
+
+      <!-- Numpad -->
+      <xs:enumeration value="numpad0"/>
+      <xs:enumeration value="numpad1"/>
+      <xs:enumeration value="numpad2"/>
+      <xs:enumeration value="numpad3"/>
+      <xs:enumeration value="numpad4"/>
+      <xs:enumeration value="numpad5"/>
+      <xs:enumeration value="numpad6"/>
+      <xs:enumeration value="numpad7"/>
+      <xs:enumeration value="numpad8"/>
+      <xs:enumeration value="numpad9"/>
+      <xs:enumeration value="numpadplus"/>
+      <xs:enumeration value="numpadminus"/>
+      <xs:enumeration value="numpadmultiply"/>
+      <xs:enumeration value="numpaddivide"/>
+      <xs:enumeration value="numpadequals"/>
+      <xs:enumeration value="numpadperiod"/>
+      <xs:enumeration value="numpadenter"/>
+    </xs:restriction>
+  </xs:simpleType>
+
   <!-- 🟪 BINDING: user activation mapping -->
   <xs:element name="Binding">
     <xs:complexType>
-      <xs:attribute name="key" type="xs:string" use="required"/>
+      <xs:attribute name="key" type="KeyType" use="required"/>
       <xs:attribute name="layout" type="xs:string" use="required"/>
       <xs:attribute name="traverse" use="optional">
         <xs:simpleType>
