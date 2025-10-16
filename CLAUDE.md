@@ -74,6 +74,21 @@ pb<platform><feature><uniquifier>_<descriptor>.<ext>
 
 **Exception:** `main.rs` retains standard Rust naming convention
 
+### Layout Configuration System
+
+Window layouts are defined in XML using the schema in `pbxs_schema.xsd`.
+
+**Elements:**
+* **Form** - Root configuration document
+* **Space** - Display matching rules (name, orientation, resolution)
+* **Frame** - Reusable pane geometries (x, y, width, height as percentages)
+* **Layout** - Composition of frames with conditional logic
+* **Binding** - Keyboard shortcuts mapped to layouts with traversal order
+
+Example configurations: `poc/layouts.default.xml`, `poc/layouts.multi-select.xml`
+
+---
+
 ### Current File Map
 
 **All files located in:** `poc/src/`
@@ -85,6 +100,7 @@ pb<platform><feature><uniquifier>_<descriptor>.<ext>
 | `pbgr_retry.rs` | Generic retry and timing utilities |
 | `pbgk_keylog.rs` | Optional diagnostic key state logging |
 | `pbgx_layout.rs` | Generic layout and geometry utilities |
+| `pbxs_schema.xsd` | XML schema defining layout configuration format |
 | `pbmba_ax.rs` | Core AX FFI, types, and RAII wrappers shared across features |
 | `pbmbe_eventtap.rs` | Main event tap that dispatches to all features |
 | `pbmbd_display.rs` | NSScreen enumeration and visible frame calculations |
@@ -99,4 +115,4 @@ pb<platform><feature><uniquifier>_<descriptor>.<ext>
 | `pbmsb_browser.rs` | MRU browser logic for switcher |
 | `pbmsm_mru.rs` | MRU stack management and window tracking |
 
-**Note:** The file naming convention uses 'b' for base/shared macOS components
+**Note:** The file naming convention uses 'b' for base/shared macOS components, and 'x' for cross-platform XML/schema files
