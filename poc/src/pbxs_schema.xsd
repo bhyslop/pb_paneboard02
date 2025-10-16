@@ -7,6 +7,7 @@
   <xs:element name="Form">
     <xs:complexType>
       <xs:sequence>
+        <xs:element ref="Measure" minOccurs="0" maxOccurs="unbounded"/>
         <xs:element ref="Space" minOccurs="0" maxOccurs="unbounded"/>
         <xs:element ref="Frame" minOccurs="0" maxOccurs="unbounded"/>
         <xs:element ref="Layout" minOccurs="0" maxOccurs="unbounded"/>
@@ -14,6 +15,21 @@
       </xs:sequence>
     </xs:complexType>
   </xs:element>
+
+  <!-- 🟫 MEASURE: named pixel constants -->
+  <xs:element name="Measure">
+    <xs:complexType>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+      <xs:attribute name="value" type="xs:positiveInteger" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- MeasureReference: either a Measure name or literal pixel value -->
+  <xs:simpleType name="MeasureReference">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9]+|[a-zA-Z_][a-zA-Z0-9_]*"/>
+    </xs:restriction>
+  </xs:simpleType>
 
   <!-- 🟩 SPACE: physical environment definitions -->
   <xs:element name="Space">
@@ -36,8 +52,11 @@
         </xs:restriction>
       </xs:simpleType>
     </xs:attribute>
-    <xs:attribute name="minPixelWidth"  type="xs:positiveInteger" use="optional"/>
-    <xs:attribute name="minPixelHeight" type="xs:positiveInteger" use="optional"/>
+    <!-- Dimension constraints: min is inclusive (>=), under is exclusive (<) -->
+    <xs:attribute name="minWidth"    type="MeasureReference" use="optional"/>
+    <xs:attribute name="minHeight"   type="MeasureReference" use="optional"/>
+    <xs:attribute name="underWidth"  type="MeasureReference" use="optional"/>
+    <xs:attribute name="underHeight" type="MeasureReference" use="optional"/>
   </xs:complexType>
 
   <!-- 🟨 FRAME: reusable geometric pattern -->
@@ -88,8 +107,11 @@
         </xs:restriction>
       </xs:simpleType>
     </xs:attribute>
-    <xs:attribute name="minPixelWidth"  type="xs:positiveInteger" use="optional"/>
-    <xs:attribute name="minPixelHeight" type="xs:positiveInteger" use="optional"/>
+    <!-- Dimension constraints: min is inclusive (>=), under is exclusive (<) -->
+    <xs:attribute name="minWidth"    type="MeasureReference" use="optional"/>
+    <xs:attribute name="minHeight"   type="MeasureReference" use="optional"/>
+    <xs:attribute name="underWidth"  type="MeasureReference" use="optional"/>
+    <xs:attribute name="underHeight" type="MeasureReference" use="optional"/>
   </xs:complexType>
 
   <!-- 🟪 BINDING: user activation mapping -->
