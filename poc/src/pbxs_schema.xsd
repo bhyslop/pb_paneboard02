@@ -354,9 +354,41 @@
   <!--
     🟪 BINDING: User activation mapping
 
-    A Binding maps a keyboard shortcut to a Layout, defining how the user activates
-    window tiling. The key attribute specifies the unmodified key (modifiers like
-    Shift, Alt, Command, Control are configured elsewhere in the system).
+    A Binding maps a keyboard shortcut to an action. The key attribute specifies
+    the unmodified key (modifiers like Shift, Alt, Command, Control are configured
+    elsewhere in the system).
+
+    Each Binding contains exactly one action element:
+    - LayoutAction: Activates a window layout with pane traversal and mirroring options
+    - DisplayMove: Moves the focused window to a different display
+
+    Examples:
+      <Binding key="o">
+        <LayoutAction layout="sidebar-split" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+      </Binding>
+
+      <Binding key="m">
+        <DisplayMove target="next" wrap="true"/>
+      </Binding>
+
+      <Binding key="2">
+        <DisplayMove target="1"/>
+      </Binding>
+  -->
+  <xs:element name="Binding">
+    <xs:complexType>
+      <xs:choice>
+        <xs:element name="LayoutAction" type="LayoutActionType"/>
+        <xs:element name="DisplayMove" type="DisplayMoveType"/>
+      </xs:choice>
+      <xs:attribute name="key" type="KeyType" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <!--
+    LayoutActionType: Window tiling activation
+
+    Applies a Layout to the focused window with configurable traversal and mirroring.
 
     Traversal behavior:
     When the user holds the modifier chord and repeatedly presses the key, the system
@@ -377,46 +409,83 @@
     horizontally or vertically when activated via this binding:
       keep = use original geometry
       flip = mirror around center axis
-
-    Example:
-      <Binding key="o" layout="sidebar-split" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
   -->
-  <xs:element name="Binding">
-    <xs:complexType>
-      <xs:attribute name="key" type="KeyType" use="required"/>
-      <xs:attribute name="layout" type="xs:string" use="required"/> <!-- references Layout/@id -->
-      <xs:attribute name="traverse" use="required">
-        <xs:simpleType>
-          <xs:restriction base="xs:string">
-            <!-- 8 legal traversal tokens -->
-            <xs:enumeration value="xfyf"/>
-            <xs:enumeration value="xfyr"/>
-            <xs:enumeration value="xryf"/>
-            <xs:enumeration value="xryr"/>
-            <xs:enumeration value="yfxf"/>
-            <xs:enumeration value="yfxr"/>
-            <xs:enumeration value="yrxf"/>
-            <xs:enumeration value="yrxr"/>
-          </xs:restriction>
-        </xs:simpleType>
-      </xs:attribute>
-      <xs:attribute name="mirrorX" use="required">
-        <xs:simpleType>
-          <xs:restriction base="xs:string">
-            <xs:enumeration value="keep"/>
-            <xs:enumeration value="flip"/>
-          </xs:restriction>
-        </xs:simpleType>
-      </xs:attribute>
-      <xs:attribute name="mirrorY" use="required">
-        <xs:simpleType>
-          <xs:restriction base="xs:string">
-            <xs:enumeration value="keep"/>
-            <xs:enumeration value="flip"/>
-          </xs:restriction>
-        </xs:simpleType>
-      </xs:attribute>
-    </xs:complexType>
-  </xs:element>
+  <xs:complexType name="LayoutActionType">
+    <xs:attribute name="layout" type="xs:string" use="required"/> <!-- references Layout/@id -->
+    <xs:attribute name="traverse" use="required">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <!-- 8 legal traversal tokens -->
+          <xs:enumeration value="xfyf"/>
+          <xs:enumeration value="xfyr"/>
+          <xs:enumeration value="xryf"/>
+          <xs:enumeration value="xryr"/>
+          <xs:enumeration value="yfxf"/>
+          <xs:enumeration value="yfxr"/>
+          <xs:enumeration value="yrxf"/>
+          <xs:enumeration value="yrxr"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <xs:attribute name="mirrorX" use="required">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="keep"/>
+          <xs:enumeration value="flip"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <xs:attribute name="mirrorY" use="required">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="keep"/>
+          <xs:enumeration value="flip"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+  </xs:complexType>
+
+  <!--
+    DisplayMoveType: Move focused window to a different display
+
+    Moves the currently focused window to another display while preserving its
+    size and relative position. The target attribute determines the destination:
+
+    Relative targets:
+      "next" - Move to the next display in OS enumeration order
+      "prev" - Move to the previous display in OS enumeration order
+
+    Absolute targets:
+      "0", "1", "2", ... - Move to display at specific index (0-based)
+
+    The wrap attribute (optional, defaults to true) controls behavior at boundaries:
+      wrap="true"  - Cycle from last display back to first (and vice versa)
+      wrap="false" - No-op when already at first/last display
+
+    Display indices are platform-specific and determined by OS enumeration order:
+    - macOS: NSScreen.screens[0], [1], etc.
+    - Windows: Monitor enumeration indices
+    - Linux: X11 screen indices / Wayland output indices
+
+    Users can discover their display indices through trial and error, or via
+    a debug overlay showing "Display N" on each screen.
+
+    Examples:
+      <DisplayMove target="next" wrap="true"/>   <!-- Cycle forward -->
+      <DisplayMove target="prev" wrap="false"/>  <!-- Move back, stop at first -->
+      <DisplayMove target="0"/>                  <!-- Move to primary display -->
+      <DisplayMove target="2" wrap="false"/>     <!-- Move to third display -->
+  -->
+  <xs:complexType name="DisplayMoveType">
+    <xs:attribute name="target" use="required">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <!-- Matches: "next", "prev", or any non-negative integer -->
+          <xs:pattern value="next|prev|[0-9]+"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <xs:attribute name="wrap" type="xs:boolean" use="optional" default="true"/>
+  </xs:complexType>
 
 </xs:schema>
