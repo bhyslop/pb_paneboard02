@@ -11,7 +11,8 @@
         <xs:element ref="Space" minOccurs="0" maxOccurs="unbounded"/>
         <xs:element ref="Frame" minOccurs="0" maxOccurs="unbounded"/>
         <xs:element ref="Layout" minOccurs="0" maxOccurs="unbounded"/>
-        <xs:element ref="Binding" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element ref="LayoutAction" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element ref="DisplayMove" minOccurs="0" maxOccurs="unbounded"/>
       </xs:sequence>
     </xs:complexType>
   </xs:element>
@@ -374,43 +375,11 @@
   </xs:simpleType>
 
   <!--
-    🟪 BINDING: User activation mapping
+    🟪 LAYOUT ACTION: Keyboard-triggered window tiling
 
-    A Binding maps a keyboard shortcut to an action. The key attribute specifies
-    the unmodified key (modifiers like Shift, Alt, Command, Control are configured
-    elsewhere in the system).
-
-    Each Binding contains exactly one action element:
-    - LayoutAction: Activates a window layout with pane traversal and mirroring options
-    - DisplayMove: Moves the focused window to a different display
-
-    Examples:
-      <Binding key="o">
-        <LayoutAction layout="sidebar-split" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-      </Binding>
-
-      <Binding key="m">
-        <DisplayMove target="next" wrap="true"/>
-      </Binding>
-
-      <Binding key="2">
-        <DisplayMove target="1"/>
-      </Binding>
-  -->
-  <xs:element name="Binding">
-    <xs:complexType>
-      <xs:choice>
-        <xs:element name="LayoutAction" type="LayoutActionType"/>
-        <xs:element name="DisplayMove" type="DisplayMoveType"/>
-      </xs:choice>
-      <xs:attribute name="key" type="KeyType" use="required"/>
-    </xs:complexType>
-  </xs:element>
-
-  <!--
-    LayoutActionType: Window tiling activation
-
-    Applies a Layout to the focused window with configurable traversal and mirroring.
+    Maps a keyboard shortcut to a Layout, activating window tiling with configurable
+    traversal and mirroring. The key attribute specifies the unmodified key (modifiers
+    like Shift, Alt, Command, Control are configured elsewhere in the system).
 
     Traversal behavior:
     When the user holds the modifier chord and repeatedly presses the key, the system
@@ -428,50 +397,59 @@
 
     Mirroring:
     The mirrorX and mirrorY attributes control whether the layout geometry is flipped
-    horizontally or vertically when activated via this binding:
+    horizontally or vertically when activated:
       keep = use original geometry
       flip = mirror around center axis
+
+    Example:
+      <LayoutAction key="h" layout="sidebar-split" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
   -->
-  <xs:complexType name="LayoutActionType">
-    <xs:attribute name="layout" type="xs:string" use="required"/> <!-- references Layout/@name -->
-    <xs:attribute name="traverse" use="required">
-      <xs:simpleType>
-        <xs:restriction base="xs:string">
-          <!-- 8 legal traversal tokens -->
-          <xs:enumeration value="xfyf"/>
-          <xs:enumeration value="xfyr"/>
-          <xs:enumeration value="xryf"/>
-          <xs:enumeration value="xryr"/>
-          <xs:enumeration value="yfxf"/>
-          <xs:enumeration value="yfxr"/>
-          <xs:enumeration value="yrxf"/>
-          <xs:enumeration value="yrxr"/>
-        </xs:restriction>
-      </xs:simpleType>
-    </xs:attribute>
-    <xs:attribute name="mirrorX" use="required">
-      <xs:simpleType>
-        <xs:restriction base="xs:string">
-          <xs:enumeration value="keep"/>
-          <xs:enumeration value="flip"/>
-        </xs:restriction>
-      </xs:simpleType>
-    </xs:attribute>
-    <xs:attribute name="mirrorY" use="required">
-      <xs:simpleType>
-        <xs:restriction base="xs:string">
-          <xs:enumeration value="keep"/>
-          <xs:enumeration value="flip"/>
-        </xs:restriction>
-      </xs:simpleType>
-    </xs:attribute>
-  </xs:complexType>
+  <xs:element name="LayoutAction">
+    <xs:complexType>
+      <xs:attribute name="key" type="KeyType" use="required"/>
+      <xs:attribute name="layout" type="xs:string" use="required"/> <!-- references Layout/@name -->
+      <xs:attribute name="traverse" use="required">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <!-- 8 legal traversal tokens -->
+            <xs:enumeration value="xfyf"/>
+            <xs:enumeration value="xfyr"/>
+            <xs:enumeration value="xryf"/>
+            <xs:enumeration value="xryr"/>
+            <xs:enumeration value="yfxf"/>
+            <xs:enumeration value="yfxr"/>
+            <xs:enumeration value="yrxf"/>
+            <xs:enumeration value="yrxr"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:attribute>
+      <xs:attribute name="mirrorX" use="required">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:enumeration value="keep"/>
+            <xs:enumeration value="flip"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:attribute>
+      <xs:attribute name="mirrorY" use="required">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:enumeration value="keep"/>
+            <xs:enumeration value="flip"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:attribute>
+    </xs:complexType>
+  </xs:element>
 
   <!--
-    DisplayMoveType: Move focused window to a different display
+    🟪 DISPLAY MOVE: Keyboard-triggered window movement between displays
 
-    Moves the currently focused window to another display while preserving its
-    size and relative position. The target attribute determines the destination:
+    Maps a keyboard shortcut to move the currently focused window to another display
+    while preserving its size and relative position. The key attribute specifies the
+    unmodified key (modifiers configured elsewhere in the system).
+
+    The target attribute determines the destination:
 
     Relative targets:
       "next" - Move to the next display in OS enumeration order
@@ -493,21 +471,24 @@
     a debug overlay showing "Display N" on each screen.
 
     Examples:
-      <DisplayMove target="next" wrap="true"/>   <!-- Cycle forward -->
-      <DisplayMove target="prev" wrap="false"/>  <!-- Move back, stop at first -->
-      <DisplayMove target="0"/>                  <!-- Move to primary display -->
-      <DisplayMove target="2" wrap="false"/>     <!-- Move to third display -->
+      <DisplayMove key="m" target="next" wrap="true"/>   <!-- Cycle forward -->
+      <DisplayMove key="n" target="prev" wrap="false"/>  <!-- Move back, stop at first -->
+      <DisplayMove key="1" target="0"/>                  <!-- Move to primary display -->
+      <DisplayMove key="3" target="2" wrap="false"/>     <!-- Move to third display -->
   -->
-  <xs:complexType name="DisplayMoveType">
-    <xs:attribute name="target" use="required">
-      <xs:simpleType>
-        <xs:restriction base="xs:string">
-          <!-- Matches: "next", "prev", or any non-negative integer -->
-          <xs:pattern value="next|prev|[0-9]+"/>
-        </xs:restriction>
-      </xs:simpleType>
-    </xs:attribute>
-    <xs:attribute name="wrap" type="xs:boolean" use="optional" default="true"/>
-  </xs:complexType>
+  <xs:element name="DisplayMove">
+    <xs:complexType>
+      <xs:attribute name="key" type="KeyType" use="required"/>
+      <xs:attribute name="target" use="required">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <!-- Matches: "next", "prev", or any non-negative integer -->
+            <xs:pattern value="next|prev|[0-9]+"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:attribute>
+      <xs:attribute name="wrap" type="xs:boolean" use="optional" default="true"/>
+    </xs:complexType>
+  </xs:element>
 
 </xs:schema>
