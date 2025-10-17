@@ -26,7 +26,7 @@
     Example:
       <Measure name="hdWidth" value="1920"/>
       <Space name="Large">
-        <Match minWidth="hdWidth"/>  <!-- references the measure -->
+        <Match minWidth="hdWidth"/>
       </Space>
   -->
   <xs:element name="Measure">
@@ -141,11 +141,11 @@
       <Pane x="1/3" y="0" width="2/3" height="1"/>
 
     Nesting example - outer pane is 1/9 screen width, subdivided into thirds:
-      <Frame id="column">
+      <Frame name="column">
         <Pane x="0" y="0" width="1/9" height="1"/>
       </Frame>
-      <Frame id="threeRows">
-        <Pane x="0" y="0" width="1" height="1/3"/>     <!-- 1/3 of parent = 1/27 screen -->
+      <Frame name="threeRows">
+        <Pane x="0" y="0" width="1" height="1/3"/>
         <Pane x="0" y="1/3" width="1" height="1/3"/>
         <Pane x="0" y="2/3" width="1" height="1/3"/>
       </Frame>
@@ -227,8 +227,8 @@
 
     Example:
       <Shape frame="sidebar">
-        <Shape frame="leftColumn"/>   <!-- subdivides first Pane -->
-        <Shape/>                       <!-- second Pane not subdivided -->
+        <Shape frame="leftColumn"/>
+        <Shape/>
       </Shape>
   -->
   <xs:complexType name="ShapeType">
@@ -471,10 +471,10 @@
     a debug overlay showing "Display N" on each screen.
 
     Examples:
-      <DisplayMove key="m" target="next" wrap="true"/>   <!-- Cycle forward -->
-      <DisplayMove key="n" target="prev" wrap="false"/>  <!-- Move back, stop at first -->
-      <DisplayMove key="1" target="0"/>                  <!-- Move to primary display -->
-      <DisplayMove key="3" target="2" wrap="false"/>     <!-- Move to third display -->
+      <DisplayMove key="m" target="next" wrap="true"/>
+      <DisplayMove key="n" target="prev" wrap="false"/>
+      <DisplayMove key="1" target="0"/>
+      <DisplayMove key="3" target="2" wrap="false"/>
   -->
   <xs:element name="DisplayMove">
     <xs:complexType>
