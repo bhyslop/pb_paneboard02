@@ -171,14 +171,36 @@
     Layout only activates on displays that match that Space. When omitted, the Layout
     applies to all displays.
 
-    Example:
+    Measure Dependencies:
+    If any Shape within the Layout references a Measure (via minWidth, minHeight,
+    underWidth, or underHeight attributes), that Measure MUST be declared explicitly
+    using a <Needs> element. This makes dependencies self-documenting and allows
+    validation to fail fast at parse time.
+
+    Validation Requirements:
+    - All Measures referenced in Shape trees must appear in <Needs> declarations
+    - Referencing an undeclared Measure is a parse error
+    - If a required Measure is not defined in the hardware configuration, the entire
+      Layout is pruned (it either works completely or not at all)
+
+    Examples:
       <Layout id="sidebar-split" space="LargeDisplays">
         <Shape frame="sidebar"/>
+      </Layout>
+
+      <Layout id="ultrawide-columns">
+        <Needs measure="ultrawide"/>
+        <Shape frame="wide-thirds" minWidth="ultrawide"/>
       </Layout>
   -->
   <xs:element name="Layout">
     <xs:complexType>
       <xs:sequence>
+        <xs:element name="Needs" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:attribute name="measure" type="xs:string" use="required"/> <!-- references Measure/@name -->
+          </xs:complexType>
+        </xs:element>
         <xs:element name="Shape" type="ShapeType" minOccurs="1" maxOccurs="1"/>
       </xs:sequence>
       <xs:attribute name="id" type="xs:string" use="required"/>
