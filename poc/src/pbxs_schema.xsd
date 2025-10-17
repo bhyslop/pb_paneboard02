@@ -102,7 +102,7 @@
     to its parent context (display visible frame for top-level, or parent Pane for nested).
 
     Example:
-      <Frame id="sidebar">
+      <Frame name="sidebar">
         <Pane x="0" y="0" width="3/10" height="1"/>
         <Pane x="3/10" y="0" width="7/10" height="1"/>
       </Frame>
@@ -112,7 +112,7 @@
       <xs:sequence>
         <xs:element name="Pane" type="PaneType" maxOccurs="unbounded"/>
       </xs:sequence>
-      <xs:attribute name="id" type="xs:string" use="required"/>
+      <xs:attribute name="name" type="xs:string" use="required"/>
     </xs:complexType>
   </xs:element>
 
@@ -184,11 +184,11 @@
       Layout is pruned (it either works completely or not at all)
 
     Examples:
-      <Layout id="sidebar-split" space="LargeDisplays">
+      <Layout name="sidebar-split" space="LargeDisplays">
         <Shape frame="sidebar"/>
       </Layout>
 
-      <Layout id="ultrawide-columns">
+      <Layout name="ultrawide-columns">
         <Needs measure="ultrawide"/>
         <Shape frame="wide-thirds" minWidth="ultrawide"/>
       </Layout>
@@ -203,7 +203,7 @@
         </xs:element>
         <xs:element name="Shape" type="ShapeType" minOccurs="1" maxOccurs="1"/>
       </xs:sequence>
-      <xs:attribute name="id" type="xs:string" use="required"/>
+      <xs:attribute name="name" type="xs:string" use="required"/>
       <xs:attribute name="space" type="xs:string" use="optional"/> <!-- references Space/@name -->
     </xs:complexType>
   </xs:element>
@@ -213,7 +213,7 @@
 
     Shapes form a tree structure that defines how windows are tiled:
 
-    1. A Shape with frame="foo" references a Frame by id
+    1. A Shape with frame="foo" references a Frame by name
     2. Child Shapes map 1:1 to the parent Frame's Panes (in order)
     3. Each child Shape subdivides its corresponding parent Pane
     4. If child Shape has no 'frame' attribute, that Pane is not subdivided
@@ -234,7 +234,7 @@
     <xs:sequence>
       <xs:element name="Shape" type="ShapeType" minOccurs="0" maxOccurs="unbounded"/>
     </xs:sequence>
-    <xs:attribute name="frame" type="xs:string" use="optional"/> <!-- references Frame/@id -->
+    <xs:attribute name="frame" type="xs:string" use="optional"/> <!-- references Frame/@name -->
     <xs:attribute name="whenOrientation" use="optional">
       <xs:simpleType>
         <xs:restriction base="xs:string">
@@ -433,7 +433,7 @@
       flip = mirror around center axis
   -->
   <xs:complexType name="LayoutActionType">
-    <xs:attribute name="layout" type="xs:string" use="required"/> <!-- references Layout/@id -->
+    <xs:attribute name="layout" type="xs:string" use="required"/> <!-- references Layout/@name -->
     <xs:attribute name="traverse" use="required">
       <xs:simpleType>
         <xs:restriction base="xs:string">
