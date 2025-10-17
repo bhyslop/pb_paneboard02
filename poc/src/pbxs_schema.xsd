@@ -13,6 +13,7 @@
         <xs:element ref="Layout" minOccurs="0" maxOccurs="unbounded"/>
         <xs:element ref="LayoutAction" minOccurs="0" maxOccurs="unbounded"/>
         <xs:element ref="DisplayMove" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element ref="Application" minOccurs="0" maxOccurs="unbounded"/>
       </xs:sequence>
     </xs:complexType>
   </xs:element>
@@ -488,6 +489,90 @@
         </xs:simpleType>
       </xs:attribute>
       <xs:attribute name="wrap" type="xs:boolean" use="optional" default="true"/>
+    </xs:complexType>
+  </xs:element>
+
+  <!--
+    🟧 APPLICATION: Per-application behavior overrides
+
+    Defines platform-specific application matching rules and behavior customizations.
+    Each Application has a human-readable name and one or more platform matchers.
+    At runtime, PaneBoard checks the active application against matchers for the
+    current platform and applies the specified behavior overrides.
+
+    Platform Matchers:
+    - <Mac bundleId="..."/> - Match macOS bundle identifier (e.g., "com.google.Chrome")
+    - <Windows exe="..."/> - Match Windows executable name (e.g., "chrome.exe")
+    - <Linux process="..."/> - Match Linux process name (e.g., "chrome")
+
+    Multiple matchers of the same type can be specified to cover application variants
+    (e.g., Chrome stable, beta, and canary builds).
+
+    Behavior Overrides:
+    - <Clipboard monitor="..." copyMirror="..."/>
+      - monitor: Whether to watch clipboard changes from this app (default: true)
+      - copyMirror: Whether to mirror Ctrl+C as Cmd+C on macOS (default: true)
+                    Set to false for apps that already handle this internally
+
+    Discovery:
+    Users can identify application matchers using:
+    - macOS: osascript -e 'tell app "System Events" to get bundle identifier of first process whose frontmost is true'
+    - Windows: Task Manager → Details tab → Name column
+    - Linux: xprop WM_CLASS (then click the window)
+
+    Examples:
+      <!-- Chrome: cross-platform, skip clipboard mirror -->
+      <Application name="Chrome">
+        <Mac bundleId="com.google.Chrome"/>
+        <Windows exe="chrome.exe"/>
+        <Linux process="chrome"/>
+        <Clipboard monitor="true" copyMirror="false"/>
+      </Application>
+
+      <!-- 1Password: privacy-sensitive, no clipboard monitoring -->
+      <Application name="1Password">
+        <Mac bundleId="com.agilebits.1Password"/>
+        <Windows exe="1Password.exe"/>
+        <Clipboard monitor="false" copyMirror="false"/>
+      </Application>
+
+      <!-- iTerm2: macOS-only terminal -->
+      <Application name="iTerm2">
+        <Mac bundleId="com.googlecode.iterm2"/>
+        <Clipboard monitor="true" copyMirror="true"/>
+      </Application>
+  -->
+  <xs:element name="Application">
+    <xs:complexType>
+      <xs:sequence>
+        <!-- Platform matchers (at least one required) -->
+        <xs:element name="Mac" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:attribute name="bundleId" type="xs:string" use="required"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Windows" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:attribute name="exe" type="xs:string" use="required"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Linux" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:attribute name="process" type="xs:string" use="required"/>
+          </xs:complexType>
+        </xs:element>
+
+        <!-- Behavior overrides -->
+        <xs:element name="Clipboard" minOccurs="0" maxOccurs="1">
+          <xs:complexType>
+            <xs:attribute name="monitor" type="xs:boolean" use="optional" default="true"/>
+            <xs:attribute name="copyMirror" type="xs:boolean" use="optional" default="true"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+
+      <!-- Human-readable application name for documentation -->
+      <xs:attribute name="name" type="xs:string" use="required"/>
     </xs:complexType>
   </xs:element>
 

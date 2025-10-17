@@ -80,10 +80,15 @@ Window layouts are defined in XML using the schema in `pbxs_schema.xsd`.
 
 **Elements:**
 * **Form** - Root configuration document
+* **Measure** - Named pixel constants for display matching
 * **Space** - Display matching rules (name, orientation, resolution)
 * **Frame** - Reusable pane geometries (x, y, width, height as percentages)
 * **Layout** - Composition of frames with conditional logic
-* **Binding** - Keyboard shortcuts mapped to layouts with traversal order
+* **LayoutAction** - Keyboard shortcuts mapped to layouts with traversal order
+* **DisplayMove** - Keyboard shortcuts for moving windows between displays
+* **Application** - Per-application behavior overrides with platform-specific matchers
+  - **Mac** / **Windows** / **Linux** - Platform-specific application identifiers
+  - **Clipboard** - Clipboard monitoring and mirroring behavior
 
 Example configurations: `poc/layouts.default.xml`, `poc/layouts.multi-select.xml`
 
