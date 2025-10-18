@@ -142,6 +142,7 @@ pb<platform><feature><uniquifier>_<descriptor>.<ext>
 - **`pbgc_core.rs`** - Core constants and state structures
 - **`pbgk_keylog.rs`** - Optional diagnostic key state logging
 - **`pbgr_retry.rs`** - Retry and timing utilities
+- **`pbgx_layout.rs`** - (deprecated, will be replaced with new form.xml parser)
 
 This refactoring achieves:
 - Clear separation of concerns
@@ -313,86 +314,6 @@ macOS **universally reserves ~31 pixels** at the top of every display for the me
 * All displays: quadrants start at y=31 (or y + menuBarHeight)
 * UL/LL boundary aligns exactly at corrected `midY`
 * No overlap or dead space across any display configuration
-
----
-
-### Addendum: macOS Quadrant Tiling PoC (Single Display)
-
-**Scope:**
-After recognizing a hotkey, move/resize the **currently focused window** into fixed quadrants of the **window's current display's visible frame** (excludes menu bar & Dock). This PoC **consumes** the chords (no bleed-through to apps).
-
-**Chord policy (macOS PoC)**
-All chords: **Control + Shift + Option** (⌃⇧⌥) on macOS / **Control + Shift + Alt** on Windows & Linux — physically identical triple-modifier chord.
-
-*Each action is invoked by holding the triple-modifier chord (⌃⇧⌥ / Ctrl Shift Alt) plus the listed key.*
-
-| Chord     | Action                         |
-|-----------|--------------------------------|
-| ⌃⇧⌥Insert  | Upper-left quadrant            |
-| ⌃⇧⌥Delete  | Lower-left quadrant            |
-| ⌃⇧⌥Home    | Upper-right quadrant           |
-| ⌃⇧⌥End     | Lower-right quadrant           |
-| ⌃⇧⌥PageUp  | Move focused window to the previous display (keep size/position) |
-| ⌃⇧⌥PageDn  | Move focused window to the next display (keep size/position)     |
-
-*Notes:*
-- **Insert**: On macOS, external PC "Insert" often maps to `kVK_Help (0x72)`; this PoC uses that surrogate. Not all PC keyboards emit this mapping.
-- **Delete**: Refers to **Forward Delete** (`kVK_ForwardDelete (0x75)`), not Backspace (`0x33`). Only external keyboards typically have dedicated Forward Delete.
-- **PageUp/PageDown**: Move the focused window to the previous/next display in a ring (wrapping). The window's rect is preserved exactly as-is.
-
-#### Modifier Chord Consistency Across Platforms
-
-* **Physically identical:** the same three-key cluster under the left hand on ANSI keyboards.
-* macOS labels **Option (⌥)**; Windows / Linux label **Alt**.
-* PaneBoard treats them as equivalent for all layout and pane operations.
-* The chord is unreserved at OS level and safe for global capture.
-* Holding the triple-modifier alone (no fourth key) for > 500 ms displays a contextual "help overlay" describing available actions.
-
-**Hard decisions (PoC-specific):**
-- **No fallbacks.** If an edge case is hit, print one line and do nothing.
-- **No Spaces handling.** If the window is not manipulable (fullscreen/Zoomed/other Space), print and do nothing.
-- **No margins.** Quadrants are exact 50/50 splits (integer floor on halves).
-- **Act on key-down only**; ignore repeats and key-up.
-- **Consume chords** via `CGEventTap` (return `NULL`) to prevent app bleed-through.
-
-**AX & Permissions:**
-- Require **Accessibility** permission (AX). On launch, if not trusted → print one line and exit.
-- Focused window path: SystemWide → `kAXFocusedApplication` → `kAXFocusedWindow`.
-  If any step fails or the object is not a `kAXWindowRole`, print and do nothing.
-
-**Geometry:**
-- **Work area:** All quadrant calculations **must** derive from the `visibleFrame` of the target `NSScreen`, **never** from `frame`.
-  - The `visibleFrame` excludes the menu bar and Dock; its `origin.y` offset and `height` are authoritative for vertical placement.
-  - Target display is determined by the window's center point.
-- **Quadrant formulas:** With visible frame `vf`:
-  - `w2 = floor(vf.width / 2)`, `h2 = floor(vf.height / 2)`
-  - `midX = vf.minX + w2`, `midY = vf.minY + h2`
-  - **UL:** `(vf.minX, vf.minY, w2, h2)`
-  - **LL:** `(vf.minX, midY, w2, h2)`
-  - **UR:** `(midX, vf.minY, w2, h2)`
-  - **LR:** `(midX, midY, w2, h2)`
-- **Display cycling (PgUp/PgDn):** Preserve the window's rect exactly; move it onto the visible frame of the adjacent display. Displays wrap in a ring (use NSScreen enumeration order).
-- **Validation logging:** On each tile operation, log:
-  ```
-  DEBUG: visible=(x,y,w,h) screen=(x,y,w,h) delta_y=<menu_bar_height>
-  ```
-  If `delta_y != 0`, log a one-time warning that `visibleFrame` correction was applied.
-
-**Logging contract:**
-- Success:
-  `TILE: UL | SUCCESS | app="<bundle>" frame=({x,y,w,h}) within visible=({x,y,w,h})`
-- Failure (examples):
-  `TILE: UL | FAILED reason=ax_error(code=…, op=…)`
-  `TILE: UL | FAILED reason=size_constrained_or_fullscreen`
-- Chord consume (on key-down):
-  `BLOCKED: ctrl+shift+option+Insert` (macOS)
-  `BLOCKED: ctrl+shift+alt+Insert` (Windows/Linux)
-
-**PoC exit criteria:**
-1) Each chord repositions the focused window to the correct quadrant.
-2) Repeated invocation is idempotent (no drift).
-3) No keystroke bleed-through into apps.
-4) No quadrant overlap or dead space; windows align exactly at `midY` boundary across all displays.
 
 ---
 
@@ -676,12 +597,6 @@ DEBUG: [LAYOUT] action=h display=0 | sorted by area desc, traverse=xfyf
 DEBUG: [LAYOUT] action=h display=0 | cached 6 panes
 ```
 
-#### Migration from Legacy Format
-
-The previous `layouts.xml` format using `<Sequence>` and `<Combo>` elements is **deprecated**. No backward compatibility is provided. Users must migrate to the new `form.xml` schema. The code in `pbgx_layout.rs` will be removed and replaced with a parser for the new schema.
-
----
-
 #### AX Patterns & Implementation Strategy
 
 **What we verified (latest)**
@@ -781,21 +696,6 @@ The previous `layouts.xml` format using `<Sequence>` and `<Combo>` elements is *
 7. **Permission Semantics.** Check `AXIsProcessTrustedWithOptions` at startup; later failures that *look like* permission issues log `ax_permission_missing_or_revoked` (diagnostic only; no retry logic in PoC).
 
 **Rationale:** Thin FFI keeps binaries small and behavior predictable; RAII wrappers around the few CF/AX types we use eliminate leaks and dangling refs without adding heavy dependencies.
-
-### Keyboard Mapping Clarifications (macOS PoC)
-
-* **Insert:** On macOS, many external PC keyboards emit **`kVK_Help (0x72)`** for the physical **Insert** key. This PoC binds "Insert" to **0x72** and documents that mapping. No synthesis on Apple laptops.
-* **Delete:** "Delete" in this PoC means **Forward Delete (`kVK_ForwardDelete`, 0x75)**, not Backspace (`0x33`).
-
-### Logging Contract (unchanged, reiterated)
-
-* Success: `TILE: <UL|UR|LL|LR> | SUCCESS | app="<bundle>" frame=(x,y,w,h) within visible=(x,y,w,h)` (may include `attempt=N` suffix)
-* Failures: `TILE: <UL|UR|LL|LR> | FAILED reason=ax_error(code=…, op=…)` or `size_constrained_or_fullscreen` (may include `attempt=N` suffix)
-* Consume: `BLOCKED: ctrl+shift+option+Insert` (macOS) / `BLOCKED: ctrl+shift+alt+Insert` (Windows/Linux)
-* Diagnostics: Chromium app detection is logged to debug output only
-* One-time notes:
-  * `NOTE: ctrl+shift+option on unrecognized keycode=0xNN. On some PC keyboards, Insert may not map to 0x72.` (macOS)
-  * `NOTE: ctrl+shift+alt on unrecognized keycode=0xNN. On some PC keyboards, Insert may not map to the expected code.` (Windows/Linux)
 
 ---
 
@@ -1120,3 +1020,32 @@ CLIP: mirror issued cmd+c  // (debug only, on Ctrl→Cmd duplication)
 
 ---
 
+## Appendix: Migration from Legacy Format
+
+**Note:** This appendix will be removed once the new Layout Configuration System is fully implemented in code.
+
+The previous `layouts.xml` format using `<Sequence>` and `<Combo>` elements is **deprecated**. No backward compatibility is provided. Users must migrate to the new `form.xml` schema.
+
+The code in `pbgx_layout.rs` will be removed and replaced with a parser for the new schema that conforms to the specification in the "Layout Configuration System" section above.
+
+### Legacy Format (deprecated)
+```xml
+<LayoutManager>
+  <Sequence key="Insert" id="7">
+    <Combo x="0.0" y="0.0" width="50.0" height="50.0"/>
+  </Sequence>
+</LayoutManager>
+```
+
+### New Format (current)
+```xml
+<Form>
+  <Frame name="quadrant-ul">
+    <Pane x="0" y="0" width="1/2" height="1/2"/>
+  </Frame>
+  <Layout name="upper-left">
+    <Shape frame="quadrant-ul"/>
+  </Layout>
+  <LayoutAction key="insert" layout="upper-left" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+</Form>
+```
