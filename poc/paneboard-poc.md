@@ -398,173 +398,287 @@ All chords: **Control + Shift + Option** (⌃⇧⌥) on macOS / **Control + Shif
 
 ### Layout Configuration System
 
-**Purpose**
+#### Overview
 
-Unify all quadrant and multi-select tiling layouts under a **single declarative XML file**.
-Each `<Sequence>` element defines a chord key with one or more `<Combo>` rectangles, applied cyclically on repeated presses.
-This replaces the hardcoded quadrant logic in `pbmp_pane.rs` with a user-configurable, extensible system.
-
-**File Location**
+PaneBoard uses a declarative XML configuration system to define window tiling layouts, keyboard bindings, and display-specific behavior. The configuration is stored in a single file:
 
 ```
-~/.config/paneboard/layouts.xml
+~/.config/paneboard/form.xml
 ```
 
-If absent, PaneBoard falls back to a built-in 2×2 quadrant default matching WinSplit behavior.
+If the file is missing at startup, PaneBoard writes an embedded default configuration to this location. The configuration is parsed once at startup; changes require a restart to take effect. (A hot-reload mechanism may be added in a future cycle.)
 
-**Modifier Chord**
+Parse errors or semantic errors (e.g., undefined references) cause PaneBoard to **disable all layout-triggered window tiling** while allowing other features (Alt-Tab, clipboard) to continue working. The error is logged with actionable detail.
 
-All sequences share the **global Ctrl + Shift + Option / Alt triple-modifier chord**. Modifiers are not configurable per-sequence.
+#### Configuration Structure
 
-**Schema Structure**
+The root element `<Form>` contains seven types of child elements, each serving a distinct purpose:
+
+- **`<Measure>`** - Named pixel constants for dimension constraints
+- **`<Space>`** - Display matching rules based on resolution, orientation, name
+- **`<Frame>`** - Reusable geometric patterns (collections of Panes)
+- **`<Layout>`** - Compositions of Frames with conditional logic
+- **`<LayoutAction>`** - Keyboard shortcuts that trigger Layouts
+- **`<DisplayMove>`** - Keyboard shortcuts that move windows between displays
+- **`<Application>`** - Per-application behavior overrides
+
+Elements are processed in dependency order at parse time. All references (e.g., `<LayoutAction layout="foo"/>` → `<Layout name="foo"/>`) are validated; missing references cause the entire configuration to fail.
+
+##### Measure
+
+Defines reusable pixel values referenced by name in dimension constraints:
 
 ```xml
-<LayoutManager>
-  <Sequence key="Insert" id="7" description="Upper-left quadrant">
-    <Combo x="0.00" y="0.00" width="66.67" height="50.00"/>
-    <Combo x="0.00" y="0.00" width="50.00" height="66.67"/>
-    <Combo x="0.00" y="0.00" width="50.00" height="50.00"/>
-  </Sequence>
-
-  <Sequence key="Home" id="9" description="Upper-right quadrant">
-    …
-  </Sequence>
-
-  <Sequence key="Delete" id="1" description="Lower-left quadrant">
-    …
-  </Sequence>
-
-  <Sequence key="End" id="3" description="Lower-right quadrant">
-    …
-  </Sequence>
-</LayoutManager>
+<Measure name="hdWidth" value="1920"/>
+<Measure name="ultrawide" value="3440"/>
 ```
 
-**Attributes**
+Measures can be referenced in `<Space>` and `<Shape>` dimension attributes (`minWidth`, `minHeight`, `underWidth`, `underHeight`). References accept either a Measure name or a literal integer.
 
-| Attribute     | Meaning                                                                  |
-| ------------- | ------------------------------------------------------------------------ |
-| `key`         | The physical or logical chord trigger (Insert, Delete, Home, End, etc.)  |
-| `id`          | Optional numeric alias matching numpad layout (for backward readability) |
-| `description` | Free text; ignored by parser                                             |
-| `<Combo>`     | One tiling variant; list order defines press order                       |
+##### Space
 
-**Coordinate Model**
-
-All `x`, `y`, `width`, `height` are **percentages (0–100)** of the **focused window's display's visibleFrame**.
-
-* Origin is **top-left corner** of the visible region (menu bar & Dock excluded).
-* "Current display" is determined by the **focused window's center point** (matches Alt-Tab behavior).
-
-**Behavior**
-
-* While ⌃⇧ is held:
-  * First press of a quadrant key applies **Combo 0**.
-  * Subsequent presses of that key advance to the next `<Combo>` (wrap around).
-  * Pressing a different quadrant key switches context and resets that key's index to 0.
-  * **Example:** `Insert→Insert→Home` resets Home's index to 0; Insert remains at index 1.
-* Releasing ⌃⇧ finalizes the last applied layout and **resets all sequence indices to 0**.
-* No timeouts or delayed resets.
-
-**Key Identifier Mapping**
-
-The `key` attribute uses human-readable strings (e.g., `"Insert"`, `"Home"`, `"Delete"`, `"End"`).
-PaneBoard maintains a **string→HID lookup table in `pbmbk_keymap.rs`** to map these strings to HID usage codes.
-
-**Parser Implementation Notes**
-
-* Parse **once at startup** using a simple DOM or SAX walker.
-* **Restart required** for configuration changes to take effect (no hot-reload in this cycle).
-* Maintain `HashMap<String, Vec<Combo>>` keyed by `key` attribute.
-* On chord detection:
-  * Lookup sequence by `key`.
-  * Advance internal index modulo sequence length.
-  * Compute rect:
-    ```
-    target.x = vf.x + vf.width  * (combo.x / 100)
-    target.y = vf.y + vf.height * (combo.y / 100)
-    target.w = vf.width  * (combo.width  / 100)
-    target.h = vf.height * (combo.height / 100)
-    ```
-  * Apply AX move (Position → Size).
-  * Log `TILE: UL | key=Insert combo=2 | SUCCESS app="<bundle>" frame=(…)`.
-* On modifier release: reset all indices to zero.
-
-**Validation & Error Handling**
-
-* **Malformed XML or missing file:**
-  * Log one line: `LAYOUT: parse_error, reverting to built-in default`.
-  * Fallback to 2×2 quadrant default.
-* **Coordinate clamping:**
-  * Values `< 0` → clamp to `0` (warn once per file).
-  * Values `> 100` → clamp to `100` (warn once per file).
-  * `width` or `height = 0` → skip combo, log error.
-* **Duplicate keys:**
-  * Last-wins policy (no fatal error).
-* **Empty sequences:**
-  * Warn once, skip sequence.
-* **Invalid key names:**
-  * Warn once at parse time, ignore sequence.
-
-**Logging Contract (Extended)**
-
-```
-TILE: UL | key=Insert combo=2 | SUCCESS app="<bundle>" frame=(x,y,w,h)
-TILE: UR | key=Home combo=1 | FAILED reason=ax_error(op=AXSetSize)
-LAYOUT: parse_error, reverting to built-in default
-LAYOUT: WARNING coord clamp x=-5.0 → 0.0 (key=Insert combo=0)
-LAYOUT: WARNING empty sequence key=PageUp
-LAYOUT: WARNING unknown key=Foobar
-```
-
-**Formal Schema (Inline Documentation)**
+Defines matching rules for physical displays. Layouts can reference Spaces to activate only on appropriate displays:
 
 ```xml
-<xs:element name="LayoutManager">
-  <xs:complexType>
-    <xs:sequence>
-      <xs:element name="Sequence" maxOccurs="unbounded">
-        <xs:complexType>
-          <xs:sequence>
-            <xs:element name="Combo" maxOccurs="unbounded">
-              <xs:complexType>
-                <xs:attribute name="x" type="xs:decimal" use="required"/>
-                <xs:attribute name="y" type="xs:decimal" use="required"/>
-                <xs:attribute name="width" type="xs:decimal" use="required"/>
-                <xs:attribute name="height" type="xs:decimal" use="required"/>
-              </xs:complexType>
-            </xs:element>
-          </xs:sequence>
-          <xs:attribute name="key" type="xs:string" use="required"/>
-          <xs:attribute name="id" type="xs:integer" use="optional"/>
-          <xs:attribute name="description" type="xs:string" use="optional"/>
-        </xs:complexType>
-      </xs:element>
-    </xs:sequence>
-  </xs:complexType>
-</xs:element>
+<Space name="LargeDisplays">
+  <Match minWidth="1920" minHeight="1080" whenOrientation="landscape"/>
+  <Exclude nameContains="Built-in"/>
+</Space>
 ```
 
-This schema is provided for **inline documentation only**; no external validation file is required.
+**Matching logic:**
+- Multiple `<Match>` elements are OR'd (any Match succeeds → display is candidate)
+- Within a single `<Match>`, all attributes are AND'd
+- Multiple `<Exclude>` elements are OR'd (any Exclude vetoes the match)
+- Final result: (any Match passes) AND (no Exclude vetoes) = display matches Space
 
-**Implementation Impact**
+Dimension constraints: `min*` is inclusive (≥), `under*` is exclusive (<).
 
-* Replaces hardcoded quadrants in `pbmp_pane.rs`.
-* Built-in default (2×2 quadrants matching WinSplit behavior) is embedded as fallback code, not XML.
-* `--quadrant-tiling` flag remains valid; configuration file augments default behavior.
+##### Frame
 
-**Edge Case Handling**
+Defines a collection of Pane geometries that can be referenced by Layouts. Each Pane specifies position and size as **fractions** (proportions) relative to its parent context:
 
-* Fullscreen/minimized windows: handled by existing AX logic (orthogonal to layout configuration).
-* Cross-display tiling: `visibleFrame` is recalculated per target display as usual.
+```xml
+<Frame name="sidebar">
+  <Pane x="0" y="0" width="3/10" height="1"/>
+  <Pane x="3/10" y="0" width="7/10" height="1"/>
+</Frame>
+```
 
-**Design Rationale**
+**Pane coordinates:**
+- Format: `"numerator/denominator"` or whole number shorthand (`"1"` = `"1/1"`, `"0"` = `"0/1"`)
+- Values are proportions of parent context (0 to 1 in practice, though schema allows >1)
+- For top-level Panes: relative to display's `visibleFrame`
+- For nested Panes: relative to parent Pane's geometry
 
-This design provides:
-* Trivial parsing and future portability to JSON/TOML.
-* Safe for user edits with fault-tolerant error handling.
-* Compatible with existing quadrant execution pipeline.
-* Normalized schema that eliminates legacy numbered tags.
+**Nesting:** Frames can be composed hierarchically via Shapes (see Layout below). A Frame defines only the immediate subdivision of its parent context; deeper subdivisions are achieved by referencing additional Frames in child Shapes.
+
+##### Layout
+
+Composes Frames into a hierarchical tiling structure using a tree of Shapes:
+
+```xml
+<Layout name="sidebar-split" space="LargeDisplays">
+  <Needs measure="hdWidth"/>
+  <Shape frame="sidebar">
+    <Shape frame="leftColumn"/>
+    <Shape/>
+  </Shape>
+</Layout>
+```
+
+**Shape tree semantics:**
+1. A Shape with `frame="foo"` references a Frame by name
+2. Child Shapes map 1:1 to the parent Frame's Panes (in order)
+3. Each child Shape subdivides its corresponding parent Pane
+4. If a child Shape has no `frame` attribute (empty `<Shape/>`), that Pane is **not subdivided** (it becomes a leaf/target Pane)
+5. Extra child Shapes beyond parent Pane count are ignored
+6. Missing child Shapes mean remaining Panes are not subdivided (also become leaf Panes)
+
+**Conditional logic:**
+- `<Layout space="..."/>` - Only activates on displays matching the named Space
+- `<Shape whenOrientation="..." minWidth="..." underHeight="..."/>` - Prunes Shape (and entire subtree) if conditions don't match current display
+
+**Measure dependencies:**
+If any Shape references a Measure, that Measure must be declared in a `<Needs measure="..."/>` element. This makes dependencies explicit and allows validation to fail fast. If a required Measure is undefined, the entire Layout is pruned (all-or-nothing).
+
+##### LayoutAction
+
+Maps a keyboard shortcut to a Layout, specifying traversal order and mirroring:
+
+```xml
+<LayoutAction key="h" layout="sidebar-split" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+```
+
+**Attributes:**
+- `key` - Unmodified key name (see KeyType enum in schema for valid values)
+- `layout` - References a Layout by name
+- `traverse` - 4-character traversal token (see Traversal Behavior below)
+- `mirrorX` / `mirrorY` - Geometry mirroring (`keep` or `flip`)
+
+**Global modifier chord:** All LayoutActions share the same modifier chord: **Ctrl + Shift + Option** (macOS) / **Ctrl + Shift + Alt** (Windows/Linux). This chord is not configurable in the current cycle.
+
+##### DisplayMove
+
+Maps a keyboard shortcut to move the focused window between displays:
+
+```xml
+<DisplayMove key="pageup" target="prev" wrap="true"/>
+<DisplayMove key="pagedown" target="next" wrap="true"/>
+<DisplayMove key="1" target="0"/>
+```
+
+**Attributes:**
+- `key` - Unmodified key name
+- `target` - Destination: `"next"`, `"prev"`, or display index (`"0"`, `"1"`, etc.)
+- `wrap` - (optional, default `true`) Cycle from last → first display at boundaries
+
+Display indices are platform-specific (OS enumeration order). Uses the same global modifier chord as LayoutActions.
+
+**Size preservation across moves:**
+When moving a window between displays, PaneBoard attempts to preserve the window's size and position. If the window is too large for the target display or partially off-screen, it is resized to fill the target's `visibleFrame` (100% width/height).
+
+**Consecutive moves:** If a user performs multiple DisplayMove actions within a single held chord (e.g., Ctrl+Shift held, pressing PageUp → PageDown → PageUp), PaneBoard remembers the **original size** from before the first move and reinstates it when returning to a display large enough to accommodate it. This prevents jarring size changes when moving a large window through a small display to another large display.
+
+##### Application
+
+Defines per-application behavior overrides with platform-specific matchers:
+
+```xml
+<Application name="Chrome">
+  <Mac bundleId="com.google.Chrome"/>
+  <Windows exe="chrome.exe"/>
+  <Linux process="chrome"/>
+  <Clipboard monitor="true" copyMirror="false"/>
+</Application>
+```
+
+At runtime, PaneBoard checks the active application against matchers for the current platform and applies specified overrides. Multiple matchers of the same type can be specified (e.g., Chrome stable, beta, canary).
+
+#### Runtime Behavior
+
+##### Parse-Time Processing
+
+1. **Parse XML** into intermediate structures (quick-xml events → temporary parse tree)
+2. **Validate references** (all `layout="..."`, `frame="..."`, `space="..."`, `measure="..."` attributes must resolve)
+3. **Discard XML structures** - parsing artifacts are not retained after this phase
+
+##### Pane List Construction (Per LayoutAction, Per Display)
+
+For each `<LayoutAction>` and each connected display at startup:
+
+1. **Resolve Layout** - Follow `layout` reference to `<Layout>` element
+2. **Check Space match** - If Layout has `space` attribute, verify display matches; if not, skip this LayoutAction for this display
+3. **Evaluate Shape tree conditionally** - Prune any `<Shape>` whose `whenOrientation`, `minWidth`, `minHeight`, `underWidth`, `underHeight` don't match display properties; remove entire subtrees of pruned Shapes
+4. **Flatten to leaf Panes** - Traverse the Shape tree and collect all Panes that are **not subdivided** (both container Panes with no child Shape, and recursively all sub-Panes). This includes Panes at any depth.
+5. **Apply mirroring** - Transform each Pane's fractional coordinates using:
+   - `mirrorX="flip"`: `x' = 1 - x - width`
+   - `mirrorY="flip"`: `y' = 1 - y - height`
+6. **Convert to pixels** - Multiply fractional coordinates by display's `visibleFrame` dimensions to get pixel rects
+7. **Cull undersized Panes** - Remove any Pane smaller than 100×100 pixels (minimum size threshold; may be configurable in future)
+8. **Sort by area, then traversal** - Primary sort: descending by area (width × height, largest first); secondary sort: apply `traverse` rule using Pane **center points** `(x + width/2, y + height/2)`
+9. **Cache sorted list** - Store for runtime use, indexed by `(LayoutAction, Display)`
+
+**Traversal rule encoding:** The 4-character `traverse` token specifies sort order:
+- Characters 1-2: primary axis and direction (`xf`, `xr`, `yf`, `yr`)
+- Characters 3-4: secondary axis and direction
+- Example: `"xfyf"` = sort by x ascending, then y ascending (left-to-right, top-to-bottom)
+- Example: `"yrxf"` = sort by y descending, then x ascending (bottom-to-top, left-to-right)
+
+**Display configuration changes:** If a display is connected/disconnected after startup, PaneBoard does **not** recompute pane lists in the current cycle. Restart required.
+
+##### Activation and Cycling
+
+**Session start:**
+- User presses **Ctrl + Shift + {key}** where `{key}` matches a `<LayoutAction>`.
+- PaneBoard looks up the cached pane list for that LayoutAction on the focused window's display.
+- If no pane list exists (Layout pruned or doesn't match display), log `LAYOUT: no panes available for key={key} on display={index}` and no-op.
+
+**First press:**
+- Apply pane 0 (largest pane by area) to focused window using AX `Position → Size` sequencing.
+- Store ephemeral index = 1.
+
+**Subsequent presses (while Ctrl+Shift held):**
+- Same key: advance index modulo pane list length, apply next pane.
+- Different key: reset index to 0 for new LayoutAction, apply its pane 0.
+
+**Chord release (Ctrl or Shift released):**
+- Reset all LayoutAction indices to 0.
+- Session ends.
+
+**DisplayMove during Layout session:**
+- Execute the window move (see Size Preservation below).
+- Reset LayoutAction index to 0 (Layout session interrupted).
+- Chord remains held; user can continue with new LayoutAction.
+
+##### Size Preservation for DisplayMove
+
+When `<DisplayMove>` moves a window to another display:
+
+1. **Window fits:** Preserve size and position (translated to target display's coordinate space).
+2. **Window too large or partially off-screen:** Resize to target's `visibleFrame` (100% width, 100% height).
+3. **Consecutive moves in one chord:** Track original size from before first move; reinstate when moving to a display large enough to accommodate it.
+
+**Logging:**
+- `DISPLAYMOVE: SUCCESS target=next | preserved size`
+- `DISPLAYMOVE: SUCCESS target=prev | resized to full screen (too large)`
+- `DISPLAYMOVE: SUCCESS target=1 | restored original size`
+
+##### Error Handling
+
+**Parse errors:**
+- Log error with line/column if available: `LAYOUT: parse_error at line 42: unexpected element`
+- Disable all LayoutActions (chords ignored, no window tiling).
+- Other PaneBoard features (Alt-Tab, clipboard) continue working.
+- Exit message: `Fix ~/.config/paneboard/form.xml and restart PaneBoard`
+
+**Semantic errors (at parse time):**
+- Undefined reference: `LAYOUT: ERROR layout="foo" references undefined Layout`
+- Missing Measure dependency: `LAYOUT: ERROR Shape references undefined Measure "ultrawide"`
+- Behavior same as parse errors: disable all LayoutActions.
+
+**Runtime no-ops (not errors):**
+- LayoutAction triggered on display where Layout doesn't match: `LAYOUT: no panes available for key=h on display=1` (silent to user, logged for debugging).
+- DisplayMove to nonexistent display index: `DISPLAYMOVE: target=5 out of range (max=2)` (no-op).
+
+#### Logging Contract
+
+**Parse-time:**
+```
+LAYOUT: parsing ~/.config/paneboard/form.xml
+LAYOUT: loaded 4 Measures, 2 Spaces, 6 Frames, 8 Layouts, 12 LayoutActions
+LAYOUT: precomputed 18 pane lists across 2 displays
+LAYOUT: ERROR layout="foo" references undefined Layout
+LAYOUT: parse_error at line 42: unexpected element
+```
+
+**Runtime (LayoutAction):**
+```
+LAYOUT: key=h | pane=0/8 | SUCCESS app="com.google.Chrome" frame=(x,y,w,h)
+LAYOUT: key=h | pane=3/8 | FAILED reason=ax_error(op=AXSetSize)
+LAYOUT: no panes available for key=j on display=1
+```
+
+**Runtime (DisplayMove):**
+```
+DISPLAYMOVE: SUCCESS target=next | preserved size
+DISPLAYMOVE: SUCCESS target=prev | resized to full screen (too large)
+DISPLAYMOVE: SUCCESS target=1 | restored original size
+DISPLAYMOVE: target=5 out of range (max=2)
+```
+
+**Debug output (pane list construction):**
+```
+DEBUG: [LAYOUT] action=h display=0 | flattened 8 leaf panes
+DEBUG: [LAYOUT] action=h display=0 | applied mirrorX=flip
+DEBUG: [LAYOUT] action=h display=0 | culled 2 undersized panes (< 100x100px)
+DEBUG: [LAYOUT] action=h display=0 | sorted by area desc, traverse=xfyf
+DEBUG: [LAYOUT] action=h display=0 | cached 6 panes
+```
+
+#### Migration from Legacy Format
+
+The previous `layouts.xml` format using `<Sequence>` and `<Combo>` elements is **deprecated**. No backward compatibility is provided. Users must migrate to the new `form.xml` schema. The code in `pbgx_layout.rs` will be removed and replaced with a parser for the new schema.
 
 ---
 
