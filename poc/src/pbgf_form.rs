@@ -289,19 +289,23 @@ impl ParsedForm {
                     match e.name().as_ref() {
                         b"Form" => in_form = true,
                         b"Measure" if in_form => {
-                            let m = Self::parse_measure(e)?;
+                            let m = Self::parse_measure(e)
+                                .map_err(|e| format!("at byte {}: {}", reader.buffer_position(), e))?;
                             measures.insert(m.0, m.1);
                         }
                         b"Space" if in_form => {
-                            let space = Self::parse_space(&mut reader, e)?;
+                            let space = Self::parse_space(&mut reader, e)
+                                .map_err(|e| format!("at byte {}: {}", reader.buffer_position(), e))?;
                             spaces.insert(space.name.clone(), space);
                         }
                         b"Frame" if in_form => {
-                            let frame = Self::parse_frame(&mut reader, e)?;
+                            let frame = Self::parse_frame(&mut reader, e)
+                                .map_err(|e| format!("at byte {}: {}", reader.buffer_position(), e))?;
                             frames.insert(frame.name.clone(), frame);
                         }
                         b"Layout" if in_form => {
-                            let layout = Self::parse_layout(&mut reader, e)?;
+                            let layout = Self::parse_layout(&mut reader, e)
+                                .map_err(|e| format!("at byte {}: {}", reader.buffer_position(), e))?;
                             layouts.insert(layout.name.clone(), layout);
                         }
                         _ => {}
@@ -310,20 +314,28 @@ impl ParsedForm {
                 Ok(Event::Empty(ref e)) => {
                     match e.name().as_ref() {
                         b"Measure" if in_form => {
-                            let m = Self::parse_measure(e)?;
+                            let m = Self::parse_measure(e)
+                                .map_err(|e| format!("at byte {}: {}", reader.buffer_position(), e))?;
                             measures.insert(m.0, m.1);
                         }
                         b"LayoutAction" if in_form => {
-                            layout_actions.push(Self::parse_layout_action(e)?);
+                            let action = Self::parse_layout_action(e)
+                                .map_err(|e| format!("at byte {}: {}", reader.buffer_position(), e))?;
+                            layout_actions.push(action);
                         }
                         b"DisplayMove" if in_form => {
-                            display_moves.push(Self::parse_display_move(e)?);
+                            let dm = Self::parse_display_move(e)
+                                .map_err(|e| format!("at byte {}: {}", reader.buffer_position(), e))?;
+                            display_moves.push(dm);
                         }
                         _ => {}
                     }
                 }
                 Ok(Event::Eof) => break,
-                Err(e) => return Err(format!("XML parse error: {}", e)),
+                Err(e) => {
+                    let pos = reader.buffer_position();
+                    return Err(format!("XML parse error at byte {}: {}", pos, e));
+                }
                 _ => {}
             }
             buf.clear();
@@ -742,7 +754,7 @@ impl ParsedForm {
             }
         }
 
-        // Validate Layout → Space references
+        // Validate Layout → Space references and Needs/Measure consistency
         for (layout_name, layout) in &self.layouts {
             if let Some(ref space_name) = layout.space {
                 if !self.spaces.contains_key(space_name) {
@@ -751,7 +763,7 @@ impl ParsedForm {
                 }
             }
 
-            // Validate Needs declarations
+            // Validate Needs declarations exist
             for measure_name in &layout.needed_measures {
                 if !self.measures.contains_key(measure_name) {
                     errors.push(format!("Layout '{}' needs undefined Measure '{}'",
@@ -759,8 +771,19 @@ impl ParsedForm {
                 }
             }
 
-            // Validate Shape tree Frame references
-            Self::validate_shape_tree(&layout.root_shape, layout_name, &self.frames, &mut errors);
+            // Validate Shape tree: Frame references + Needs/Measure enforcement
+            let mut used_measures = std::collections::HashSet::new();
+            Self::validate_shape_tree(&layout.root_shape, layout_name, &self.frames, &mut used_measures, &mut errors);
+
+            // Check that all used measures were declared in Needs
+            for used_measure in &used_measures {
+                if !layout.needed_measures.contains(used_measure) {
+                    errors.push(format!(
+                        "Layout '{}' uses Measure '{}' in Shape but does not declare it in <Needs>",
+                        layout_name, used_measure
+                    ));
+                }
+            }
         }
 
         if errors.is_empty() {
@@ -770,16 +793,46 @@ impl ParsedForm {
         }
     }
 
-    fn validate_shape_tree(shape: &ParsedShape, layout_name: &str, frames: &HashMap<String, ParsedFrame>, errors: &mut Vec<String>) {
-        if let Some(ref frame_name) = shape.frame {
-            if !frames.contains_key(frame_name) {
-                errors.push(format!("Layout '{}' references undefined Frame '{}'",
-                    layout_name, frame_name));
+    fn validate_shape_tree(
+        shape: &ParsedShape,
+        layout_name: &str,
+        frames: &HashMap<String, ParsedFrame>,
+        used_measures: &mut std::collections::HashSet<String>,
+        errors: &mut Vec<String>
+    ) {
+        // Collect any MeasureRefs from this Shape's constraints
+        for opt_mref in [&shape.min_width, &shape.min_height, &shape.under_width, &shape.under_height] {
+            if let Some(MeasureRef::Name(ref name)) = opt_mref {
+                used_measures.insert(name.clone());
             }
         }
 
-        for child in &shape.children {
-            Self::validate_shape_tree(child, layout_name, frames, errors);
+        if let Some(ref frame_name) = shape.frame {
+            if let Some(frame) = frames.get(frame_name) {
+                // Validate transitive frame resolution: children must align with panes
+                if shape.children.len() > frame.panes.len() {
+                    errors.push(format!(
+                        "Layout '{}': Shape references Frame '{}' which has {} panes, but Shape has {} children (extras ignored)",
+                        layout_name, frame_name, frame.panes.len(), shape.children.len()
+                    ));
+                }
+
+                // Recursively validate children
+                for child in &shape.children {
+                    Self::validate_shape_tree(child, layout_name, frames, used_measures, errors);
+                }
+            } else {
+                errors.push(format!("Layout '{}' references undefined Frame '{}'",
+                    layout_name, frame_name));
+            }
+        } else {
+            // No frame but has children - invalid
+            if !shape.children.is_empty() {
+                errors.push(format!(
+                    "Layout '{}': Shape has {} children but no frame attribute",
+                    layout_name, shape.children.len()
+                ));
+            }
         }
     }
 }
@@ -822,11 +875,8 @@ impl ParsedForm {
                         continue;
                     }
 
-                    // Apply mirroring
-                    let mirrored_panes = self.apply_mirroring(&leaf_panes, action.mirror_x, action.mirror_y);
-
-                    // Convert to pixels
-                    let mut pixel_rects: Vec<PixelRect> = mirrored_panes.iter()
+                    // Convert to pixels FIRST (before mirroring)
+                    let mut pixel_rects: Vec<PixelRect> = leaf_panes.iter()
                         .map(|p| PixelRect {
                             x: display.width * p.x.to_f64(),
                             y: display.height * p.y.to_f64(),
@@ -834,6 +884,9 @@ impl ParsedForm {
                             height: display.height * p.height.to_f64(),
                         })
                         .collect();
+
+                    // Apply mirroring in pixel space
+                    Self::apply_mirroring_pixels(&mut pixel_rects, action.mirror_x, action.mirror_y, display.width, display.height);
 
                     // Cull undersized panes (< 100×100 pixels)
                     pixel_rects.retain(|r| r.width >= 100.0 && r.height >= 100.0);
@@ -848,7 +901,7 @@ impl ParsedForm {
                     // Cache sorted list
                     pane_lists.insert((action.key.clone(), display.index), pixel_rects);
 
-                    eprintln!("DEBUG: [LAYOUT] action={} display={} | cached {} panes",
+                    eprintln!("LAYOUT: action={} display={} | cached {} panes",
                         action.key, display.index, pane_lists.get(&(action.key.clone(), display.index)).unwrap().len());
                 }
             }
@@ -1060,32 +1113,20 @@ impl ParsedForm {
         leaves
     }
 
-    fn apply_mirroring(&self, panes: &[ParsedPane], mirror_x: MirrorMode, mirror_y: MirrorMode) -> Vec<ParsedPane> {
-        panes.iter().map(|p| {
-            let mut mirrored = p.clone();
-
+    /// Apply mirroring in pixel space (correct approach per code review)
+    /// Mirroring formula: x' = display_width - x - width (for X flip)
+    fn apply_mirroring_pixels(rects: &mut [PixelRect], mirror_x: MirrorMode, mirror_y: MirrorMode, display_width: f64, display_height: f64) {
+        for rect in rects.iter_mut() {
             if mirror_x == MirrorMode::Flip {
-                // x' = 1 - x - width
-                let one = Fraction { num: 1, den: 1 };
-                let x_plus_w_num = p.x.num * p.width.den + p.width.num * p.x.den;
-                let x_plus_w_den = p.x.den * p.width.den;
-                let new_x_num = one.num * x_plus_w_den - x_plus_w_num * one.den;
-                let new_x_den = one.den * x_plus_w_den;
-                mirrored.x = Fraction { num: new_x_num, den: new_x_den };
+                // x' = display_width - x - width
+                rect.x = display_width - rect.x - rect.width;
             }
 
             if mirror_y == MirrorMode::Flip {
-                // y' = 1 - y - height
-                let one = Fraction { num: 1, den: 1 };
-                let y_plus_h_num = p.y.num * p.height.den + p.height.num * p.y.den;
-                let y_plus_h_den = p.y.den * p.height.den;
-                let new_y_num = one.num * y_plus_h_den - y_plus_h_num * one.den;
-                let new_y_den = one.den * y_plus_h_den;
-                mirrored.y = Fraction { num: new_y_num, den: new_y_den };
+                // y' = display_height - y - height
+                rect.y = display_height - rect.y - rect.height;
             }
-
-            mirrored
-        }).collect()
+        }
     }
 
     fn sort_pane_list(&self, rects: &mut Vec<PixelRect>, traverse: TraverseOrder) {
@@ -1281,7 +1322,7 @@ impl Form {
     /// Reset layout session (called on chord release)
     pub fn reset_layout_session(&mut self) {
         if self.layout_session.is_some() {
-            eprintln!("DEBUG: [LAYOUT] Resetting layout session");
+            eprintln!("LAYOUT: Resetting layout session");
         }
         self.layout_session = None;
     }

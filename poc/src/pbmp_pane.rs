@@ -133,7 +133,7 @@ pub fn execute_display_move_for_key(key: &str, pid: u32, bundle_id: &str) -> boo
 
         // If already on target display, no-op
         if target_display_index == current_display_index {
-            eprintln!("DEBUG: [DISPLAYMOVE] Already on target display {}", target_display_index);
+            eprintln!("DISPLAYMOVE: Already on target display {}", target_display_index);
             return false;
         }
 
@@ -261,9 +261,9 @@ pub unsafe fn focus_window_by_id(pid: u32, window_id: u32) -> bool {
             );
 
             if restore_rc == KAX_ERROR_SUCCESS {
-                println!("ALT_TAB: restored minimized window before focus");
+                println!("SWITCHER: restored minimized window before focus");
             } else {
-                eprintln!("ALT_TAB: failed to restore minimized window (code={})", restore_rc);
+                eprintln!("SWITCHER: failed to restore minimized window (code={})", restore_rc);
             }
         }
     }

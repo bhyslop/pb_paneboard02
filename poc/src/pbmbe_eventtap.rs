@@ -167,21 +167,21 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
         if event_type == K_CG_EVENT_FLAGS_CHANGED || event_type == K_CG_EVENT_KEY_UP {
             let session_active = {
                 let session = ALT_TAB_SESSION.lock().unwrap();
-                // eprintln!("DEBUG: [ALT_TAB] session check: active={}", session.active);
+                // eprintln!("SWITCHER: session check: active={}", session.active);
                 session.active
             };
 
             if session_active {
-                eprintln!("DEBUG: [ALT_TAB] checking flags: event_type={} keycode={} has_cmd={} has_shift={}",
+                eprintln!("SWITCHER: checking flags: event_type={} keycode={} has_cmd={} has_shift={}",
                          event_type, keycode, has_cmd, has_shift);
 
                 // If Command is no longer held, commit switch and cleanup
                 if !has_cmd {
-                    eprintln!("DEBUG: [ALT_TAB] Command released (detected via flags)");
+                    eprintln!("SWITCHER: Command released (detected via flags)");
 
                     // Defensive bounds check: verify MRU snapshot is non-empty
                     if snapshot.is_empty() {
-                        eprintln!("ALT_TAB: switch | SKIPPED reason=empty_mru");
+                        eprintln!("SWITCHER: switch | SKIPPED reason=empty_mru");
                         hide_alt_tab_overlay_and_cleanup();
                         return event;
                     }
@@ -194,12 +194,12 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
                                 Some(snapshot[idx].clone())
                             } else {
                                 // Bounds check failed - highlight_index exceeds array
-                                eprintln!("ALT_TAB: switch | SKIPPED reason=index_out_of_bounds idx={} len={}", idx, snapshot.len());
+                                eprintln!("SWITCHER: switch | SKIPPED reason=index_out_of_bounds idx={} len={}", idx, snapshot.len());
                                 None
                             }
                         } else {
                             // No highlight set - should not happen in normal flow
-                            eprintln!("ALT_TAB: switch | SKIPPED reason=no_highlight_index");
+                            eprintln!("SWITCHER: switch | SKIPPED reason=no_highlight_index");
                             None
                         }
                     };
@@ -236,7 +236,7 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
             // Ignore auto-repeat to prevent uncontrolled cycling
             let is_repeat = CGEventGetIntegerValueField(event, K_CG_KEYBOARD_EVENT_AUTOREPEAT) != 0;
             if is_repeat {
-                eprintln!("DEBUG: [ALT_TAB] Ignoring Tab auto-repeat");
+                eprintln!("SWITCHER: Ignoring Tab auto-repeat");
                 return std::ptr::null_mut(); // Discard auto-repeat event
             }
 
@@ -248,7 +248,7 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
                 session.active = true;
                 drop(session); // Release lock before calling prune (which locks MRU_STACK)
 
-                println!("ALT_TAB: session start");
+                println!("SWITCHER: session start");
 
                 // Prune stale MRU entries at session start
                 let pruned = crate::pbmsm_mru::prune_stale_mru_entries();
@@ -275,7 +275,7 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
                 session.popup_shown = false;
                 session.highlight_index = None;
                 drop(session);
-                eprintln!("ALT_TAB: no windows available");
+                eprintln!("SWITCHER: no windows available");
                 println!("BLOCKED: cmd+tab (no windows)");
                 return std::ptr::null_mut();
             }
@@ -300,11 +300,11 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
 
                 let entry = &snapshot[initial_idx];
                 if has_shift {
-                    println!("ALT_TAB: backward step -> index={} app={} win=\"{}\"",
+                    println!("SWITCHER: backward step -> index={} app={} win=\"{}\"",
                              initial_idx, entry.bundle_id, entry.title);
                     println!("BLOCKED: cmd+shift+tab");
                 } else {
-                    println!("ALT_TAB: forward step -> index={} app={} win=\"{}\"",
+                    println!("SWITCHER: forward step -> index={} app={} win=\"{}\"",
                              initial_idx, entry.bundle_id, entry.title);
                     println!("BLOCKED: cmd+tab");
                 }
@@ -332,11 +332,11 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
 
             let entry = &snapshot[new_idx];
             if has_shift {
-                println!("ALT_TAB: backward step -> index={} app={} win=\"{}\"",
+                println!("SWITCHER: backward step -> index={} app={} win=\"{}\"",
                          new_idx, entry.bundle_id, entry.title);
                 println!("BLOCKED: cmd+shift+tab");
             } else {
-                println!("ALT_TAB: forward step -> index={} app={} win=\"{}\"",
+                println!("SWITCHER: forward step -> index={} app={} win=\"{}\"",
                          new_idx, entry.bundle_id, entry.title);
                 println!("BLOCKED: cmd+tab");
             }
