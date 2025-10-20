@@ -166,6 +166,46 @@ pub unsafe fn visible_frame_for_screen(screen: &NSScreen) -> Option<VisibleFrame
     })
 }
 
+// DisplayInfo for layout configuration system
+#[derive(Debug, Clone)]
+pub struct DisplayInfo {
+    pub index: usize,
+    pub width: f64,
+    pub height: f64,
+    pub name: String,
+}
+
+// Gather all display information for layout system initialization
+#[allow(unexpected_cfgs)]
+pub unsafe fn gather_all_display_info() -> Vec<DisplayInfo> {
+    let screens = get_all_screens();
+    let mut displays = Vec::new();
+
+    for (idx, screen) in screens.iter().enumerate() {
+        if let Some(vf) = visible_frame_for_screen(screen) {
+            // Get localized name
+            use objc2::msg_send;
+            use objc2_foundation::NSString;
+            let name_ptr: *const NSString = msg_send![screen, localizedName];
+            let name = if !name_ptr.is_null() {
+                let name_str = unsafe { &*name_ptr };
+                name_str.to_string()
+            } else {
+                format!("Display {}", idx)
+            };
+
+            displays.push(DisplayInfo {
+                index: idx,
+                width: vf.width,
+                height: vf.height,
+                name,
+            });
+        }
+    }
+
+    displays
+}
+
 // Get full frame (not visible frame) for a specific screen
 #[allow(unexpected_cfgs)]
 pub unsafe fn full_frame_for_screen(screen: &NSScreen) -> Option<VisibleFrame> {

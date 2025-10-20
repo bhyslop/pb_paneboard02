@@ -33,23 +33,27 @@ use crate::pbmbd_display::{
     VisibleFrame, Rect,
     visible_frame_main_display, visible_frame_for_screen,
     get_all_screens, get_display_for_window, get_display_for_window_with_validation,
+    gather_all_display_info,
 };
 
-use crate::pbgx_layout::{LayoutManager, Combo};
+use crate::pbgf_form::{Form, PixelRect};
 
 // Need to import CFRelease separately as it's used in multiple places
 use core_foundation::base::CFRelease;
 
 use lazy_static::lazy_static;
-use std::collections::HashMap;
 
 // One-time warning flag for visibleFrame validation
 static VISIBLE_FRAME_WARNING_SHOWN: AtomicBool = AtomicBool::new(false);
 
-// Global layout manager and sequence state
+// Global form configuration (layout system)
 lazy_static! {
-    static ref LAYOUT_MANAGER: LayoutManager = LayoutManager::load_from_file();
-    static ref SEQUENCE_STATE: Mutex<HashMap<String, usize>> = Mutex::new(HashMap::new());
+    static ref FORM: Mutex<Form> = {
+        unsafe {
+            let displays = gather_all_display_info();
+            Mutex::new(Form::load_from_file(&displays))
+        }
+    };
 }
 
 // Frontmost app info captured at chord time
@@ -59,9 +63,7 @@ pub struct TilingJob {
     pub quad: Quad,
     pub frontmost: FrontmostInfo,
     pub attempt: u32, // 0 = first attempt, 1-3 = retries
-    pub key_name: Option<String>, // Key name for layout sequence tracking
-    pub combo_index: Option<usize>, // Combo index within sequence
-    pub custom_combo: Option<Combo>, // Custom combo from layout config
+    pub key_name: Option<String>, // Key name for layout action
 }
 
 // Observer context for timeout and job tracking
@@ -80,40 +82,104 @@ pub struct EnumeratedWindow {
     pub title: String,
 }
 
-/// Get the next combo for a given key, advancing the sequence index
-/// Returns (combo, index) if sequence exists, None otherwise
-pub fn get_next_combo_for_key(key_name: &str) -> Option<(Combo, usize)> {
-    // Look up sequence in layout manager
-    let sequence = LAYOUT_MANAGER.get_sequence(key_name)?;
-
-    if sequence.is_empty() {
-        return None;
-    }
-
-    // Get and advance the index for this key
-    let mut state = SEQUENCE_STATE.lock().unwrap();
-    let current_index = state.entry(key_name.to_string()).or_insert(0);
-    let combo = sequence[*current_index % sequence.len()].clone();
-    let index = *current_index;
-
-    // Advance for next press
-    let next_index = (*current_index + 1) % sequence.len();
-    *current_index = next_index;
-
-    eprintln!("DEBUG: [LAYOUT] Sequence state for {}: used={}, next={}, total={}",
-              key_name, index, next_index, sequence.len());
-
-    Some((combo, index))
+/// Reset layout session state (called on modifier release)
+pub fn reset_layout_session() {
+    let mut form = FORM.lock().unwrap();
+    form.reset_layout_session();
+    form.reset_display_move_session();
 }
 
-/// Reset all sequence indices to 0 (called on modifier release)
-pub fn reset_all_sequence_indices() {
-    let mut state = SEQUENCE_STATE.lock().unwrap();
-    if !state.is_empty() {
-        eprintln!("DEBUG: [LAYOUT] Resetting indices: {:?}", state);
+/// Execute a DisplayMove for the given key (checks Form configuration)
+/// Returns true if move was executed, false if no binding or out of range
+pub fn execute_display_move_for_key(key: &str, pid: u32, bundle_id: &str) -> bool {
+    unsafe {
+        let screens = get_all_screens();
+        if screens.is_empty() {
+            eprintln!("DISPLAYMOVE: key={} | FAILED reason=no_screens", key);
+            return false;
+        }
+
+        // Get focused window
+        let win = match get_focused_window_by_pid(pid) {
+            Ok(w) => w,
+            Err(reason) => {
+                eprintln!("DISPLAYMOVE: key={} | FAILED reason={}", key, reason);
+                return false;
+            }
+        };
+
+        // Get current window rect
+        let current_rect = match win.get_current_rect() {
+            Some(r) => r,
+            None => {
+                eprintln!("DISPLAYMOVE: key={} | FAILED reason=cannot_get_current_rect", key);
+                return false;
+            }
+        };
+
+        // Determine current display index
+        let current_display_index = get_display_index_for_window(current_rect);
+
+        // Look up target display from Form
+        let form = FORM.lock().unwrap();
+        let target_display_index = match form.execute_display_move(key, current_display_index, screens.len()) {
+            Some(idx) => idx,
+            None => {
+                // No binding or out of range (already logged)
+                return false;
+            }
+        };
+        drop(form); // Release lock before AX operations
+
+        // If already on target display, no-op
+        if target_display_index == current_display_index {
+            eprintln!("DEBUG: [DISPLAYMOVE] Already on target display {}", target_display_index);
+            return false;
+        }
+
+        // Get target visible frame
+        let target_vf = match visible_frame_for_screen(&screens[target_display_index]) {
+            Some(vf) => vf,
+            None => {
+                eprintln!("DISPLAYMOVE: key={} | FAILED reason=no_visible_frame", key);
+                return false;
+            }
+        };
+
+        // Get current visible frame for offset calculation
+        let current_vf = visible_frame_for_screen(&screens[current_display_index]).unwrap();
+
+        // Calculate offset within current screen
+        let offset_x = current_rect.x - current_vf.min_x;
+        let offset_y = current_rect.y - current_vf.min_y;
+
+        // Apply same offset to target screen to preserve relative position
+        let new_x = target_vf.min_x + offset_x;
+        let new_y = target_vf.min_y + offset_y;
+
+        // Move window to new position (size unchanged)
+        match win.set_position(new_x, new_y) {
+            Ok(()) => {
+                println!(
+                    "DISPLAYMOVE: SUCCESS key={} | app=\"{}\" from_display={} to_display={} frame=({:.0},{:.0},{:.0},{:.0})",
+                    key, bundle_id, current_display_index, target_display_index, new_x, new_y, current_rect.w, current_rect.h
+                );
+                true
+            }
+            Err(e) => {
+                let reason = match e {
+                    AxError::Permission => "ax_permission_missing_or_revoked",
+                    AxError::Platform(code) => {
+                        eprintln!("DEBUG: set_position failed with code {}", code);
+                        "ax_error"
+                    }
+                    _ => "ax_error",
+                };
+                eprintln!("DISPLAYMOVE: key={} | FAILED reason={}", key, reason);
+                false
+            }
+        }
     }
-    state.clear();
-    eprintln!("DEBUG: [LAYOUT] All sequence indices reset to 0");
 }
 
 /// Focus a specific window by window ID using AX APIs
@@ -395,192 +461,6 @@ pub fn should_use_observer_on_error(error_msg: &str) -> bool {
     error_msg.contains("ax_cannot_complete_retry_needed")
 }
 
-// Move window to previous display (wrapping)
-// Per spec: preserve window rect exactly, just reparent to adjacent display
-pub fn move_window_to_prev_display(pid: u32, bundle_id: &str) {
-    unsafe {
-        let screens = get_all_screens();
-        if screens.is_empty() {
-            println!("MOVE: PREV | FAILED reason=no_screens");
-            return;
-        }
-
-        // If only one screen, do nothing
-        if screens.len() == 1 {
-            eprintln!("DEBUG: Only one display, ignoring PageUp");
-            return;
-        }
-
-        // Get focused window
-        let win = match get_focused_window_by_pid(pid) {
-            Ok(w) => w,
-            Err(reason) => {
-                println!("MOVE: PREV | FAILED reason={}", reason);
-                return;
-            }
-        };
-
-        // Get current window rect
-        let current_rect = match win.get_current_rect() {
-            Some(r) => r,
-            None => {
-                println!("MOVE: PREV | FAILED reason=cannot_get_current_rect");
-                return;
-            }
-        };
-
-        // Find which screen the window is currently on (by window center point)
-        let win_center_x = current_rect.x + current_rect.w / 2.0;
-        let win_center_y = current_rect.y + current_rect.h / 2.0;
-
-        let current_screen_idx = screens.iter().position(|screen| {
-            if let Some(vf) = visible_frame_for_screen(screen) {
-                win_center_x >= vf.min_x && win_center_x < vf.min_x + vf.width &&
-                win_center_y >= vf.min_y && win_center_y < vf.min_y + vf.height
-            } else {
-                false
-            }
-        }).unwrap_or(0);
-
-        // Calculate previous display index (wrapping)
-        let prev_idx = if current_screen_idx == 0 {
-            screens.len() - 1
-        } else {
-            current_screen_idx - 1
-        };
-
-        // Get current and target screen visible frames
-        let current_vf = visible_frame_for_screen(&screens[current_screen_idx]).unwrap();
-        let target_vf = match visible_frame_for_screen(&screens[prev_idx]) {
-            Some(vf) => vf,
-            None => {
-                println!("MOVE: PREV | FAILED reason=no_visible_frame");
-                return;
-            }
-        };
-
-        // Calculate offset within current screen
-        let offset_x = current_rect.x - current_vf.min_x;
-        let offset_y = current_rect.y - current_vf.min_y;
-
-        // Apply same offset to target screen to preserve relative position
-        let new_x = target_vf.min_x + offset_x;
-        let new_y = target_vf.min_y + offset_y;
-
-        // Move window to new position (size unchanged)
-        match win.set_position(new_x, new_y) {
-            Ok(()) => {
-                println!(
-                    "MOVE: PREV | SUCCESS | app=\"{}\" from_display={} to_display={} frame=({:.0},{:.0},{:.0},{:.0})",
-                    bundle_id, current_screen_idx, prev_idx, new_x, new_y, current_rect.w, current_rect.h
-                );
-            }
-            Err(e) => {
-                let reason = match e {
-                    AxError::Permission => "ax_permission_missing_or_revoked",
-                    AxError::Platform(code) => {
-                        eprintln!("DEBUG: set_position failed with code {}", code);
-                        "ax_error"
-                    }
-                    _ => "ax_error",
-                };
-                println!("MOVE: PREV | FAILED reason={}", reason);
-            }
-        }
-    }
-}
-
-// Move window to next display (wrapping)
-// Per spec: preserve window rect exactly, just reparent to adjacent display
-pub fn move_window_to_next_display(pid: u32, bundle_id: &str) {
-    unsafe {
-        let screens = get_all_screens();
-        if screens.is_empty() {
-            println!("MOVE: NEXT | FAILED reason=no_screens");
-            return;
-        }
-
-        // If only one screen, do nothing
-        if screens.len() == 1 {
-            eprintln!("DEBUG: Only one display, ignoring PageDown");
-            return;
-        }
-
-        // Get focused window
-        let win = match get_focused_window_by_pid(pid) {
-            Ok(w) => w,
-            Err(reason) => {
-                println!("MOVE: NEXT | FAILED reason={}", reason);
-                return;
-            }
-        };
-
-        // Get current window rect
-        let current_rect = match win.get_current_rect() {
-            Some(r) => r,
-            None => {
-                println!("MOVE: NEXT | FAILED reason=cannot_get_current_rect");
-                return;
-            }
-        };
-
-        // Find which screen the window is currently on (by window center point)
-        let win_center_x = current_rect.x + current_rect.w / 2.0;
-        let win_center_y = current_rect.y + current_rect.h / 2.0;
-
-        let current_screen_idx = screens.iter().position(|screen| {
-            if let Some(vf) = visible_frame_for_screen(screen) {
-                win_center_x >= vf.min_x && win_center_x < vf.min_x + vf.width &&
-                win_center_y >= vf.min_y && win_center_y < vf.min_y + vf.height
-            } else {
-                false
-            }
-        }).unwrap_or(0);
-
-        // Calculate next display index (wrapping)
-        let next_idx = (current_screen_idx + 1) % screens.len();
-
-        // Get current and target screen visible frames
-        let current_vf = visible_frame_for_screen(&screens[current_screen_idx]).unwrap();
-        let target_vf = match visible_frame_for_screen(&screens[next_idx]) {
-            Some(vf) => vf,
-            None => {
-                println!("MOVE: NEXT | FAILED reason=no_visible_frame");
-                return;
-            }
-        };
-
-        // Calculate offset within current screen
-        let offset_x = current_rect.x - current_vf.min_x;
-        let offset_y = current_rect.y - current_vf.min_y;
-
-        // Apply same offset to target screen to preserve relative position
-        let new_x = target_vf.min_x + offset_x;
-        let new_y = target_vf.min_y + offset_y;
-
-        // Move window to new position (size unchanged)
-        match win.set_position(new_x, new_y) {
-            Ok(()) => {
-                println!(
-                    "MOVE: NEXT | SUCCESS | app=\"{}\" from_display={} to_display={} frame=({:.0},{:.0},{:.0},{:.0})",
-                    bundle_id, current_screen_idx, next_idx, new_x, new_y, current_rect.w, current_rect.h
-                );
-            }
-            Err(e) => {
-                let reason = match e {
-                    AxError::Permission => "ax_permission_missing_or_revoked",
-                    AxError::Platform(code) => {
-                        eprintln!("DEBUG: set_position failed with code {}", code);
-                        "ax_error"
-                    }
-                    _ => "ax_error",
-                };
-                println!("MOVE: NEXT | FAILED reason={}", reason);
-            }
-        }
-    }
-}
-
 pub fn rect_for_quad(vf: VisibleFrame, q: Quad) -> Rect {
     let w2 = (vf.width / 2.0).floor();
     let h2 = (vf.height / 2.0).floor();
@@ -592,14 +472,32 @@ pub fn rect_for_quad(vf: VisibleFrame, q: Quad) -> Rect {
     }
 }
 
-/// Convert a Combo (percentage-based) to a Rect (pixel-based) for given visible frame
-pub fn rect_from_combo(vf: VisibleFrame, combo: &Combo) -> Rect {
-    let x = vf.min_x + (vf.width * combo.x / 100.0);
-    let y = vf.min_y + (vf.height * combo.y / 100.0);
-    let w = vf.width * combo.width / 100.0;
-    let h = vf.height * combo.height / 100.0;
+/// Convert PixelRect to Rect (with visible frame offset)
+fn pixel_rect_to_rect(pr: &PixelRect, vf: &VisibleFrame) -> Rect {
+    Rect {
+        x: vf.min_x + pr.x,
+        y: vf.min_y + pr.y,
+        w: pr.width,
+        h: pr.height,
+    }
+}
 
-    Rect { x, y, w, h }
+/// Determine which display index contains the given window rect (by center point)
+unsafe fn get_display_index_for_window(window_rect: Rect) -> usize {
+    let screens = get_all_screens();
+    let win_center_x = window_rect.x + window_rect.w / 2.0;
+    let win_center_y = window_rect.y + window_rect.h / 2.0;
+
+    for (idx, screen) in screens.iter().enumerate() {
+        if let Some(vf) = visible_frame_for_screen(screen) {
+            if win_center_x >= vf.min_x && win_center_x < vf.min_x + vf.width &&
+               win_center_y >= vf.min_y && win_center_y < vf.min_y + vf.height {
+                return idx;
+            }
+        }
+    }
+
+    0 // Fallback to main display
 }
 
 // Safe wrapper to set window rect using RAII and Position → Size policy with debug logging
@@ -763,25 +661,28 @@ pub extern "C" fn ax_observer_callback(
         let current_rect = win_elem.get_current_rect();
         std::mem::forget(win_elem); // prevent CFRelease
 
-        let vf = if let Some(rect) = current_rect {
-            get_display_for_window(rect).unwrap_or_else(|| {
+        let (vf, display_index) = if let Some(rect) = current_rect {
+            let disp_idx = get_display_index_for_window(rect);
+            let visible = get_display_for_window(rect).unwrap_or_else(|| {
                 visible_frame_main_display().expect("Main display should exist")
-            })
+            });
+            (visible, disp_idx)
         } else {
-            visible_frame_main_display().expect("Main display should exist")
+            (visible_frame_main_display().expect("Main display should exist"), 0)
         };
 
-        // Use custom combo if present, otherwise fall back to quad
-        let r = if let Some(ref combo) = guard.job.custom_combo {
-            rect_from_combo(vf, combo)
+        // Look up pane from Form if key_name is present, otherwise use quad
+        let (r, log_suffix) = if let Some(ref key) = guard.job.key_name {
+            let mut form = FORM.lock().unwrap();
+            if let Some((pixel_rect, pane_idx)) = form.get_next_pane(key, display_index) {
+                let rect = pixel_rect_to_rect(&pixel_rect, &vf);
+                let suffix = format!(" | key={} pane={}", key, pane_idx);
+                (rect, suffix)
+            } else {
+                (rect_for_quad(vf, guard.job.quad), String::new())
+            }
         } else {
-            rect_for_quad(vf, guard.job.quad)
-        };
-
-        let log_suffix = if let (Some(ref key), Some(idx)) = (&guard.job.key_name, guard.job.combo_index) {
-            format!(" | key={} combo={}", key, idx)
-        } else {
-            String::new()
+            (rect_for_quad(vf, guard.job.quad), String::new())
         };
 
         let win = AxElement(element);
@@ -805,8 +706,8 @@ pub fn tile_window_quadrant(job: TilingJob) {
         Quad::LR => "LR",
     };
 
-    let key_info = if let (Some(ref key), Some(idx)) = (&job.key_name, job.combo_index) {
-        format!(" key={} combo={}", key, idx)
+    let key_info = if let Some(ref key) = job.key_name {
+        format!(" key={}", key)
     } else {
         String::new()
     };
@@ -831,7 +732,10 @@ pub fn tile_window_quadrant(job: TilingJob) {
     unsafe {
         // Get the display frame for the window with validation
         let current_rect = win.get_current_rect();
-        let vf = if let Some(rect) = current_rect {
+        let (vf, display_index) = if let Some(rect) = current_rect {
+            // Determine display index first
+            let disp_idx = get_display_index_for_window(rect);
+
             // Use validation version to get both visible and full frames
             if let Some((visible, full, delta_y)) = get_display_for_window_with_validation(rect) {
                 // Log validation info per spec
@@ -847,25 +751,27 @@ pub fn tile_window_quadrant(job: TilingJob) {
                     eprintln!("NOTE: visibleFrame correction applied (menu bar height: {:.0}px)", delta_y);
                 }
 
-                visible
+                (visible, disp_idx)
             } else {
-                visible_frame_main_display().expect("Main display should exist")
+                (visible_frame_main_display().expect("Main display should exist"), 0)
             }
         } else {
-            visible_frame_main_display().expect("Main display should exist")
+            (visible_frame_main_display().expect("Main display should exist"), 0)
         };
 
-        // Use custom combo if present, otherwise fall back to quad
-        let r = if let Some(ref combo) = job.custom_combo {
-            rect_from_combo(vf, combo)
+        // Look up pane from Form if key_name is present, otherwise use quad
+        let (r, log_suffix) = if let Some(ref key) = job.key_name {
+            let mut form = FORM.lock().unwrap();
+            if let Some((pixel_rect, pane_idx)) = form.get_next_pane(key, display_index) {
+                let rect = pixel_rect_to_rect(&pixel_rect, &vf);
+                let suffix = format!(" | key={} pane={}", key, pane_idx);
+                (rect, suffix)
+            } else {
+                eprintln!("LAYOUT: no panes available for key={} on display={}", key, display_index);
+                (rect_for_quad(vf, job.quad), String::new())
+            }
         } else {
-            rect_for_quad(vf, job.quad)
-        };
-
-        let log_suffix = if let (Some(ref key), Some(idx)) = (&job.key_name, job.combo_index) {
-            format!(" | key={} combo={}", key, idx)
-        } else {
-            String::new()
+            (rect_for_quad(vf, job.quad), String::new())
         };
 
         match set_window_rect_safe(&win, r) {

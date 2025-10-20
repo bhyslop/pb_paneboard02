@@ -26,8 +26,8 @@ use crate::pbmbo_observer::{setup_mru_observer, setup_workspace_observer};
 use crate::pbmsb_browser::is_chromium_based;
 use crate::pbmp_pane::{
     TilingJob, tile_window_quadrant,
-    move_window_to_prev_display, move_window_to_next_display,
-    get_next_combo_for_key, reset_all_sequence_indices,
+    execute_display_move_for_key,
+    reset_layout_session,
 };
 use crate::pbmbd_display::{print_all_display_info};
 use crate::pbmba_ax::{
@@ -354,7 +354,7 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
 
             if was_held && !ctrl_shift_opt_held {
                 // Ctrl+Shift+Option released - reset all sequence indices
-                reset_all_sequence_indices();
+                reset_layout_session();
             }
 
             CTRL_SHIFT_OPT_WAS_HELD.store(ctrl_shift_opt_held, Ordering::Release);
@@ -390,9 +390,9 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
             return event;
         }
 
-        // Handle PageUp/PageDown for display moves
+        // Handle PageUp/PageDown for display moves (via Form configuration)
         if keycode == KVK_PAGE_UP || keycode == KVK_PAGE_DOWN {
-            let key_name = if keycode == KVK_PAGE_UP { "PageUp" } else { "PageDown" };
+            let key_name = if keycode == KVK_PAGE_UP { "pageup" } else { "pagedown" };
 
             // Capture frontmost app info at chord time
             if let Some(frontmost) = get_frontmost_app_info() {
@@ -403,12 +403,8 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
                 // Consume the chord
                 println!("BLOCKED: ctrl+shift+option+{}", key_name);
 
-                // Execute display move directly (no deferred job needed for simple moves)
-                if keycode == KVK_PAGE_UP {
-                    move_window_to_prev_display(frontmost.pid, &frontmost.bundle_id);
-                } else {
-                    move_window_to_next_display(frontmost.pid, &frontmost.bundle_id);
-                }
+                // Execute display move via Form (checks configuration)
+                execute_display_move_for_key(key_name, frontmost.pid, &frontmost.bundle_id);
 
                 std::ptr::null_mut() // <- swallow the event
             } else {
@@ -417,11 +413,11 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
             }
         } else if let Some(q) = chord_to_quad(keycode) {
             let key_name = match keycode {
-                KVK_HELP_INSERT => "Insert",
-                KVK_FWD_DELETE => "Delete",
-                KVK_HOME => "Home",
-                KVK_END => "End",
-                _ => "Unknown",
+                KVK_HELP_INSERT => "insert",
+                KVK_FWD_DELETE => "delete",
+                KVK_HOME => "home",
+                KVK_END => "end",
+                _ => "unknown",
             };
 
             // Capture frontmost app info at chord time
@@ -433,34 +429,15 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
                 // Update MRU with this window
                 update_mru_with_focus(frontmost.pid, frontmost.bundle_id.clone());
 
-                // Look up layout sequence and get next combo
-                let (custom_combo, combo_index) = match get_next_combo_for_key(key_name) {
-                    Some((combo, index)) => {
-                        eprintln!("DEBUG: [LAYOUT] Using combo {} for key {}", index, key_name);
-                        (Some(combo), Some(index))
-                    }
-                    None => {
-                        eprintln!("DEBUG: [LAYOUT] No sequence found for key {}, using default quad", key_name);
-                        (None, None)
-                    }
-                };
-
                 // Consume the chord and enqueue the tiling job for main runloop processing
-                let log_msg = if let Some(idx) = combo_index {
-                    format!("ctrl+shift+option+{} (combo={})", key_name, idx)
-                } else {
-                    format!("ctrl+shift+option+{}", key_name)
-                };
-                println!("BLOCKED: {}", log_msg);
+                println!("BLOCKED: ctrl+shift+option+{}", key_name);
 
-                // Create tiling job with frontmost context and layout info
+                // Create tiling job with frontmost context and key name
                 let job = TilingJob {
                     quad: q,
                     frontmost,
                     attempt: 0, // First attempt
                     key_name: Some(key_name.to_string()),
-                    combo_index,
-                    custom_combo,
                 };
 
                 // Defer job to main runloop instead of doing AX work here (Chrome compatibility)
