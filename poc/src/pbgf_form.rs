@@ -76,6 +76,13 @@ impl Fraction {
 // SECTION 2: Runtime structures (kept after parse, no XML ties)
 // ============================================================================
 
+/// Runtime display quirk (platform-filtered, ready for runtime matching)
+#[derive(Clone)]
+struct RuntimeDisplayQuirk {
+    name_contains: String,
+    min_bottom_inset: u32,
+}
+
 /// Main runtime form - contains pre-computed pane lists per (key, display)
 pub struct Form {
     // Pre-computed pane lists: (key_name, display_index) → sorted pixel rects
@@ -83,6 +90,9 @@ pub struct Form {
 
     // DisplayMove bindings: key_name → target spec
     display_moves: HashMap<String, DisplayMoveTarget>,
+
+    // DisplayQuirks: platform-filtered, ready for runtime application
+    display_quirks: Vec<RuntimeDisplayQuirk>,
 
     // Current layout session state (ephemeral, reset on chord release)
     layout_session: Option<LayoutSession>,
@@ -948,6 +958,22 @@ impl ParsedForm {
         let mut pane_lists = HashMap::new();
         let mut display_moves = HashMap::new();
 
+        // Build runtime DisplayQuirks (platform-filtered)
+        #[cfg(target_os = "macos")]
+        let current_platform = Platform::MacOS;
+        #[cfg(target_os = "windows")]
+        let current_platform = Platform::Windows;
+        #[cfg(target_os = "linux")]
+        let current_platform = Platform::Linux;
+
+        let runtime_quirks: Vec<RuntimeDisplayQuirk> = self.display_quirks.iter()
+            .filter(|q| q.platform == current_platform)
+            .map(|q| RuntimeDisplayQuirk {
+                name_contains: q.name_contains.clone(),
+                min_bottom_inset: q.min_bottom_inset,
+            })
+            .collect();
+
         // Apply DisplayQuirks to displays
         let adjusted_displays = self.apply_display_quirks(displays);
 
@@ -1015,6 +1041,7 @@ impl ParsedForm {
         Form {
             pane_lists,
             display_moves,
+            display_quirks: runtime_quirks,
             layout_session: None,
             display_move_session: None,
         }
@@ -1375,6 +1402,7 @@ impl Form {
         Form {
             pane_lists: HashMap::new(),
             display_moves: HashMap::new(),
+            display_quirks: Vec::new(),
             layout_session: None,
             display_move_session: None,
         }
@@ -1476,5 +1504,15 @@ impl Form {
                 }
             }
         }
+    }
+
+    /// Get minimum bottom inset for a display by name
+    /// Returns the MAX of all matching DisplayQuirk minBottomInset values, or 0 if none match
+    pub fn get_min_bottom_inset(&self, display_name: &str) -> u32 {
+        self.display_quirks.iter()
+            .filter(|q| display_name.contains(&q.name_contains))
+            .map(|q| q.min_bottom_inset)
+            .max()
+            .unwrap_or(0)
     }
 }

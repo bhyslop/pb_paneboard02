@@ -73,12 +73,21 @@
     This reserves 31 pixels at the bottom of any display named "FlipGo-A" on macOS,
     preventing window tiling into that region.
 
-    Processing order:
+    Processing:
+    Quirks are applied at both parse-time and runtime to ensure consistency:
+
+    Parse-time (pane list precomputation):
     1. Filter quirks by current platform
-    2. For each display, find all quirks where nameContains matches display name
+    2. For each DisplayInfo, find all quirks where nameContains matches display name
     3. Take MAX of all matching minBottomInset values
-    4. Adjust display's VisibleFrame: height -= inset, (min_y unchanged)
-    5. Use adjusted VisibleFrame for all subsequent Space matching and layout calculations
+    4. Adjust DisplayInfo height: height -= inset
+    5. Use adjusted dimensions for Space matching and pane list precomputation
+
+    Runtime (window positioning):
+    1. Quirks are stored in runtime Form struct (platform-filtered)
+    2. When positioning windows, Form::get_min_bottom_inset(display_name) returns
+       the MAX minBottomInset for all matching quirks, or 0 if none match
+    3. VisibleFrame height is reduced by this inset before applying to windows
 
     Non-holistic design note:
     This is intentionally a "patch" mechanism for hardware/OS quirks, not integrated

@@ -378,7 +378,9 @@ Multiple quirks can match the same display. The final bottom inset is the **maxi
 - OS bugs where visibleFrame doesn't account for reserved UI space
 - Platform-specific rendering issues requiring safe margins
 
-**Processing:** Quirks are filtered by current platform, applied to matching displays, then the adjusted VisibleFrame is used for all subsequent layout operations.
+**Processing:** Quirks are applied at both parse-time and runtime:
+- **Parse-time:** Filtered by platform, applied to DisplayInfo dimensions for pane list precomputation and Space matching
+- **Runtime:** Stored in Form, accessible via `get_min_bottom_inset(display_name)` for window positioning
 
 **Design note:** This is intentionally a "patch" mechanism, not integrated with Space/Measure. Future extensions may add `minTopInset`, `minLeftInset`, `minRightInset`.
 

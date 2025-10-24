@@ -219,30 +219,6 @@ pub unsafe fn full_frame_for_screen(screen: &NSScreen) -> Option<VisibleFrame> {
     })
 }
 
-// Get the display that currently contains the given window (by window center point)
-pub unsafe fn get_display_for_window(window_rect: Rect) -> Option<VisibleFrame> {
-    let screens = get_all_screens();
-    if screens.is_empty() {
-        return None;
-    }
-
-    let win_center_x = window_rect.x + window_rect.w / 2.0;
-    let win_center_y = window_rect.y + window_rect.h / 2.0;
-
-    // Find which screen contains the window center
-    for screen in &screens {
-        if let Some(vf) = visible_frame_for_screen(screen) {
-            if win_center_x >= vf.min_x && win_center_x < vf.min_x + vf.width &&
-               win_center_y >= vf.min_y && win_center_y < vf.min_y + vf.height {
-                return Some(vf);
-            }
-        }
-    }
-
-    // Fallback to main display if window center isn't on any display
-    visible_frame_main_display()
-}
-
 // Get display info with both visible frame and full frame for validation
 // Returns (corrected_visible_frame, full_frame, delta_y)
 // Applies menu bar correction when visibleFrame.minY == frame.minY
