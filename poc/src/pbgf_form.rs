@@ -123,11 +123,25 @@ struct DisplayMoveSession {
 
 struct ParsedForm {
     measures: HashMap<String, u32>,
+    display_quirks: Vec<ParsedDisplayQuirk>,
     spaces: HashMap<String, ParsedSpace>,
     frames: HashMap<String, ParsedFrame>,
     layouts: HashMap<String, ParsedLayout>,
     layout_actions: Vec<ParsedLayoutAction>,
     display_moves: Vec<ParsedDisplayMove>,
+}
+
+struct ParsedDisplayQuirk {
+    name_contains: String,
+    platform: Platform,
+    min_bottom_inset: u32,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Platform {
+    MacOS,
+    Windows,
+    Linux,
 }
 
 struct ParsedSpace {
@@ -224,6 +238,10 @@ struct ParsedDisplayMove {
 
 const DEFAULT_FORM_XML: &str = r#"<?xml version="1.0" encoding="utf-8"?>
 <Form>
+  <!-- DisplayQuirk example (uncomment and adjust for your display):
+  <DisplayQuirk nameContains="FlipGo-A" platform="macos" minBottomInset="31"/>
+  -->
+
   <!-- Define quadrant frames (WinSplit-style 2x2 grid) -->
   <Frame name="quadrant-ul">
     <Pane x="0" y="0" width="1/2" height="1/2"/>
@@ -274,6 +292,7 @@ impl ParsedForm {
         reader.trim_text(true);
 
         let mut measures = HashMap::new();
+        let mut display_quirks = Vec::new();
         let mut spaces = HashMap::new();
         let mut frames = HashMap::new();
         let mut layouts = HashMap::new();
@@ -318,6 +337,11 @@ impl ParsedForm {
                                 .map_err(|e| format!("at byte {}: {}", reader.buffer_position(), e))?;
                             measures.insert(m.0, m.1);
                         }
+                        b"DisplayQuirk" if in_form => {
+                            let quirk = Self::parse_display_quirk(e)
+                                .map_err(|e| format!("at byte {}: {}", reader.buffer_position(), e))?;
+                            display_quirks.push(quirk);
+                        }
                         b"LayoutAction" if in_form => {
                             let action = Self::parse_layout_action(e)
                                 .map_err(|e| format!("at byte {}: {}", reader.buffer_position(), e))?;
@@ -343,6 +367,7 @@ impl ParsedForm {
 
         Ok(ParsedForm {
             measures,
+            display_quirks,
             spaces,
             frames,
             layouts,
@@ -371,6 +396,45 @@ impl ParsedForm {
         match (name, value) {
             (Some(n), Some(v)) => Ok((n, v)),
             _ => Err("Measure missing required attributes".to_string()),
+        }
+    }
+
+    fn parse_display_quirk(e: &quick_xml::events::BytesStart) -> Result<ParsedDisplayQuirk, String> {
+        let mut name_contains = None;
+        let mut platform = None;
+        let mut min_bottom_inset = None;
+
+        for attr in e.attributes() {
+            let attr = attr.map_err(|e| format!("attribute error: {}", e))?;
+            match attr.key.as_ref() {
+                b"nameContains" => {
+                    name_contains = Some(String::from_utf8_lossy(&attr.value).to_string());
+                }
+                b"platform" => {
+                    let p_str = String::from_utf8_lossy(&attr.value);
+                    platform = Some(match p_str.as_ref() {
+                        "macos" => Platform::MacOS,
+                        "windows" => Platform::Windows,
+                        "linux" => Platform::Linux,
+                        _ => return Err(format!("invalid platform: {}", p_str)),
+                    });
+                }
+                b"minBottomInset" => {
+                    let v_str = String::from_utf8_lossy(&attr.value);
+                    min_bottom_inset = Some(v_str.parse::<u32>()
+                        .map_err(|_| format!("invalid minBottomInset value: {}", v_str))?);
+                }
+                _ => {}
+            }
+        }
+
+        match (name_contains, platform, min_bottom_inset) {
+            (Some(nc), Some(p), Some(mbi)) => Ok(ParsedDisplayQuirk {
+                name_contains: nc,
+                platform: p,
+                min_bottom_inset: mbi,
+            }),
+            _ => Err("DisplayQuirk missing required attributes".to_string()),
         }
     }
 
@@ -842,9 +906,50 @@ impl ParsedForm {
 // ============================================================================
 
 impl ParsedForm {
+    /// Apply DisplayQuirks to adjust display dimensions
+    /// Returns a new Vec<DisplayInfo> with adjusted width/height based on matching quirks
+    fn apply_display_quirks(&self, displays: &[DisplayInfo]) -> Vec<DisplayInfo> {
+        // Determine current platform
+        #[cfg(target_os = "macos")]
+        let current_platform = Platform::MacOS;
+        #[cfg(target_os = "windows")]
+        let current_platform = Platform::Windows;
+        #[cfg(target_os = "linux")]
+        let current_platform = Platform::Linux;
+
+        displays.iter().map(|display| {
+            // Find all quirks matching this display (by platform and nameContains)
+            let matching_quirks = self.display_quirks.iter()
+                .filter(|q| q.platform == current_platform)
+                .filter(|q| display.name.contains(&q.name_contains));
+
+            // Take MAX of all matching minBottomInset values
+            let max_bottom_inset = matching_quirks
+                .map(|q| q.min_bottom_inset)
+                .max()
+                .unwrap_or(0);
+
+            if max_bottom_inset > 0 {
+                eprintln!("LAYOUT: DisplayQuirk matched '{}' → applying {}px bottom inset",
+                    display.name, max_bottom_inset);
+                DisplayInfo {
+                    index: display.index,
+                    width: display.width,
+                    height: display.height - max_bottom_inset as f64,
+                    name: display.name.clone(),
+                }
+            } else {
+                display.clone()
+            }
+        }).collect()
+    }
+
     fn build_runtime(&self, displays: &[DisplayInfo]) -> Form {
         let mut pane_lists = HashMap::new();
         let mut display_moves = HashMap::new();
+
+        // Apply DisplayQuirks to displays
+        let adjusted_displays = self.apply_display_quirks(displays);
 
         // Build DisplayMove bindings
         for dm in &self.display_moves {
@@ -854,7 +959,7 @@ impl ParsedForm {
         // Build pane lists for each LayoutAction × Display
         for action in &self.layout_actions {
             if let Some(layout) = self.layouts.get(&action.layout) {
-                for display in displays {
+                for display in &adjusted_displays {
                     // Check if Layout's Space matches this display
                     if let Some(ref space_name) = layout.space {
                         if let Some(space) = self.spaces.get(space_name) {

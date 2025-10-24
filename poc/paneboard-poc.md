@@ -333,9 +333,10 @@ Parse errors or semantic errors (e.g., undefined references) cause PaneBoard to 
 
 #### Configuration Structure
 
-The root element `<Form>` contains seven types of child elements, each serving a distinct purpose:
+The root element `<Form>` contains eight types of child elements, each serving a distinct purpose:
 
 - **`<Measure>`** - Named pixel constants for dimension constraints
+- **`<DisplayQuirk>`** - Platform-specific display geometry corrections (workarounds for hardware/OS quirks)
 - **`<Space>`** - Display matching rules based on resolution, orientation, name
 - **`<Frame>`** - Reusable geometric patterns (collections of Panes)
 - **`<Layout>`** - Compositions of Frames with conditional logic
@@ -355,6 +356,31 @@ Defines reusable pixel values referenced by name in dimension constraints:
 ```
 
 Measures can be referenced in `<Space>` and `<Shape>` dimension attributes (`minWidth`, `minHeight`, `underWidth`, `underHeight`). References accept either a Measure name or a literal integer.
+
+##### DisplayQuirk
+
+Platform-specific workarounds for displays where the OS-reported visible frame doesn't match the actual usable tiling area. Applied before all Space matching and layout calculations.
+
+```xml
+<DisplayQuirk nameContains="FlipGo-A" platform="macos" minBottomInset="31"/>
+```
+
+**Attributes:**
+- `nameContains`: Substring match against display name (minimum 3 alphanumeric characters)
+- `platform`: Target OS (`macos`, `windows`, or `linux`)
+- `minBottomInset`: Pixels to reserve at bottom of display (positive integer)
+
+**Merging behavior:**
+Multiple quirks can match the same display. The final bottom inset is the **maximum** of all matching `minBottomInset` values, ensuring all constraints are satisfied.
+
+**Common use cases:**
+- External monitors with physical obstructions (bezels, built-in control panels)
+- OS bugs where visibleFrame doesn't account for reserved UI space
+- Platform-specific rendering issues requiring safe margins
+
+**Processing:** Quirks are filtered by current platform, applied to matching displays, then the adjusted VisibleFrame is used for all subsequent layout operations.
+
+**Design note:** This is intentionally a "patch" mechanism, not integrated with Space/Measure. Future extensions may add `minTopInset`, `minLeftInset`, `minRightInset`.
 
 ##### Space
 
