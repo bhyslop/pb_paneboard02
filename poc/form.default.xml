@@ -78,7 +78,9 @@
 
   <!-- ========== LAYOUTS ========== -->
 
-  <!-- Top-Left quadrant: 11-pane compositional layout
+  <!-- Quadrant base layout: 11-pane compositional pattern
+       Defines geometry for TL quadrant; other quadrants generated via mirroring.
+
        Pane sequence (sorted by area desc, then traverse):
        1. Full display
        2. Top half
@@ -87,7 +89,7 @@
        6-7. Left/right halves of TL quadrant
        8-11. Four sub-quadrants of TL quadrant
   -->
-  <Layout name="quad-tl">
+  <Layout name="quadrant-base">
     <!-- Pane 1: Full display -->
     <Shape frame="full">
       <Include/>
@@ -148,205 +150,18 @@
     </Shape>
   </Layout>
 
-  <!-- Top-Right quadrant: 11-pane compositional layout
-       Same structure as quad-tl, focused on TR quadrant
-  -->
-  <Layout name="quad-tr">
-    <!-- Pane 1: Full display -->
-    <Shape frame="full">
-      <Include/>
-    </Shape>
-
-    <!-- Pane 2: Top half -->
-    <Shape frame="halves-vertical">
-      <Include/>                         <!-- top half -->
-      <Include whenOrientation="never"/> <!-- bottom half (dropped) -->
-    </Shape>
-
-    <!-- Panes 3-11: TR quadrant and its refinements -->
-    <Shape frame="quads">
-      <!-- TL quadrant (dropped) -->
-      <Include whenOrientation="never"/>
-      <!-- TR quadrant: subdivide into detail -->
-      <Shape frame="quad-detail-quads">
-        <Include/>  <!-- Pane 8: TL sub-quad -->
-        <Include/>  <!-- Pane 9: TR sub-quad -->
-        <Include/>  <!-- Pane 10: BL sub-quad -->
-        <Include/>  <!-- Pane 11: BR sub-quad -->
-      </Shape>
-      <!-- BL quadrant (dropped) -->
-      <Include whenOrientation="never"/>
-      <!-- BR quadrant (dropped) -->
-      <Include whenOrientation="never"/>
-    </Shape>
-
-    <!-- Additional detail shapes for TR quadrant halves -->
-    <Shape frame="quads">
-      <Include whenOrientation="never"/>
-      <!-- TR quadrant: subdivide into top/bottom halves -->
-      <Shape frame="quad-detail-halves">
-        <Include/>  <!-- Pane 4: top half of TR -->
-        <Include/>  <!-- Pane 5: bottom half of TR -->
-      </Shape>
-      <Include whenOrientation="never"/>
-      <Include whenOrientation="never"/>
-    </Shape>
-
-    <Shape frame="quads">
-      <Include whenOrientation="never"/>
-      <!-- TR quadrant: subdivide into left/right halves -->
-      <Shape frame="quad-detail-sides">
-        <Include/>  <!-- Pane 6: left half of TR -->
-        <Include/>  <!-- Pane 7: right half of TR -->
-      </Shape>
-      <Include whenOrientation="never"/>
-      <Include whenOrientation="never"/>
-    </Shape>
-
-    <!-- Pane 3: Whole TR quadrant as terminal -->
-    <Shape frame="quads">
-      <Include whenOrientation="never"/>
-      <Include/>  <!-- Pane 3: TR quadrant -->
-      <Include whenOrientation="never"/>
-      <Include whenOrientation="never"/>
-    </Shape>
-  </Layout>
-
-  <!-- Bottom-Left quadrant: 11-pane compositional layout
-       Same structure, focused on BL quadrant
-  -->
-  <Layout name="quad-bl">
-    <!-- Pane 1: Full display -->
-    <Shape frame="full">
-      <Include/>
-    </Shape>
-
-    <!-- Pane 2: Bottom half -->
-    <Shape frame="halves-vertical">
-      <Include whenOrientation="never"/> <!-- top half (dropped) -->
-      <Include/>                         <!-- bottom half -->
-    </Shape>
-
-    <!-- Panes 3-11: BL quadrant and its refinements -->
-    <Shape frame="quads">
-      <!-- TL quadrant (dropped) -->
-      <Include whenOrientation="never"/>
-      <!-- TR quadrant (dropped) -->
-      <Include whenOrientation="never"/>
-      <!-- BL quadrant: subdivide into detail -->
-      <Shape frame="quad-detail-quads">
-        <Include/>  <!-- Pane 8: TL sub-quad -->
-        <Include/>  <!-- Pane 9: TR sub-quad -->
-        <Include/>  <!-- Pane 10: BL sub-quad -->
-        <Include/>  <!-- Pane 11: BR sub-quad -->
-      </Shape>
-      <!-- BR quadrant (dropped) -->
-      <Include whenOrientation="never"/>
-    </Shape>
-
-    <!-- Additional detail shapes for BL quadrant halves -->
-    <Shape frame="quads">
-      <Include whenOrientation="never"/>
-      <Include whenOrientation="never"/>
-      <!-- BL quadrant: subdivide into top/bottom halves -->
-      <Shape frame="quad-detail-halves">
-        <Include/>  <!-- Pane 4: top half of BL -->
-        <Include/>  <!-- Pane 5: bottom half of BL -->
-      </Shape>
-      <Include whenOrientation="never"/>
-    </Shape>
-
-    <Shape frame="quads">
-      <Include whenOrientation="never"/>
-      <Include whenOrientation="never"/>
-      <!-- BL quadrant: subdivide into left/right halves -->
-      <Shape frame="quad-detail-sides">
-        <Include/>  <!-- Pane 6: left half of BL -->
-        <Include/>  <!-- Pane 7: right half of BL -->
-      </Shape>
-      <Include whenOrientation="never"/>
-    </Shape>
-
-    <!-- Pane 3: Whole BL quadrant as terminal -->
-    <Shape frame="quads">
-      <Include whenOrientation="never"/>
-      <Include whenOrientation="never"/>
-      <Include/>  <!-- Pane 3: BL quadrant -->
-      <Include whenOrientation="never"/>
-    </Shape>
-  </Layout>
-
-  <!-- Bottom-Right quadrant: 11-pane compositional layout
-       Same structure, focused on BR quadrant
-  -->
-  <Layout name="quad-br">
-    <!-- Pane 1: Full display -->
-    <Shape frame="full">
-      <Include/>
-    </Shape>
-
-    <!-- Pane 2: Bottom half -->
-    <Shape frame="halves-vertical">
-      <Include whenOrientation="never"/> <!-- top half (dropped) -->
-      <Include/>                         <!-- bottom half -->
-    </Shape>
-
-    <!-- Panes 3-11: BR quadrant and its refinements -->
-    <Shape frame="quads">
-      <!-- TL quadrant (dropped) -->
-      <Include whenOrientation="never"/>
-      <!-- TR quadrant (dropped) -->
-      <Include whenOrientation="never"/>
-      <!-- BL quadrant (dropped) -->
-      <Include whenOrientation="never"/>
-      <!-- BR quadrant: subdivide into detail -->
-      <Shape frame="quad-detail-quads">
-        <Include/>  <!-- Pane 8: TL sub-quad -->
-        <Include/>  <!-- Pane 9: TR sub-quad -->
-        <Include/>  <!-- Pane 10: BL sub-quad -->
-        <Include/>  <!-- Pane 11: BR sub-quad -->
-      </Shape>
-    </Shape>
-
-    <!-- Additional detail shapes for BR quadrant halves -->
-    <Shape frame="quads">
-      <Include whenOrientation="never"/>
-      <Include whenOrientation="never"/>
-      <Include whenOrientation="never"/>
-      <!-- BR quadrant: subdivide into top/bottom halves -->
-      <Shape frame="quad-detail-halves">
-        <Include/>  <!-- Pane 4: top half of BR -->
-        <Include/>  <!-- Pane 5: bottom half of BR -->
-      </Shape>
-    </Shape>
-
-    <Shape frame="quads">
-      <Include whenOrientation="never"/>
-      <Include whenOrientation="never"/>
-      <Include whenOrientation="never"/>
-      <!-- BR quadrant: subdivide into left/right halves -->
-      <Shape frame="quad-detail-sides">
-        <Include/>  <!-- Pane 6: left half of BR -->
-        <Include/>  <!-- Pane 7: right half of BR -->
-      </Shape>
-    </Shape>
-
-    <!-- Pane 3: Whole BR quadrant as terminal -->
-    <Shape frame="quads">
-      <Include whenOrientation="never"/>
-      <Include whenOrientation="never"/>
-      <Include whenOrientation="never"/>
-      <Include/>  <!-- Pane 3: BR quadrant -->
-    </Shape>
-  </Layout>
-
   <!-- ========== LAYOUT ACTIONS ========== -->
 
-  <!-- Quadrant traversal (all four quadrant keys) -->
-  <LayoutAction key="home" layout="quad-tl" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="pageup" layout="quad-tr" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="end" layout="quad-bl" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="pagedown" layout="quad-br" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <!-- Quadrant traversal: one base layout, mirrored for each quadrant
+       TL (home):     no mirroring
+       TR (pageup):   flip X (horizontal mirror)
+       BL (end):      flip Y (vertical mirror)
+       BR (pagedown): flip X and Y (both axes)
+  -->
+  <LayoutAction key="home"     layout="quadrant-base" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="pageup"   layout="quadrant-base" traverse="xfyf" mirrorX="flip" mirrorY="keep"/>
+  <LayoutAction key="end"      layout="quadrant-base" traverse="xfyf" mirrorX="keep" mirrorY="flip"/>
+  <LayoutAction key="pagedown" layout="quadrant-base" traverse="xfyf" mirrorX="flip" mirrorY="flip"/>
 
   <!-- Display movement -->
   <DisplayMove key="h" target="prev" wrap="true"/>
