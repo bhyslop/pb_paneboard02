@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Form>
-  <!-- DisplayQuirk example (uncomment and adjust for your display):
   <DisplayQuirk nameContains="FlipGo-A" platform="macos" minBottomInset="31"/>
-  -->
 
   <!-- Define quadrant frames (WinSplit-style 2x2 grid) -->
   <Frame name="quadrant-ul">
