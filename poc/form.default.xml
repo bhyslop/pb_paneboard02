@@ -27,131 +27,17 @@
 
   <!-- Subdivision of a quadrant: 4 bisections + 4 sub-quads = 8 panes -->
   <Frame name="quad-subdivisions">
-    <Pane x="0" y="0" width="1" height="1/2"/>      <!-- top half -->
-    <Pane x="0" y="1/2" width="1" height="1/2"/>    <!-- bottom half -->
-    <Pane x="0" y="0" width="1/2" height="1"/>      <!-- left half -->
-    <Pane x="1/2" y="0" width="1/2" height="1"/>    <!-- right half -->
+    <Pane x="0" y="0" width="1" height="1/2"/>        <!-- top half -->
+    <Pane x="0" y="1/2" width="1" height="1/2"/>      <!-- bottom half -->
+    <Pane x="0" y="0" width="1/2" height="1"/>        <!-- left half -->
+    <Pane x="1/2" y="0" width="1/2" height="1"/>      <!-- right half -->
     <Pane x="0" y="0" width="1/2" height="1/2"/>      <!-- TL sub-quad -->
     <Pane x="1/2" y="0" width="1/2" height="1/2"/>    <!-- TR sub-quad -->
     <Pane x="0" y="1/2" width="1/2" height="1/2"/>    <!-- BL sub-quad -->
     <Pane x="1/2" y="1/2" width="1/2" height="1/2"/>  <!-- BR sub-quad -->
   </Frame>
 
-  <Frame name="thirds-v">
-    <Pane x="0" y="0" width="1" height="1/3"/>
-    <Pane x="0" y="1/3" width="1" height="1/3"/>
-    <Pane x="0" y="2/3" width="1" height="1/3"/>
-  </Frame>
-
-  <Frame name="thirds-h">
-    <Pane x="0" y="0" width="1/3" height="1"/>
-    <Pane x="1/3" y="0" width="1/3" height="1"/>
-    <Pane x="2/3" y="0" width="1/3" height="1"/>
-  </Frame>
-
   <!-- ========== LAYOUTS ========== -->
-
-  <!-- 3x3 grid: most are single-cell -->
-  <Layout name="ttt-ul">
-    <Shape frame="thirds-v">
-      <Shape frame="thirds-h"/>
-      <Shape/>
-      <Shape/>
-    </Shape>
-  </Layout>
-
-  <Layout name="ttt-uc">
-    <Shape frame="thirds-v">
-      <Shape frame="thirds-h">
-        <Shape/>
-        <Shape/>
-        <Shape/>
-      </Shape>
-      <Shape/>
-      <Shape/>
-    </Shape>
-  </Layout>
-
-  <Layout name="ttt-ur">
-    <Shape frame="thirds-v">
-      <Shape frame="thirds-h">
-        <Shape/>
-        <Shape/>
-        <Shape/>
-      </Shape>
-      <Shape/>
-      <Shape/>
-    </Shape>
-  </Layout>
-
-  <Layout name="ttt-ml">
-    <Shape frame="thirds-v">
-      <Shape/>
-      <Shape frame="thirds-h"/>
-      <Shape/>
-    </Shape>
-  </Layout>
-
-  <!-- Center: full → center cell -->
-  <Layout name="ttt-mc">
-    <Shape frame="full">
-      <Shape frame="thirds-v">
-        <Shape/>
-        <Shape frame="thirds-h">
-          <Shape/>
-          <Shape/>
-          <Shape/>
-        </Shape>
-        <Shape/>
-      </Shape>
-    </Shape>
-  </Layout>
-
-  <Layout name="ttt-mr">
-    <Shape frame="thirds-v">
-      <Shape/>
-      <Shape frame="thirds-h">
-        <Shape/>
-        <Shape/>
-        <Shape/>
-      </Shape>
-      <Shape/>
-    </Shape>
-  </Layout>
-
-  <Layout name="ttt-bl">
-    <Shape frame="thirds-v">
-      <Shape/>
-      <Shape/>
-      <Shape frame="thirds-h"/>
-    </Shape>
-  </Layout>
-
-  <Layout name="ttt-bc">
-    <Shape frame="thirds-v">
-      <Shape/>
-      <Shape/>
-      <Shape frame="thirds-h">
-        <Shape/>
-        <Shape/>
-        <Shape/>
-      </Shape>
-    </Shape>
-  </Layout>
-
-  <Layout name="ttt-br">
-    <Shape frame="thirds-v">
-      <Shape/>
-      <Shape/>
-      <Shape frame="thirds-h">
-        <Shape/>
-        <Shape/>
-        <Shape/>
-      </Shape>
-    </Shape>
-  </Layout>
-
-  <!-- Quadrants: full → half → quadrant → subdivisions -->
 
   <!-- HOME: top-left quadrant -->
   <Layout name="quad-home">
@@ -215,18 +101,7 @@
 
   <!-- ========== LAYOUT ACTIONS ========== -->
 
-  <!-- 3x3 grid -->
-  <LayoutAction key="u" layout="ttt-ul" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="i" layout="ttt-uc" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="o" layout="ttt-ur" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="j" layout="ttt-ml" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="k" layout="ttt-mc" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="l" layout="ttt-mr" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="m" layout="ttt-bl" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="comma" layout="ttt-bc" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="period" layout="ttt-br" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-
-  <!-- Quadrants -->
+  <!-- Quadrants only -->
   <LayoutAction key="home" layout="quad-home" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
   <LayoutAction key="pageup" layout="quad-pgup" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
   <LayoutAction key="end" layout="quad-end" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
