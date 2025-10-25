@@ -118,6 +118,32 @@ pub fn reset_layout_session() {
     form.reset_display_move_session();
 }
 
+/// Handle any key configured in Form XML (LayoutAction or DisplayMove)
+/// Returns true if the key was handled, false if no binding exists
+pub fn handle_configured_key(key: &str, frontmost: FrontmostInfo) -> bool {
+    // Check Form for bindings (order: LayoutAction first, then DisplayMove)
+    let form = FORM.lock().unwrap();
+    let has_layout = form.has_layout_action(key);
+    let has_display_move = form.has_display_move(key);
+    drop(form);
+
+    if has_layout {
+        // Create TilingJob with no legacy quad (will use Form pane lookup)
+        let job = TilingJob {
+            quad: Quad::UL, // Dummy value, ignored when key_name is present
+            frontmost,
+            attempt: 0,
+            key_name: Some(key.to_string()),
+        };
+        tile_window_quadrant(job);
+        true
+    } else if has_display_move {
+        execute_display_move_for_key(key, frontmost.pid, &frontmost.bundle_id)
+    } else {
+        false
+    }
+}
+
 /// Execute a DisplayMove for the given key (checks Form configuration)
 /// Returns true if move was executed, false if no binding or out of range
 pub fn execute_display_move_for_key(key: &str, pid: u32, bundle_id: &str) -> bool {

@@ -1413,6 +1413,11 @@ impl Form {
         self.display_move_session = None;
     }
 
+    /// Check if a key has a LayoutAction binding
+    pub fn has_layout_action(&self, key: &str) -> bool {
+        self.pane_lists.keys().any(|(k, _)| k == key)
+    }
+
     /// Check if a key has a DisplayMove binding
     #[allow(dead_code)] // Public API, may be used by future callers
     pub fn has_display_move(&self, key: &str) -> bool {

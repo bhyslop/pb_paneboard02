@@ -25,8 +25,7 @@ use crate::pbmcl_clipboard::{
 use crate::pbmbo_observer::{setup_mru_observer, setup_workspace_observer};
 use crate::pbmsb_browser::is_chromium_based;
 use crate::pbmp_pane::{
-    TilingJob, tile_window_quadrant,
-    execute_display_move_for_key,
+    handle_configured_key,
     reset_layout_session,
 };
 use crate::pbmbd_display::{print_all_display_info};
@@ -390,58 +389,33 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
             return event;
         }
 
-        // Handle PageUp/PageDown for display moves (via Form configuration)
-        if keycode == KVK_PAGE_UP || keycode == KVK_PAGE_DOWN {
-            let key_name = if keycode == KVK_PAGE_UP { "pageup" } else { "pagedown" };
+        // Unified XML-driven key handler (LayoutAction and DisplayMove)
+        // Map keycode to XML key name
+        let key_name = match keycode {
+            KVK_HELP_INSERT => Some("insert"),
+            KVK_FWD_DELETE => Some("delete"),
+            KVK_HOME => Some("home"),
+            KVK_END => Some("end"),
+            KVK_PAGE_UP => Some("pageup"),
+            KVK_PAGE_DOWN => Some("pagedown"),
+            _ => None,
+        };
 
+        if let Some(key) = key_name {
             // Capture frontmost app info at chord time
             if let Some(frontmost) = get_frontmost_app_info() {
                 let chromium_tag = if is_chromium_based(&frontmost.bundle_id) { " [chromium]" } else { "" };
                 eprintln!("DEBUG: Frontmost at tap: {} (pid={}){}",
                          frontmost.bundle_id, frontmost.pid, chromium_tag);
 
-                // Consume the chord
-                println!("BLOCKED: ctrl+shift+option+{}", key_name);
-
-                // Execute display move via Form (checks configuration)
-                execute_display_move_for_key(key_name, frontmost.pid, &frontmost.bundle_id);
-
-                std::ptr::null_mut() // <- swallow the event
-            } else {
-                eprintln!("DEBUG: Failed to get frontmost app info, ignoring chord");
-                event
-            }
-        } else if let Some(q) = chord_to_quad(keycode) {
-            let key_name = match keycode {
-                KVK_HELP_INSERT => "insert",
-                KVK_FWD_DELETE => "delete",
-                KVK_HOME => "home",
-                KVK_END => "end",
-                _ => "unknown",
-            };
-
-            // Capture frontmost app info at chord time
-            if let Some(frontmost) = get_frontmost_app_info() {
-                let chromium_tag = if is_chromium_based(&frontmost.bundle_id) { " [chromium]" } else { "" };
-                eprintln!("DEBUG: Frontmost at tap: {} (pid={}){}",
-                         frontmost.bundle_id, frontmost.pid, chromium_tag);
-
-                // Update MRU with this window
+                // Update MRU with this window (for layout actions)
                 update_mru_with_focus(frontmost.pid, frontmost.bundle_id.clone());
 
-                // Consume the chord and enqueue the tiling job for main runloop processing
-                println!("BLOCKED: ctrl+shift+option+{}", key_name);
+                // Consume the chord
+                println!("BLOCKED: ctrl+shift+option+{}", key);
 
-                // Create tiling job with frontmost context and key name
-                let job = TilingJob {
-                    quad: q,
-                    frontmost,
-                    attempt: 0, // First attempt
-                    key_name: Some(key_name.to_string()),
-                };
-
-                // Defer job to main runloop instead of doing AX work here (Chrome compatibility)
-                tile_window_quadrant(job);
+                // Dispatch to Form-configured action (LayoutAction or DisplayMove)
+                handle_configured_key(key, frontmost);
 
                 std::ptr::null_mut() // <- swallow the event
             } else {
@@ -516,7 +490,7 @@ pub unsafe fn run_quadrant_poc() -> ! {
     };
 
     eprintln!("PaneBoard Quadrant Tiling + Alt-Tab MRU + Clipboard Memory PoC");
-    eprintln!("Ctrl+Shift+Option+Insert/Delete/Home/End to tile focused window");
+    eprintln!("Ctrl+Shift+Option + configured keys for window tiling (see ~/.config/paneboard/form.xml)");
     eprintln!("Command+Tab to show MRU window list");
     eprintln!("Ctrl+C/X/V for copy/cut/paste, Ctrl+Shift+V for clipboard history");
 

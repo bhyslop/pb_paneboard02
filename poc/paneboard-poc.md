@@ -676,22 +676,32 @@ DEBUG: [LAYOUT] action=h display=0 | cached 6 panes
    * Observers are torn down as soon as a usable window is received or the timeout expires.
 
 7. **Geometry Contract**
-   * Compute from `NSScreen.main.visibleFrame`. Quadrant rects are 50/50 splits with integer floors; **Position → Size** sequencing; abort on any AX failure to keep idempotence.
+   * Compute from `NSScreen.main.visibleFrame`. Window geometries are defined in `form.xml` as fractional coordinates; **Position → Size** sequencing; abort on any AX failure to keep idempotence.
 
-8. **Chord Policy (unchanged from PoC draft)**
-   * **Ctrl+Shift+Option (macOS) / Ctrl+Shift+Alt (Windows/Linux)** plus {Insert, Delete(Forward), Home, End} → {UL, LL, UR, LR}; consume on key-down; no repeats.
+8. **Chord Policy (XML-Driven Architecture)**
+   * **Modifier chord**: **Ctrl+Shift+Option (macOS) / Ctrl+Shift+Alt (Windows/Linux)** - hardcoded, not configurable in current cycle.
+   * **Key bindings**: All keys are configured in `~/.config/paneboard/form.xml` via `<LayoutAction>` and `<DisplayMove>` elements.
+   * **Routing**: Event tap maps keycode → key name (e.g., `KVK_HOME` → `"home"`), then queries Form configuration:
+     1. If key has `<LayoutAction>` binding → execute window tiling via Form pane list
+     2. Else if key has `<DisplayMove>` binding → execute display move
+     3. Else → no-op (key not configured)
+   * **Legacy compatibility**: Old hardcoded quad mappings (`chord_to_quad()` in `pbmbk_keymap.rs`) are deprecated but retained for reference.
+   * **Consume on key-down**: all configured chords are consumed; no repeats.
 
 9. **Non-Goals for this cycle**
-   * No private APIs (CGS/SkyLight), no SIP tweaks, no Spaces moves. Multi-display moves (PgUp/PgDn) are **in scope** and fully functional.
+   * No private APIs (CGS/SkyLight), no SIP tweaks, no Spaces moves.
+   * Modifier chord customization deferred to future cycle.
 
 **Diagnostics & UX**
 * **Launch-time:** if AX untrusted → one-line instruction referencing System Settings → Privacy & Security → Accessibility. (Aligns with Amethyst/Rectangle user guidance.)
 * **Per-chord logs:**
-  * Success: `TILE: <UL|UR|LL|LR> | SUCCESS | app="<bundle>" frame=(x,y,w,h) within visible=(x,y,w,h)` (may include `attempt=N` suffix)
-  * Failures: `TILE: <UL|UR|LL|LR> | FAILED reason=ax_error(code=…, op=…)` or `size_constrained_or_fullscreen` (may include `attempt=N` suffix)
-  * Consume: `BLOCKED: ctrl+shift+option+<Key>` (macOS) / `BLOCKED: ctrl+shift+alt+<Key>` (Windows/Linux)
-  * Diagnostics: Chromium app detection is logged to debug output only
+  * Success (LayoutAction): `TILE: <LEGACY_LABEL> | SUCCESS | key=<key> pane=<N> app="<bundle>"`
+  * Success (DisplayMove): `DISPLAYMOVE: SUCCESS key=<key> | app="<bundle>" from_display=<N> to_display=<M>`
+  * Failures: `TILE: <LEGACY_LABEL> | FAILED reason=ax_error(...)` or `LAYOUT: no panes available for key=<key> on display=<N>`
+  * Consume: `BLOCKED: ctrl+shift+option+<key>` (macOS) / `BLOCKED: ctrl+shift+alt+<key>` (Windows/Linux)
+  * Diagnostics: Chromium app detection, pane list precomputation logged to debug output
 * **Observer lifecycle:** `OBS: start(pid=…), notif=<FocusedWindowChanged> | timeout=<ms> | end(status=success|timeout)`
+* **Note:** Legacy quad labels (UL/UR/LL/LR) still appear in logs for backward compatibility but are deprecated. Future versions will use layout names from XML configuration.
 
 **Risk Register (macOS AX)**
 * **Focus across apps:** `kAXFocusedWindowChanged` often fires per-app; when the user switches apps, combine with `NSWorkspace didActivateApplication` to retarget the short-lived observer. (Hammerspoon exposes both app-level and element-level watchers.)
