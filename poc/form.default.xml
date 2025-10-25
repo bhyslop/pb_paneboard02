@@ -78,21 +78,6 @@
 
   <!-- ========== LEGACY QUADRANT FRAMES (monolithic, deprecated) ========== -->
 
-  <!-- Top-Left quadrant: 11-pane progression -->
-  <Frame name="quad-tl">
-    <Pane x="0" y="0" width="1" height="1"/>          <!-- 1. Full display -->
-    <Pane x="0" y="0" width="1" height="1/2"/>        <!-- 2. Top half -->
-    <Pane x="0" y="0" width="1/2" height="1/2"/>      <!-- 3. TL quadrant -->
-    <Pane x="0" y="0" width="1/2" height="1/4"/>      <!-- 4. Top half of TL quad -->
-    <Pane x="0" y="1/4" width="1/2" height="1/4"/>    <!-- 5. Bottom half of TL quad -->
-    <Pane x="0" y="0" width="1/4" height="1/2"/>      <!-- 6. Left half of TL quad -->
-    <Pane x="1/4" y="0" width="1/4" height="1/2"/>    <!-- 7. Right half of TL quad -->
-    <Pane x="0" y="0" width="1/4" height="1/4"/>      <!-- 8. TL sub-quad -->
-    <Pane x="1/4" y="0" width="1/4" height="1/4"/>    <!-- 9. TR sub-quad -->
-    <Pane x="0" y="1/4" width="1/4" height="1/4"/>    <!-- 10. BL sub-quad -->
-    <Pane x="1/4" y="1/4" width="1/4" height="1/4"/>  <!-- 11. BR sub-quad -->
-  </Frame>
-
   <!-- Top-Right quadrant: 11-pane progression -->
   <Frame name="quad-tr">
     <Pane x="0" y="0" width="1" height="1"/>          <!-- 1. Full display -->
