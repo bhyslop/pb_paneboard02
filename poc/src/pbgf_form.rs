@@ -985,11 +985,17 @@ impl ParsedForm {
                     // Sort by area descending, then by traverse order
                     self.sort_pane_list(&mut pixel_rects, action.traverse);
 
+                    // Debug: show final sorted pane sequence
+                    eprintln!("LAYOUT: action={} display={} | {} panes after sort:",
+                        action.key, display.index, pixel_rects.len());
+                    for (idx, rect) in pixel_rects.iter().enumerate() {
+                        let area = rect.width * rect.height;
+                        eprintln!("  [{}] x={:.1} y={:.1} w={:.1} h={:.1} area={:.0}",
+                            idx, rect.x, rect.y, rect.width, rect.height, area);
+                    }
+
                     // Cache sorted list
                     pane_lists.insert((action.key.clone(), display.index), pixel_rects);
-
-                    eprintln!("LAYOUT: action={} display={} | cached {} panes",
-                        action.key, display.index, pane_lists.get(&(action.key.clone(), display.index)).unwrap().len());
                 }
             }
         }
@@ -1218,14 +1224,7 @@ impl ParsedForm {
     }
 
     fn sort_pane_list(&self, rects: &mut Vec<PixelRect>, traverse: TraverseOrder) {
-        // Primary sort: descending by area
-        rects.sort_by(|a, b| {
-            let area_a = a.width * a.height;
-            let area_b = b.width * b.height;
-            area_b.partial_cmp(&area_a).unwrap()
-        });
-
-        // Secondary sort: by traverse order using pane centers
+        // Decode traverse order
         let (primary_axis, primary_dir, secondary_axis, secondary_dir) = match traverse {
             TraverseOrder::XfYf => ('x', 1, 'y', 1),
             TraverseOrder::XfYr => ('x', 1, 'y', -1),
@@ -1237,7 +1236,20 @@ impl ParsedForm {
             TraverseOrder::YrXr => ('y', -1, 'x', -1),
         };
 
+        // Combined two-level sort:
+        // 1. Primary: descending by area (largest first = zoom-out progression)
+        // 2. Secondary: traverse order using pane centers (for panes of same area)
         rects.sort_by(|a, b| {
+            let area_a = a.width * a.height;
+            let area_b = b.width * b.height;
+
+            // Primary key: area descending (larger areas first)
+            let area_cmp = area_b.partial_cmp(&area_a).unwrap();
+            if area_cmp != std::cmp::Ordering::Equal {
+                return area_cmp;
+            }
+
+            // Secondary key: spatial traverse order (for panes of same area)
             let a_center_x = a.x + a.width / 2.0;
             let a_center_y = a.y + a.height / 2.0;
             let b_center_x = b.x + b.width / 2.0;
