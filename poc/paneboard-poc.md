@@ -327,7 +327,19 @@ PaneBoard uses a declarative XML configuration system to define window tiling la
 ~/.config/paneboard/form.xml
 ```
 
-If the file is missing at startup, PaneBoard writes an embedded default configuration to this location. The configuration is parsed once at startup; changes require a restart to take effect. (A hot-reload mechanism may be added in a future cycle.)
+**Configuration Deployment Strategy:**
+
+The default configuration is maintained in `poc/form.default.xml` and embedded at build time via Rust's `include_str!()` macro.
+
+At **every application startup** (not just first run), PaneBoard:
+1. Checks if `~/.config/paneboard/form.xml` exists
+2. If it exists, renames it to `form.xml.NNNNN` (where NNNNN starts at 10000 and increments to find an unused filename)
+3. Writes a fresh copy of the embedded default to `~/.config/paneboard/form.xml`
+4. Parses and uses the fresh copy
+
+**Rationale:** This ensures that every run uses the latest compiled configuration while preserving any user edits as archived files for manual inspection or recovery. Users must manually clean up archived files if desired.
+
+The configuration is parsed once at startup; changes require a restart to take effect. (A hot-reload mechanism may be added in a future cycle.)
 
 Parse errors or semantic errors (e.g., undefined references) cause PaneBoard to **disable all layout-triggered window tiling** while allowing other features (Alt-Tab, clipboard) to continue working. The error is logged with actionable detail.
 

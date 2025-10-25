@@ -3,6 +3,23 @@
            elementFormDefault="qualified"
            attributeFormDefault="unqualified">
 
+  <!--
+    PaneBoard Layout Configuration Schema
+
+    Configuration Source:
+    - Default: poc/form.default.xml (embedded at build time via include_str!())
+    - Runtime: ~/.config/paneboard/form.xml
+
+    Deployment Strategy:
+    At every application startup:
+    1. Existing form.xml is archived to form.xml.NNNNN (NNNNN starts at 10000)
+    2. Fresh copy of embedded default is written to form.xml
+    3. Configuration is parsed and loaded
+
+    This ensures the latest compiled configuration is always used while preserving
+    user edits as archived files for manual inspection.
+  -->
+
   <!-- 🟦 FORM: the complete designed system -->
   <xs:element name="Form">
     <xs:complexType>

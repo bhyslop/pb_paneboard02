@@ -523,6 +523,9 @@ pub unsafe fn run_quadrant_poc() -> ! {
     // Print comprehensive display information
     print_all_display_info();
 
+    // Deploy fresh default config at startup (before lazy Form initialization)
+    crate::pbgf_form::ensure_fresh_default_config();
+
     // Setup MRU tracking
     eprintln!("DEBUG: Initializing MRU tracker...");
     if let Err(e) = setup_mru_observer() {

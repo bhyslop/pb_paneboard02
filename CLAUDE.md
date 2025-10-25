@@ -78,6 +78,12 @@ pb<platform><feature><uniquifier>_<descriptor>.<ext>
 
 Window layouts are defined in XML using the schema in `pbxs_schema.xsd`.
 
+**Configuration Source:**
+* Default config source: `poc/form.default.xml` (embedded at build time via `include_str!()`)
+* Runtime config location: `~/.config/paneboard/form.xml`
+* At every startup, existing `form.xml` is archived to `form.xml.NNNNN` (starting at 10000) and replaced with the embedded default
+* This ensures the latest compiled configuration is always used, while preserving user edits for manual inspection
+
 **Elements:**
 * **Form** - Root configuration document
 * **Measure** - Named pixel constants for display matching
@@ -89,8 +95,6 @@ Window layouts are defined in XML using the schema in `pbxs_schema.xsd`.
 * **Application** - Per-application behavior overrides with platform-specific matchers
   - **Mac** / **Windows** / **Linux** - Platform-specific application identifiers
   - **Clipboard** - Clipboard monitoring and mirroring behavior
-
-Example configurations: `poc/layouts.default.xml`, `poc/layouts.multi-select.xml`
 
 ---
 
@@ -121,3 +125,12 @@ Example configurations: `poc/layouts.default.xml`, `poc/layouts.multi-select.xml
 | `pbmsm_mru.rs` | MRU stack management and window tracking |
 
 **Note:** The file naming convention uses 'b' for base/shared macOS components, and 'x' for cross-platform XML/schema files
+
+---
+
+### Motet
+
+**Motet** = Sema + Coda (parallel agent workflow)
+
+- **Sema** - spec agent (`.md`, `.xsd`)
+- **Coda** - coder agent (`.rs`, `.xml`, `.swift`, `.h`, build files)
