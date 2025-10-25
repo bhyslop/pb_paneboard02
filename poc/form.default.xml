@@ -2,6 +2,38 @@
 <Form>
   <DisplayQuirk nameContains="FlipGo-A" platform="macos" minBottomInset="31"/>
 
+  <!--
+    QUADRANT MODEL (home/pgup/end/pgdn keys)
+
+    Each key produces 11 panes in this sequence:
+    1. Full display
+    2. Top half (home|pgup) or bottom half (end|pgdn)
+    3. The target quadrant: TL (home), TR (pgup), BL (end), BR (pgdn)
+    4. Top half of that quadrant
+    5. Bottom half of that quadrant
+    6. Left half of that quadrant
+    7. Right half of that quadrant
+    8-11. Four sub-quadrants of that quadrant (TL, TR, BL, BR)
+
+    Traversal order controlled by 'traverse' attribute on LayoutAction.
+    This allows repeated presses to cycle through all 11 positions.
+  -->
+
+  <!--
+    FUTURE: TIC-TAC-TOE 3×3 GRID MODEL (u/i/o/j/k/l/m/,/. keys)
+
+    Maps home-row adjacent keys to 3×3 grid positions:
+      u  i  o    (top row)
+      j  k  l    (middle row)
+      m  ,  .    (bottom row)
+
+    Behavior:
+    - 8 outer keys (u/i/o/j/l/m/,/.): single press → that grid cell
+    - Center key (k): 1st press = full screen, 2nd press = center cell only
+
+    Not yet implemented - deferred pending quadrant model debugging.
+  -->
+
   <!-- ========== REUSABLE BUILDING BLOCKS ========== -->
 
   <Frame name="full">
