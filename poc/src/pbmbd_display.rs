@@ -39,11 +39,6 @@ pub struct VisibleFrame {
     pub height: f64
 }
 
-impl VisibleFrame {
-    pub fn mid_x(&self) -> f64 { self.min_x + self.width / 2.0 }
-    pub fn mid_y(&self) -> f64 { self.min_y + self.height / 2.0 }
-}
-
 // NSRect structure for Objective-C interop
 #[repr(C)]
 #[derive(Copy, Clone)]

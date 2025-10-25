@@ -41,20 +41,8 @@ pub const K_CG_EVENT_FLAG_MASK_SHIFT: u64 = 1 << 17;
 pub const K_CG_EVENT_FLAG_MASK_COMMAND: u64 = 1 << 20;
 pub const K_CG_EVENT_FLAG_MASK_ALTERNATE: u64 = 1 << 19;
 
-use crate::pbgc_core::Quad;
-
 pub fn known_poc_key(keycode: u16) -> bool {
     matches!(keycode, KVK_HELP_INSERT | KVK_FWD_DELETE | KVK_HOME | KVK_END | KVK_PAGE_UP | KVK_PAGE_DOWN)
-}
-
-pub fn chord_to_quad(keycode: u16) -> Option<Quad> {
-    match keycode {
-        KVK_HELP_INSERT => Some(Quad::UL),
-        KVK_FWD_DELETE => Some(Quad::LL),
-        KVK_HOME => Some(Quad::UR),
-        KVK_END => Some(Quad::LR),
-        _ => None,
-    }
 }
 
 // Convert macOS virtual keycode to HID usage code (for KeyState tracking)

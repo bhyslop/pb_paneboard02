@@ -11,8 +11,6 @@ use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::pbgc_core::Quad;
-
 // Import types and functions from the new modules
 use crate::pbmba_ax::{
     AxElement, AxError, FrontmostInfo,
@@ -89,7 +87,6 @@ unsafe fn visible_frame_with_quirks(screen: &objc2_app_kit::NSScreen) -> Option<
 // Tiling job with frontmost context
 #[derive(Clone, Debug)]
 pub struct TilingJob {
-    pub quad: Quad,
     pub frontmost: FrontmostInfo,
     pub attempt: u32, // 0 = first attempt, 1-3 = retries
     pub key_name: Option<String>, // Key name for layout action
@@ -128,9 +125,8 @@ pub fn handle_configured_key(key: &str, frontmost: FrontmostInfo) -> bool {
     drop(form);
 
     if has_layout {
-        // Create TilingJob with no legacy quad (will use Form pane lookup)
+        // Create TilingJob for Form-driven layout
         let job = TilingJob {
-            quad: Quad::UL, // Dummy value, ignored when key_name is present
             frontmost,
             attempt: 0,
             key_name: Some(key.to_string()),
@@ -516,17 +512,6 @@ pub fn should_use_observer_on_error(error_msg: &str) -> bool {
     error_msg.contains("ax_cannot_complete_retry_needed")
 }
 
-pub fn rect_for_quad(vf: VisibleFrame, q: Quad) -> Rect {
-    let w2 = (vf.width / 2.0).floor();
-    let h2 = (vf.height / 2.0).floor();
-    match q {
-        Quad::UL => Rect { x: vf.min_x, y: vf.min_y, w: w2, h: h2 },
-        Quad::UR => Rect { x: vf.mid_x(), y: vf.min_y, w: w2, h: h2 },
-        Quad::LL => Rect { x: vf.min_x, y: vf.mid_y(), w: w2, h: h2 },
-        Quad::LR => Rect { x: vf.mid_x(), y: vf.mid_y(), w: w2, h: h2 },
-    }
-}
-
 /// Convert PixelRect to Rect (with visible frame offset)
 fn pixel_rect_to_rect(pr: &PixelRect, vf: &VisibleFrame) -> Rect {
     Rect {
@@ -665,12 +650,7 @@ pub extern "C" fn observer_timeout_callback(_timer: *mut c_void, info: *mut c_vo
             };
 
             if guard.active {
-                let tag = match guard.job.quad {
-                    Quad::UL => "UL",
-                    Quad::UR => "UR",
-                    Quad::LL => "LL",
-                    Quad::LR => "LR",
-                };
+                let tag = guard.job.key_name.clone().unwrap_or_else(|| "UNKNOWN".to_string());
                 guard.active = false;
                 cleanup_locked(&mut *guard);
                 println!("TILE: {tag} | FAILED reason=not_ready_timeout");
@@ -704,12 +684,7 @@ pub extern "C" fn ax_observer_callback(
     }
 
     unsafe {
-        let tag = match guard.job.quad {
-            Quad::UL => "UL",
-            Quad::UR => "UR",
-            Quad::LL => "LL",
-            Quad::LR => "LR",
-        };
+        let tag = guard.job.key_name.as_deref().unwrap_or("UNKNOWN");
 
         // Get the display frame for the window
         let win_elem = AxElement(element);
@@ -737,48 +712,34 @@ pub extern "C" fn ax_observer_callback(
             (visible, 0)
         };
 
-        // Look up pane from Form if key_name is present, otherwise use quad
-        let (r, log_suffix) = if let Some(ref key) = guard.job.key_name {
-            let mut form = FORM.lock().unwrap();
-            if let Some((pixel_rect, pane_idx)) = form.get_next_pane(key, display_index) {
-                let rect = pixel_rect_to_rect(&pixel_rect, &vf);
-                let suffix = format!(" | key={} pane={}", key, pane_idx);
-                (rect, suffix)
-            } else {
-                (rect_for_quad(vf, guard.job.quad), String::new())
-            }
-        } else {
-            (rect_for_quad(vf, guard.job.quad), String::new())
-        };
+        // Look up pane from Form
+        let key = guard.job.key_name.as_deref().unwrap_or("UNKNOWN");
+        let mut form = FORM.lock().unwrap();
+        let pane_result = form.get_next_pane(key, display_index);
+        drop(form);
 
-        let win = AxElement(element);
-        match set_window_rect_safe(&win, r) {
-            Ok(()) => println!("TILE: {tag} | SUCCESS after_observer=yes{} app=\"{}\"", log_suffix, guard.job.frontmost.bundle_id),
-            Err(e) => println!("TILE: {tag} | FAILED reason={}", e),
+        if let Some((pixel_rect, pane_idx)) = pane_result {
+            let r = pixel_rect_to_rect(&pixel_rect, &vf);
+            let win = AxElement(element);
+            match set_window_rect_safe(&win, r) {
+                Ok(()) => println!("TILE: {tag} | SUCCESS after_observer=yes | key={} pane={} app=\"{}\"", key, pane_idx, guard.job.frontmost.bundle_id),
+                Err(e) => println!("TILE: {tag} | FAILED reason={}", e),
+            }
+            std::mem::forget(win); // prevent CFRelease
+        } else {
+            println!("TILE: {tag} | FAILED reason=no_pane_for_key key={}", key);
         }
-        std::mem::forget(win); // prevent CFRelease
 
         guard.active = false;
         cleanup_locked(&mut *guard);
     }
 }
 
-// Tile window to quadrant using job struct
+// Tile window using job struct
 pub fn tile_window_quadrant(job: TilingJob) {
-    let tag = match job.quad {
-        Quad::UL => "UL",
-        Quad::UR => "UR",
-        Quad::LL => "LL",
-        Quad::LR => "LR",
-    };
+    let tag = job.key_name.as_deref().unwrap_or("UNKNOWN");
 
-    let key_info = if let Some(ref key) = job.key_name {
-        format!(" key={}", key)
-    } else {
-        String::new()
-    };
-
-    eprintln!("DEBUG: tile_window_quadrant({}{}) for pid={}, app=\"{}\"", tag, key_info, job.frontmost.pid, job.frontmost.bundle_id);
+    eprintln!("DEBUG: tile_window_quadrant(key={}) for pid={}, app=\"{}\"", tag, job.frontmost.pid, job.frontmost.bundle_id);
 
     // Get focused window using PID-targeted approach
     let win = match unsafe { get_focused_window_by_pid(job.frontmost.pid) } {
@@ -863,36 +824,33 @@ pub fn tile_window_quadrant(job: TilingJob) {
             (visible, 0)
         };
 
-        // Look up pane from Form if key_name is present, otherwise use quad
-        let (r, log_suffix) = if let Some(ref key) = job.key_name {
-            let mut form = FORM.lock().unwrap();
-            if let Some((pixel_rect, pane_idx)) = form.get_next_pane(key, display_index) {
-                let rect = pixel_rect_to_rect(&pixel_rect, &vf);
-                let suffix = format!(" | key={} pane={}", key, pane_idx);
-                (rect, suffix)
-            } else {
-                eprintln!("LAYOUT: no panes available for key={} on display={}", key, display_index);
-                (rect_for_quad(vf, job.quad), String::new())
-            }
-        } else {
-            (rect_for_quad(vf, job.quad), String::new())
-        };
+        // Look up pane from Form
+        let key = job.key_name.as_deref().unwrap_or("UNKNOWN");
+        let mut form = FORM.lock().unwrap();
+        let pane_result = form.get_next_pane(key, display_index);
+        drop(form);
 
-        match set_window_rect_safe(&win, r) {
-            Ok(()) => println!("TILE: {} | SUCCESS{} app=\"{}\"", tag, log_suffix, job.frontmost.bundle_id),
-            Err(reason) => {
-                // Check if we should retry with observer
-                if reason.contains("not_ready") || reason.contains("cannot_complete") {
-                    if job.attempt == 0 {
-                        eprintln!("DEBUG: Will use AXObserver approach due to: {}", reason);
-                        tile_window_with_observer(job);
+        if let Some((pixel_rect, pane_idx)) = pane_result {
+            let r = pixel_rect_to_rect(&pixel_rect, &vf);
+            match set_window_rect_safe(&win, r) {
+                Ok(()) => println!("TILE: {} | SUCCESS | key={} pane={} app=\"{}\"", tag, key, pane_idx, job.frontmost.bundle_id),
+                Err(reason) => {
+                    // Check if we should retry with observer
+                    if reason.contains("not_ready") || reason.contains("cannot_complete") {
+                        if job.attempt == 0 {
+                            eprintln!("DEBUG: Will use AXObserver approach due to: {}", reason);
+                            tile_window_with_observer(job);
+                        } else {
+                            println!("TILE: {} | FAILED reason={}", tag, reason);
+                        }
                     } else {
                         println!("TILE: {} | FAILED reason={}", tag, reason);
                     }
-                } else {
-                    println!("TILE: {} | FAILED reason={}", tag, reason);
                 }
             }
+        } else {
+            eprintln!("LAYOUT: no panes available for key={} on display={}", key, display_index);
+            println!("TILE: {} | FAILED reason=no_pane_for_key", tag);
         }
     }
 }
@@ -901,12 +859,7 @@ pub fn tile_window_quadrant(job: TilingJob) {
 unsafe fn tile_window_with_observer(job: TilingJob) {
     eprintln!("DEBUG: tile_window_with_observer() starting for app={}", job.frontmost.bundle_id);
 
-    let tag = match job.quad {
-        Quad::UL => "UL",
-        Quad::UR => "UR",
-        Quad::LL => "LL",
-        Quad::LR => "LR",
-    };
+    let tag = job.key_name.as_deref().unwrap_or("UNKNOWN");
 
     // Create observer for the app
     let mut observer: AXObserverRef = std::ptr::null();
