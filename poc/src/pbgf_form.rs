@@ -1147,7 +1147,20 @@ impl ParsedForm {
         #[cfg(target_os = "linux")]
         let current_platform = Platform::Linux;
 
+        eprintln!("DEBUG: apply_display_quirks called with {} displays, {} quirks total",
+            displays.len(), self.display_quirks.len());
+        for quirk in &self.display_quirks {
+            let platform_str = match quirk.platform {
+                Platform::MacOS => "macos",
+                Platform::Windows => "windows",
+                Platform::Linux => "linux",
+            };
+            eprintln!("DEBUG: quirk: nameContains='{}' platform={} inset={}",
+                quirk.name_contains, platform_str, quirk.min_bottom_inset);
+        }
+
         displays.iter().map(|display| {
+            eprintln!("DEBUG: checking display '{}' against quirks", display.name);
             // Find all quirks matching this display (by platform and nameContains)
             let matching_quirks = self.display_quirks.iter()
                 .filter(|q| q.platform == current_platform)
@@ -1571,6 +1584,11 @@ impl ParsedForm {
 impl Form {
     /// Load form from file (assumes file already exists due to ensure_fresh_default_config)
     pub fn load_from_file(displays: &[DisplayInfo]) -> Self {
+        eprintln!("DEBUG: Form::load_from_file called with {} displays", displays.len());
+        for (i, d) in displays.iter().enumerate() {
+            eprintln!("DEBUG:   display[{}]: name='{}' size={}x{}", i, d.name, d.width, d.height);
+        }
+
         let config_path = Self::config_path();
 
         // Parse XML from config file
@@ -1740,11 +1758,21 @@ impl Form {
     /// Get minimum bottom inset for a display by name
     /// Returns the MAX of all matching DisplayQuirk minBottomInset values, or 0 if none match
     pub fn get_min_bottom_inset(&self, display_name: &str) -> u32 {
-        self.display_quirks.iter()
+        eprintln!("DEBUG: get_min_bottom_inset called for display_name='{}'", display_name);
+        eprintln!("DEBUG: available quirks: {} total", self.display_quirks.len());
+        for q in &self.display_quirks {
+            eprintln!("DEBUG:   quirk nameContains='{}' inset={} | match={}",
+                q.name_contains, q.min_bottom_inset, display_name.contains(&q.name_contains));
+        }
+
+        let result = self.display_quirks.iter()
             .filter(|q| display_name.contains(&q.name_contains))
             .map(|q| q.min_bottom_inset)
             .max()
-            .unwrap_or(0)
+            .unwrap_or(0);
+
+        eprintln!("DEBUG: get_min_bottom_inset returning {} for '{}'", result, display_name);
+        result
     }
 }
 

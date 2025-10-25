@@ -513,7 +513,18 @@ pub fn should_use_observer_on_error(error_msg: &str) -> bool {
 }
 
 /// Convert PixelRect to Rect (with visible frame offset)
+/// Note: PixelRect dimensions are from parse-time display info, which may differ
+/// from runtime visible frame due to menu bar corrections or OS changes.
+/// We scale the pane dimensions to match the current visible frame.
 fn pixel_rect_to_rect(pr: &PixelRect, vf: &VisibleFrame) -> Rect {
+    // The PixelRect was computed relative to a display with certain dimensions.
+    // Those dimensions were the visible frame with quirks applied at parse time.
+    // At runtime, the visible frame might have different dimensions (e.g., due to
+    // menu bar correction), so we need to use the pane's x, y, width, height
+    // directly without scaling - they're already in the quirk-adjusted coordinate space.
+    //
+    // Actually, we just offset by the visible frame origin since the pane coordinates
+    // are relative to (0,0) of the display.
     Rect {
         x: vf.min_x + pr.x,
         y: vf.min_y + pr.y,
