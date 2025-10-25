@@ -57,19 +57,19 @@
     <Pane x="1/2" y="1/2" width="1/2" height="1/2"/>
   </Frame>
 
-  <!-- ========== QUADRANT DETAIL FRAMES (refinements for TL quadrant) ========== -->
+  <!-- ========== QUADRANT DETAIL FRAMES (refinements for any quadrant) ========== -->
 
-  <Frame name="quad-tl-detail-halves">
+  <Frame name="quad-detail-halves">
     <Pane x="0" y="0"   width="1" height="1/2"/>  <!-- top half of quadrant -->
     <Pane x="0" y="1/2" width="1" height="1/2"/>  <!-- bottom half of quadrant -->
   </Frame>
 
-  <Frame name="quad-tl-detail-sides">
+  <Frame name="quad-detail-sides">
     <Pane x="0"   y="0" width="1/2" height="1"/>  <!-- left half of quadrant -->
     <Pane x="1/2" y="0" width="1/2" height="1"/>  <!-- right half of quadrant -->
   </Frame>
 
-  <Frame name="quad-tl-detail-quads">
+  <Frame name="quad-detail-quads">
     <Pane x="0"   y="0"   width="1/2" height="1/2"/>  <!-- TL sub-quad -->
     <Pane x="1/2" y="0"   width="1/2" height="1/2"/>  <!-- TR sub-quad -->
     <Pane x="0"   y="1/2" width="1/2" height="1/2"/>  <!-- BL sub-quad -->
@@ -102,7 +102,7 @@
     <!-- Panes 3-11: TL quadrant and its refinements -->
     <Shape frame="quads">
       <!-- TL quadrant: subdivide into detail -->
-      <Shape frame="quad-tl-detail-quads">
+      <Shape frame="quad-detail-quads">
         <Include/>  <!-- Pane 8: TL sub-quad -->
         <Include/>  <!-- Pane 9: TR sub-quad -->
         <Include/>  <!-- Pane 10: BL sub-quad -->
@@ -119,7 +119,7 @@
     <!-- Additional detail shapes for TL quadrant halves -->
     <Shape frame="quads">
       <!-- TL quadrant: subdivide into top/bottom halves -->
-      <Shape frame="quad-tl-detail-halves">
+      <Shape frame="quad-detail-halves">
         <Include/>  <!-- Pane 4: top half of TL -->
         <Include/>  <!-- Pane 5: bottom half of TL -->
       </Shape>
@@ -130,7 +130,7 @@
 
     <Shape frame="quads">
       <!-- TL quadrant: subdivide into left/right halves -->
-      <Shape frame="quad-tl-detail-sides">
+      <Shape frame="quad-detail-sides">
         <Include/>  <!-- Pane 6: left half of TL -->
         <Include/>  <!-- Pane 7: right half of TL -->
       </Shape>
@@ -148,10 +148,205 @@
     </Shape>
   </Layout>
 
+  <!-- Top-Right quadrant: 11-pane compositional layout
+       Same structure as quad-tl, focused on TR quadrant
+  -->
+  <Layout name="quad-tr">
+    <!-- Pane 1: Full display -->
+    <Shape frame="full">
+      <Include/>
+    </Shape>
+
+    <!-- Pane 2: Top half -->
+    <Shape frame="halves-vertical">
+      <Include/>                         <!-- top half -->
+      <Include whenOrientation="never"/> <!-- bottom half (dropped) -->
+    </Shape>
+
+    <!-- Panes 3-11: TR quadrant and its refinements -->
+    <Shape frame="quads">
+      <!-- TL quadrant (dropped) -->
+      <Include whenOrientation="never"/>
+      <!-- TR quadrant: subdivide into detail -->
+      <Shape frame="quad-detail-quads">
+        <Include/>  <!-- Pane 8: TL sub-quad -->
+        <Include/>  <!-- Pane 9: TR sub-quad -->
+        <Include/>  <!-- Pane 10: BL sub-quad -->
+        <Include/>  <!-- Pane 11: BR sub-quad -->
+      </Shape>
+      <!-- BL quadrant (dropped) -->
+      <Include whenOrientation="never"/>
+      <!-- BR quadrant (dropped) -->
+      <Include whenOrientation="never"/>
+    </Shape>
+
+    <!-- Additional detail shapes for TR quadrant halves -->
+    <Shape frame="quads">
+      <Include whenOrientation="never"/>
+      <!-- TR quadrant: subdivide into top/bottom halves -->
+      <Shape frame="quad-detail-halves">
+        <Include/>  <!-- Pane 4: top half of TR -->
+        <Include/>  <!-- Pane 5: bottom half of TR -->
+      </Shape>
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+    </Shape>
+
+    <Shape frame="quads">
+      <Include whenOrientation="never"/>
+      <!-- TR quadrant: subdivide into left/right halves -->
+      <Shape frame="quad-detail-sides">
+        <Include/>  <!-- Pane 6: left half of TR -->
+        <Include/>  <!-- Pane 7: right half of TR -->
+      </Shape>
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+    </Shape>
+
+    <!-- Pane 3: Whole TR quadrant as terminal -->
+    <Shape frame="quads">
+      <Include whenOrientation="never"/>
+      <Include/>  <!-- Pane 3: TR quadrant -->
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+    </Shape>
+  </Layout>
+
+  <!-- Bottom-Left quadrant: 11-pane compositional layout
+       Same structure, focused on BL quadrant
+  -->
+  <Layout name="quad-bl">
+    <!-- Pane 1: Full display -->
+    <Shape frame="full">
+      <Include/>
+    </Shape>
+
+    <!-- Pane 2: Bottom half -->
+    <Shape frame="halves-vertical">
+      <Include whenOrientation="never"/> <!-- top half (dropped) -->
+      <Include/>                         <!-- bottom half -->
+    </Shape>
+
+    <!-- Panes 3-11: BL quadrant and its refinements -->
+    <Shape frame="quads">
+      <!-- TL quadrant (dropped) -->
+      <Include whenOrientation="never"/>
+      <!-- TR quadrant (dropped) -->
+      <Include whenOrientation="never"/>
+      <!-- BL quadrant: subdivide into detail -->
+      <Shape frame="quad-detail-quads">
+        <Include/>  <!-- Pane 8: TL sub-quad -->
+        <Include/>  <!-- Pane 9: TR sub-quad -->
+        <Include/>  <!-- Pane 10: BL sub-quad -->
+        <Include/>  <!-- Pane 11: BR sub-quad -->
+      </Shape>
+      <!-- BR quadrant (dropped) -->
+      <Include whenOrientation="never"/>
+    </Shape>
+
+    <!-- Additional detail shapes for BL quadrant halves -->
+    <Shape frame="quads">
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+      <!-- BL quadrant: subdivide into top/bottom halves -->
+      <Shape frame="quad-detail-halves">
+        <Include/>  <!-- Pane 4: top half of BL -->
+        <Include/>  <!-- Pane 5: bottom half of BL -->
+      </Shape>
+      <Include whenOrientation="never"/>
+    </Shape>
+
+    <Shape frame="quads">
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+      <!-- BL quadrant: subdivide into left/right halves -->
+      <Shape frame="quad-detail-sides">
+        <Include/>  <!-- Pane 6: left half of BL -->
+        <Include/>  <!-- Pane 7: right half of BL -->
+      </Shape>
+      <Include whenOrientation="never"/>
+    </Shape>
+
+    <!-- Pane 3: Whole BL quadrant as terminal -->
+    <Shape frame="quads">
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+      <Include/>  <!-- Pane 3: BL quadrant -->
+      <Include whenOrientation="never"/>
+    </Shape>
+  </Layout>
+
+  <!-- Bottom-Right quadrant: 11-pane compositional layout
+       Same structure, focused on BR quadrant
+  -->
+  <Layout name="quad-br">
+    <!-- Pane 1: Full display -->
+    <Shape frame="full">
+      <Include/>
+    </Shape>
+
+    <!-- Pane 2: Bottom half -->
+    <Shape frame="halves-vertical">
+      <Include whenOrientation="never"/> <!-- top half (dropped) -->
+      <Include/>                         <!-- bottom half -->
+    </Shape>
+
+    <!-- Panes 3-11: BR quadrant and its refinements -->
+    <Shape frame="quads">
+      <!-- TL quadrant (dropped) -->
+      <Include whenOrientation="never"/>
+      <!-- TR quadrant (dropped) -->
+      <Include whenOrientation="never"/>
+      <!-- BL quadrant (dropped) -->
+      <Include whenOrientation="never"/>
+      <!-- BR quadrant: subdivide into detail -->
+      <Shape frame="quad-detail-quads">
+        <Include/>  <!-- Pane 8: TL sub-quad -->
+        <Include/>  <!-- Pane 9: TR sub-quad -->
+        <Include/>  <!-- Pane 10: BL sub-quad -->
+        <Include/>  <!-- Pane 11: BR sub-quad -->
+      </Shape>
+    </Shape>
+
+    <!-- Additional detail shapes for BR quadrant halves -->
+    <Shape frame="quads">
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+      <!-- BR quadrant: subdivide into top/bottom halves -->
+      <Shape frame="quad-detail-halves">
+        <Include/>  <!-- Pane 4: top half of BR -->
+        <Include/>  <!-- Pane 5: bottom half of BR -->
+      </Shape>
+    </Shape>
+
+    <Shape frame="quads">
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+      <!-- BR quadrant: subdivide into left/right halves -->
+      <Shape frame="quad-detail-sides">
+        <Include/>  <!-- Pane 6: left half of BR -->
+        <Include/>  <!-- Pane 7: right half of BR -->
+      </Shape>
+    </Shape>
+
+    <!-- Pane 3: Whole BR quadrant as terminal -->
+    <Shape frame="quads">
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+      <Include/>  <!-- Pane 3: BR quadrant -->
+    </Shape>
+  </Layout>
+
   <!-- ========== LAYOUT ACTIONS ========== -->
 
-  <!-- Quadrant traversal (home key only - others pending migration) -->
+  <!-- Quadrant traversal (all four quadrant keys) -->
   <LayoutAction key="home" layout="quad-tl" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="pageup" layout="quad-tr" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="end" layout="quad-bl" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="pagedown" layout="quad-br" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
 
   <!-- Display movement -->
   <DisplayMove key="h" target="prev" wrap="true"/>
