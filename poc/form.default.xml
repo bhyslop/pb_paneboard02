@@ -34,110 +34,97 @@
     Not yet implemented - deferred pending quadrant model debugging.
   -->
 
-  <!-- ========== REUSABLE BUILDING BLOCKS ========== -->
+  <!-- ========== QUADRANT FRAMES (11 panes each) ========== -->
 
-  <Frame name="full">
-    <Pane x="0" y="0" width="1" height="1"/>
+  <!-- Top-Left quadrant: 11-pane progression -->
+  <Frame name="quad-tl">
+    <Pane x="0" y="0" width="1" height="1"/>          <!-- 1. Full display -->
+    <Pane x="0" y="0" width="1" height="1/2"/>        <!-- 2. Top half -->
+    <Pane x="0" y="0" width="1/2" height="1/2"/>      <!-- 3. TL quadrant -->
+    <Pane x="0" y="0" width="1/2" height="1/4"/>      <!-- 4. Top half of TL quad -->
+    <Pane x="0" y="1/4" width="1/2" height="1/4"/>    <!-- 5. Bottom half of TL quad -->
+    <Pane x="0" y="0" width="1/4" height="1/2"/>      <!-- 6. Left half of TL quad -->
+    <Pane x="1/4" y="0" width="1/4" height="1/2"/>    <!-- 7. Right half of TL quad -->
+    <Pane x="0" y="0" width="1/4" height="1/4"/>      <!-- 8. TL sub-quad -->
+    <Pane x="1/4" y="0" width="1/4" height="1/4"/>    <!-- 9. TR sub-quad -->
+    <Pane x="0" y="1/4" width="1/4" height="1/4"/>    <!-- 10. BL sub-quad -->
+    <Pane x="1/4" y="1/4" width="1/4" height="1/4"/>  <!-- 11. BR sub-quad -->
   </Frame>
 
-  <Frame name="halves-v">
-    <Pane x="0" y="0" width="1" height="1/2"/>    <!-- top -->
-    <Pane x="0" y="1/2" width="1" height="1/2"/>  <!-- bottom -->
+  <!-- Top-Right quadrant: 11-pane progression -->
+  <Frame name="quad-tr">
+    <Pane x="0" y="0" width="1" height="1"/>          <!-- 1. Full display -->
+    <Pane x="0" y="0" width="1" height="1/2"/>        <!-- 2. Top half -->
+    <Pane x="1/2" y="0" width="1/2" height="1/2"/>    <!-- 3. TR quadrant -->
+    <Pane x="1/2" y="0" width="1/2" height="1/4"/>    <!-- 4. Top half of TR quad -->
+    <Pane x="1/2" y="1/4" width="1/2" height="1/4"/>  <!-- 5. Bottom half of TR quad -->
+    <Pane x="1/2" y="0" width="1/4" height="1/2"/>    <!-- 6. Left half of TR quad -->
+    <Pane x="3/4" y="0" width="1/4" height="1/2"/>    <!-- 7. Right half of TR quad -->
+    <Pane x="1/2" y="0" width="1/4" height="1/4"/>    <!-- 8. TL sub-quad -->
+    <Pane x="3/4" y="0" width="1/4" height="1/4"/>    <!-- 9. TR sub-quad -->
+    <Pane x="1/2" y="1/4" width="1/4" height="1/4"/>  <!-- 10. BL sub-quad -->
+    <Pane x="3/4" y="1/4" width="1/4" height="1/4"/>  <!-- 11. BR sub-quad -->
   </Frame>
 
-  <Frame name="halves-h">
-    <Pane x="0" y="0" width="1/2" height="1"/>    <!-- left -->
-    <Pane x="1/2" y="0" width="1/2" height="1"/>  <!-- right -->
+  <!-- Bottom-Left quadrant: 11-pane progression -->
+  <Frame name="quad-bl">
+    <Pane x="0" y="0" width="1" height="1"/>          <!-- 1. Full display -->
+    <Pane x="0" y="1/2" width="1" height="1/2"/>      <!-- 2. Bottom half -->
+    <Pane x="0" y="1/2" width="1/2" height="1/2"/>    <!-- 3. BL quadrant -->
+    <Pane x="0" y="1/2" width="1/2" height="1/4"/>    <!-- 4. Top half of BL quad -->
+    <Pane x="0" y="3/4" width="1/2" height="1/4"/>    <!-- 5. Bottom half of BL quad -->
+    <Pane x="0" y="1/2" width="1/4" height="1/2"/>    <!-- 6. Left half of BL quad -->
+    <Pane x="1/4" y="1/2" width="1/4" height="1/2"/>  <!-- 7. Right half of BL quad -->
+    <Pane x="0" y="1/2" width="1/4" height="1/4"/>    <!-- 8. TL sub-quad -->
+    <Pane x="1/4" y="1/2" width="1/4" height="1/4"/>  <!-- 9. TR sub-quad -->
+    <Pane x="0" y="3/4" width="1/4" height="1/4"/>    <!-- 10. BL sub-quad -->
+    <Pane x="1/4" y="3/4" width="1/4" height="1/4"/>  <!-- 11. BR sub-quad -->
   </Frame>
 
-  <Frame name="quadrants">
-    <Pane x="0" y="0" width="1/2" height="1/2"/>      <!-- TL -->
-    <Pane x="1/2" y="0" width="1/2" height="1/2"/>    <!-- TR -->
-    <Pane x="0" y="1/2" width="1/2" height="1/2"/>    <!-- BL -->
-    <Pane x="1/2" y="1/2" width="1/2" height="1/2"/>  <!-- BR -->
-  </Frame>
-
-  <!-- Subdivision of a quadrant: 4 bisections + 4 sub-quads = 8 panes -->
-  <Frame name="quad-subdivisions">
-    <Pane x="0" y="0" width="1" height="1/2"/>        <!-- top half -->
-    <Pane x="0" y="1/2" width="1" height="1/2"/>      <!-- bottom half -->
-    <Pane x="0" y="0" width="1/2" height="1"/>        <!-- left half -->
-    <Pane x="1/2" y="0" width="1/2" height="1"/>      <!-- right half -->
-    <Pane x="0" y="0" width="1/2" height="1/2"/>      <!-- TL sub-quad -->
-    <Pane x="1/2" y="0" width="1/2" height="1/2"/>    <!-- TR sub-quad -->
-    <Pane x="0" y="1/2" width="1/2" height="1/2"/>    <!-- BL sub-quad -->
-    <Pane x="1/2" y="1/2" width="1/2" height="1/2"/>  <!-- BR sub-quad -->
+  <!-- Bottom-Right quadrant: 11-pane progression -->
+  <Frame name="quad-br">
+    <Pane x="0" y="0" width="1" height="1"/>          <!-- 1. Full display -->
+    <Pane x="0" y="1/2" width="1" height="1/2"/>      <!-- 2. Bottom half -->
+    <Pane x="1/2" y="1/2" width="1/2" height="1/2"/>  <!-- 3. BR quadrant -->
+    <Pane x="1/2" y="1/2" width="1/2" height="1/4"/>  <!-- 4. Top half of BR quad -->
+    <Pane x="1/2" y="3/4" width="1/2" height="1/4"/>  <!-- 5. Bottom half of BR quad -->
+    <Pane x="1/2" y="1/2" width="1/4" height="1/2"/>  <!-- 6. Left half of BR quad -->
+    <Pane x="3/4" y="1/2" width="1/4" height="1/2"/>  <!-- 7. Right half of BR quad -->
+    <Pane x="1/2" y="1/2" width="1/4" height="1/4"/>  <!-- 8. TL sub-quad -->
+    <Pane x="3/4" y="1/2" width="1/4" height="1/4"/>  <!-- 9. TR sub-quad -->
+    <Pane x="1/2" y="3/4" width="1/4" height="1/4"/>  <!-- 10. BL sub-quad -->
+    <Pane x="3/4" y="3/4" width="1/4" height="1/4"/>  <!-- 11. BR sub-quad -->
   </Frame>
 
   <!-- ========== LAYOUTS ========== -->
 
-  <!-- HOME: top-left quadrant -->
-  <Layout name="quad-home">
-    <Shape frame="full">
-      <Shape frame="halves-v">
-        <Shape frame="quadrants">
-          <Shape frame="quad-subdivisions"/>
-          <Shape/>
-          <Shape/>
-          <Shape/>
-        </Shape>
-        <Shape/>
-      </Shape>
-    </Shape>
+  <!-- Top-Left quadrant: 11-pane flat traversal -->
+  <Layout name="quad-tl">
+    <Shape frame="quad-tl"/>
   </Layout>
 
-  <!-- PGUP: top-right quadrant -->
-  <Layout name="quad-pgup">
-    <Shape frame="full">
-      <Shape frame="halves-v">
-        <Shape frame="quadrants">
-          <Shape/>
-          <Shape frame="quad-subdivisions"/>
-          <Shape/>
-          <Shape/>
-        </Shape>
-        <Shape/>
-      </Shape>
-    </Shape>
+  <!-- Top-Right quadrant: 11-pane flat traversal -->
+  <Layout name="quad-tr">
+    <Shape frame="quad-tr"/>
   </Layout>
 
-  <!-- END: bottom-left quadrant -->
-  <Layout name="quad-end">
-    <Shape frame="full">
-      <Shape frame="halves-v">
-        <Shape/>
-        <Shape frame="quadrants">
-          <Shape frame="quad-subdivisions"/>
-          <Shape/>
-          <Shape/>
-          <Shape/>
-        </Shape>
-      </Shape>
-    </Shape>
+  <!-- Bottom-Left quadrant: 11-pane flat traversal -->
+  <Layout name="quad-bl">
+    <Shape frame="quad-bl"/>
   </Layout>
 
-  <!-- PGDN: bottom-right quadrant -->
-  <Layout name="quad-pgdn">
-    <Shape frame="full">
-      <Shape frame="halves-v">
-        <Shape/>
-        <Shape frame="quadrants">
-          <Shape/>
-          <Shape frame="quad-subdivisions"/>
-          <Shape/>
-          <Shape/>
-        </Shape>
-      </Shape>
-    </Shape>
+  <!-- Bottom-Right quadrant: 11-pane flat traversal -->
+  <Layout name="quad-br">
+    <Shape frame="quad-br"/>
   </Layout>
 
   <!-- ========== LAYOUT ACTIONS ========== -->
 
-  <!-- Quadrants only -->
-  <LayoutAction key="home" layout="quad-home" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="pageup" layout="quad-pgup" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="end" layout="quad-end" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="pagedown" layout="quad-pgdn" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <!-- Quadrant traversal (home/pgup/end/pgdn keys) -->
+  <LayoutAction key="home" layout="quad-tl" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="pageup" layout="quad-tr" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="end" layout="quad-bl" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="pagedown" layout="quad-br" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
 
   <!-- Display movement -->
   <DisplayMove key="h" target="prev" wrap="true"/>
