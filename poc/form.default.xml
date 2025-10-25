@@ -2,41 +2,237 @@
 <Form>
   <DisplayQuirk nameContains="FlipGo-A" platform="macos" minBottomInset="31"/>
 
-  <!-- Define quadrant frames (WinSplit-style 2x2 grid) -->
-  <Frame name="quadrant-ul">
-    <Pane x="0" y="0" width="1/2" height="1/2"/>
-  </Frame>
-  <Frame name="quadrant-ur">
-    <Pane x="1/2" y="0" width="1/2" height="1/2"/>
-  </Frame>
-  <Frame name="quadrant-ll">
-    <Pane x="0" y="1/2" width="1/2" height="1/2"/>
-  </Frame>
-  <Frame name="quadrant-lr">
-    <Pane x="1/2" y="1/2" width="1/2" height="1/2"/>
+  <!-- ========== REUSABLE BUILDING BLOCKS ========== -->
+
+  <Frame name="full">
+    <Pane x="0" y="0" width="1" height="1"/>
   </Frame>
 
-  <!-- Define layouts (one per quadrant) -->
-  <Layout name="upper-left">
-    <Shape frame="quadrant-ul"/>
-  </Layout>
-  <Layout name="upper-right">
-    <Shape frame="quadrant-ur"/>
-  </Layout>
-  <Layout name="lower-left">
-    <Shape frame="quadrant-ll"/>
-  </Layout>
-  <Layout name="lower-right">
-    <Shape frame="quadrant-lr"/>
+  <Frame name="halves-v">
+    <Pane x="0" y="0" width="1" height="1/2"/>    <!-- top -->
+    <Pane x="0" y="1/2" width="1" height="1/2"/>  <!-- bottom -->
+  </Frame>
+
+  <Frame name="halves-h">
+    <Pane x="0" y="0" width="1/2" height="1"/>    <!-- left -->
+    <Pane x="1/2" y="0" width="1/2" height="1"/>  <!-- right -->
+  </Frame>
+
+  <Frame name="quadrants">
+    <Pane x="0" y="0" width="1/2" height="1/2"/>      <!-- TL -->
+    <Pane x="1/2" y="0" width="1/2" height="1/2"/>    <!-- TR -->
+    <Pane x="0" y="1/2" width="1/2" height="1/2"/>    <!-- BL -->
+    <Pane x="1/2" y="1/2" width="1/2" height="1/2"/>  <!-- BR -->
+  </Frame>
+
+  <!-- Subdivision of a quadrant: 4 bisections + 4 sub-quads = 8 panes -->
+  <Frame name="quad-subdivisions">
+    <Pane x="0" y="0" width="1" height="1/2"/>      <!-- top half -->
+    <Pane x="0" y="1/2" width="1" height="1/2"/>    <!-- bottom half -->
+    <Pane x="0" y="0" width="1/2" height="1"/>      <!-- left half -->
+    <Pane x="1/2" y="0" width="1/2" height="1"/>    <!-- right half -->
+    <Pane x="0" y="0" width="1/2" height="1/2"/>      <!-- TL sub-quad -->
+    <Pane x="1/2" y="0" width="1/2" height="1/2"/>    <!-- TR sub-quad -->
+    <Pane x="0" y="1/2" width="1/2" height="1/2"/>    <!-- BL sub-quad -->
+    <Pane x="1/2" y="1/2" width="1/2" height="1/2"/>  <!-- BR sub-quad -->
+  </Frame>
+
+  <Frame name="thirds-v">
+    <Pane x="0" y="0" width="1" height="1/3"/>
+    <Pane x="0" y="1/3" width="1" height="1/3"/>
+    <Pane x="0" y="2/3" width="1" height="1/3"/>
+  </Frame>
+
+  <Frame name="thirds-h">
+    <Pane x="0" y="0" width="1/3" height="1"/>
+    <Pane x="1/3" y="0" width="1/3" height="1"/>
+    <Pane x="2/3" y="0" width="1/3" height="1"/>
+  </Frame>
+
+  <!-- ========== LAYOUTS ========== -->
+
+  <!-- 3x3 grid: most are single-cell -->
+  <Layout name="ttt-ul">
+    <Shape frame="thirds-v">
+      <Shape frame="thirds-h"/>
+      <Shape/>
+      <Shape/>
+    </Shape>
   </Layout>
 
-  <!-- Bind keys to layouts (Ctrl+Shift+Option + key) -->
-  <LayoutAction key="insert" layout="upper-left" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="home" layout="upper-right" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="delete" layout="lower-left" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
-  <LayoutAction key="end" layout="lower-right" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <Layout name="ttt-uc">
+    <Shape frame="thirds-v">
+      <Shape frame="thirds-h">
+        <Shape/>
+        <Shape/>
+        <Shape/>
+      </Shape>
+      <Shape/>
+      <Shape/>
+    </Shape>
+  </Layout>
 
-  <!-- Display movement bindings -->
-  <DisplayMove key="pageup" target="prev" wrap="true"/>
-  <DisplayMove key="pagedown" target="next" wrap="true"/>
+  <Layout name="ttt-ur">
+    <Shape frame="thirds-v">
+      <Shape frame="thirds-h">
+        <Shape/>
+        <Shape/>
+        <Shape/>
+      </Shape>
+      <Shape/>
+      <Shape/>
+    </Shape>
+  </Layout>
+
+  <Layout name="ttt-ml">
+    <Shape frame="thirds-v">
+      <Shape/>
+      <Shape frame="thirds-h"/>
+      <Shape/>
+    </Shape>
+  </Layout>
+
+  <!-- Center: full → center cell -->
+  <Layout name="ttt-mc">
+    <Shape frame="full">
+      <Shape frame="thirds-v">
+        <Shape/>
+        <Shape frame="thirds-h">
+          <Shape/>
+          <Shape/>
+          <Shape/>
+        </Shape>
+        <Shape/>
+      </Shape>
+    </Shape>
+  </Layout>
+
+  <Layout name="ttt-mr">
+    <Shape frame="thirds-v">
+      <Shape/>
+      <Shape frame="thirds-h">
+        <Shape/>
+        <Shape/>
+        <Shape/>
+      </Shape>
+      <Shape/>
+    </Shape>
+  </Layout>
+
+  <Layout name="ttt-bl">
+    <Shape frame="thirds-v">
+      <Shape/>
+      <Shape/>
+      <Shape frame="thirds-h"/>
+    </Shape>
+  </Layout>
+
+  <Layout name="ttt-bc">
+    <Shape frame="thirds-v">
+      <Shape/>
+      <Shape/>
+      <Shape frame="thirds-h">
+        <Shape/>
+        <Shape/>
+        <Shape/>
+      </Shape>
+    </Shape>
+  </Layout>
+
+  <Layout name="ttt-br">
+    <Shape frame="thirds-v">
+      <Shape/>
+      <Shape/>
+      <Shape frame="thirds-h">
+        <Shape/>
+        <Shape/>
+        <Shape/>
+      </Shape>
+    </Shape>
+  </Layout>
+
+  <!-- Quadrants: full → half → quadrant → subdivisions -->
+
+  <!-- HOME: top-left quadrant -->
+  <Layout name="quad-home">
+    <Shape frame="full">
+      <Shape frame="halves-v">
+        <Shape frame="quadrants">
+          <Shape frame="quad-subdivisions"/>
+          <Shape/>
+          <Shape/>
+          <Shape/>
+        </Shape>
+        <Shape/>
+      </Shape>
+    </Shape>
+  </Layout>
+
+  <!-- PGUP: top-right quadrant -->
+  <Layout name="quad-pgup">
+    <Shape frame="full">
+      <Shape frame="halves-v">
+        <Shape frame="quadrants">
+          <Shape/>
+          <Shape frame="quad-subdivisions"/>
+          <Shape/>
+          <Shape/>
+        </Shape>
+        <Shape/>
+      </Shape>
+    </Shape>
+  </Layout>
+
+  <!-- END: bottom-left quadrant -->
+  <Layout name="quad-end">
+    <Shape frame="full">
+      <Shape frame="halves-v">
+        <Shape/>
+        <Shape frame="quadrants">
+          <Shape frame="quad-subdivisions"/>
+          <Shape/>
+          <Shape/>
+          <Shape/>
+        </Shape>
+      </Shape>
+    </Shape>
+  </Layout>
+
+  <!-- PGDN: bottom-right quadrant -->
+  <Layout name="quad-pgdn">
+    <Shape frame="full">
+      <Shape frame="halves-v">
+        <Shape/>
+        <Shape frame="quadrants">
+          <Shape/>
+          <Shape frame="quad-subdivisions"/>
+          <Shape/>
+          <Shape/>
+        </Shape>
+      </Shape>
+    </Shape>
+  </Layout>
+
+  <!-- ========== LAYOUT ACTIONS ========== -->
+
+  <!-- 3x3 grid -->
+  <LayoutAction key="u" layout="ttt-ul" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="i" layout="ttt-uc" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="o" layout="ttt-ur" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="j" layout="ttt-ml" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="k" layout="ttt-mc" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="l" layout="ttt-mr" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="m" layout="ttt-bl" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="comma" layout="ttt-bc" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="period" layout="ttt-br" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+
+  <!-- Quadrants -->
+  <LayoutAction key="home" layout="quad-home" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="pageup" layout="quad-pgup" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="end" layout="quad-end" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="pagedown" layout="quad-pgdn" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+
+  <!-- Display movement -->
+  <DisplayMove key="h" target="prev" wrap="true"/>
+  <DisplayMove key="semicolon" target="next" wrap="true"/>
 </Form>
