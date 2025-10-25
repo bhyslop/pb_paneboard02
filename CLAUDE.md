@@ -130,7 +130,21 @@ Window layouts are defined in XML using the schema in `pbxs_schema.xsd`.
 
 ### Motet
 
-**Motet** = Sema + Coda (parallel agent workflow)
+**Motet** = Sema + Coda (parallel agent workflow for spec + implementation changes)
 
-- **Sema** - spec agent (`.md`, `.xsd`)
-- **Coda** - coder agent (`.rs`, `.xml`, `.swift`, `.h`, build files)
+Configured agents in `.claude/agents/`:
+- **sema.md** - Spec agent: updates documentation and schemas (`.md`, `.xsd`)
+- **coda.md** - Implementation agent: writes and modifies code (`.rs`, `.xml`, `.swift`, `.h`, build files)
+
+**Usage pattern:**
+- Dispatch both agents in parallel for changes with clean file domain separation
+- Each agent uses Sonnet model for complex reasoning
+- No filesystem snapshot guarantees - strict file orthogonality required to avoid conflicts
+- Use code anchors (function names, unique strings) not line numbers in prompts
+
+**Orchestration patterns:**
+- **Simple**: Sema + Coda in parallel (2 agents)
+- **Fan-out**: Planner agent → multiple Coda instances for orthogonal changes (up to 10 concurrent)
+- **Sequential**: Planner → review → workers (when conflicts possible)
+
+**Key constraint**: Agents cannot spawn subagents. Claude orchestrates all dispatch and integration.
