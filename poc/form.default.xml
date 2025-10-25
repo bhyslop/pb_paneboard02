@@ -34,7 +34,49 @@
     Not yet implemented - deferred pending quadrant model debugging.
   -->
 
-  <!-- ========== QUADRANT FRAMES (11 panes each) ========== -->
+  <!-- ========== REUSABLE BASE FRAMES (compositional building blocks) ========== -->
+
+  <Frame name="full">
+    <Pane x="0" y="0" width="1" height="1"/>
+  </Frame>
+
+  <Frame name="halves-vertical">
+    <Pane x="0" y="0"   width="1" height="1/2"/>
+    <Pane x="0" y="1/2" width="1" height="1/2"/>
+  </Frame>
+
+  <Frame name="halves-horizontal">
+    <Pane x="0"   y="0" width="1/2" height="1"/>
+    <Pane x="1/2" y="0" width="1/2" height="1"/>
+  </Frame>
+
+  <Frame name="quads">
+    <Pane x="0"   y="0"   width="1/2" height="1/2"/>
+    <Pane x="1/2" y="0"   width="1/2" height="1/2"/>
+    <Pane x="0"   y="1/2" width="1/2" height="1/2"/>
+    <Pane x="1/2" y="1/2" width="1/2" height="1/2"/>
+  </Frame>
+
+  <!-- ========== QUADRANT DETAIL FRAMES (refinements for TL quadrant) ========== -->
+
+  <Frame name="quad-tl-detail-halves">
+    <Pane x="0" y="0"   width="1" height="1/2"/>  <!-- top half of quadrant -->
+    <Pane x="0" y="1/2" width="1" height="1/2"/>  <!-- bottom half of quadrant -->
+  </Frame>
+
+  <Frame name="quad-tl-detail-sides">
+    <Pane x="0"   y="0" width="1/2" height="1"/>  <!-- left half of quadrant -->
+    <Pane x="1/2" y="0" width="1/2" height="1"/>  <!-- right half of quadrant -->
+  </Frame>
+
+  <Frame name="quad-tl-detail-quads">
+    <Pane x="0"   y="0"   width="1/2" height="1/2"/>  <!-- TL sub-quad -->
+    <Pane x="1/2" y="0"   width="1/2" height="1/2"/>  <!-- TR sub-quad -->
+    <Pane x="0"   y="1/2" width="1/2" height="1/2"/>  <!-- BL sub-quad -->
+    <Pane x="1/2" y="1/2" width="1/2" height="1/2"/>  <!-- BR sub-quad -->
+  </Frame>
+
+  <!-- ========== LEGACY QUADRANT FRAMES (monolithic, deprecated) ========== -->
 
   <!-- Top-Left quadrant: 11-pane progression -->
   <Frame name="quad-tl">
@@ -98,24 +140,98 @@
 
   <!-- ========== LAYOUTS ========== -->
 
-  <!-- Top-Left quadrant: 11-pane flat traversal -->
+  <!-- Top-Left quadrant: 11-pane compositional layout
+       Pane sequence (sorted by area desc, then traverse):
+       1. Full display
+       2. Top half
+       3. TL quadrant
+       4-5. Top/bottom halves of TL quadrant
+       6-7. Left/right halves of TL quadrant
+       8-11. Four sub-quadrants of TL quadrant
+  -->
   <Layout name="quad-tl">
-    <Shape frame="quad-tl"/>
+    <!-- Pane 1: Full display -->
+    <Shape frame="full">
+      <Include/>
+    </Shape>
+
+    <!-- Pane 2: Top half -->
+    <Shape frame="halves-vertical">
+      <Include/>                         <!-- top half -->
+      <Include whenOrientation="never"/> <!-- bottom half (dropped) -->
+    </Shape>
+
+    <!-- Panes 3-11: TL quadrant and its refinements -->
+    <Shape frame="quads">
+      <!-- TL quadrant: subdivide into detail -->
+      <Shape frame="quad-tl-detail-quads">
+        <Include/>  <!-- Pane 8: TL sub-quad -->
+        <Include/>  <!-- Pane 9: TR sub-quad -->
+        <Include/>  <!-- Pane 10: BL sub-quad -->
+        <Include/>  <!-- Pane 11: BR sub-quad -->
+      </Shape>
+      <!-- TR quadrant (dropped) -->
+      <Include whenOrientation="never"/>
+      <!-- BL quadrant (dropped) -->
+      <Include whenOrientation="never"/>
+      <!-- BR quadrant (dropped) -->
+      <Include whenOrientation="never"/>
+    </Shape>
+
+    <!-- Additional detail shapes for TL quadrant halves -->
+    <Shape frame="quads">
+      <!-- TL quadrant: subdivide into top/bottom halves -->
+      <Shape frame="quad-tl-detail-halves">
+        <Include/>  <!-- Pane 4: top half of TL -->
+        <Include/>  <!-- Pane 5: bottom half of TL -->
+      </Shape>
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+    </Shape>
+
+    <Shape frame="quads">
+      <!-- TL quadrant: subdivide into left/right halves -->
+      <Shape frame="quad-tl-detail-sides">
+        <Include/>  <!-- Pane 6: left half of TL -->
+        <Include/>  <!-- Pane 7: right half of TL -->
+      </Shape>
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+    </Shape>
+
+    <!-- Pane 3: Whole TL quadrant as terminal -->
+    <Shape frame="quads">
+      <Include/>  <!-- Pane 3: TL quadrant -->
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+    </Shape>
   </Layout>
 
-  <!-- Top-Right quadrant: 11-pane flat traversal -->
+  <!-- Top-Right quadrant: PLACEHOLDER (not yet migrated to compositional format)
+       Uses legacy monolithic frame temporarily -->
   <Layout name="quad-tr">
-    <Shape frame="quad-tr"/>
+    <Shape frame="quad-tr">
+      <Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/>
+    </Shape>
   </Layout>
 
-  <!-- Bottom-Left quadrant: 11-pane flat traversal -->
+  <!-- Bottom-Left quadrant: PLACEHOLDER (not yet migrated to compositional format)
+       Uses legacy monolithic frame temporarily -->
   <Layout name="quad-bl">
-    <Shape frame="quad-bl"/>
+    <Shape frame="quad-bl">
+      <Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/>
+    </Shape>
   </Layout>
 
-  <!-- Bottom-Right quadrant: 11-pane flat traversal -->
+  <!-- Bottom-Right quadrant: PLACEHOLDER (not yet migrated to compositional format)
+       Uses legacy monolithic frame temporarily -->
   <Layout name="quad-br">
-    <Shape frame="quad-br"/>
+    <Shape frame="quad-br">
+      <Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/><Leaf/>
+    </Shape>
   </Layout>
 
   <!-- ========== LAYOUT ACTIONS ========== -->

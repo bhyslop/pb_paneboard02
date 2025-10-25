@@ -57,7 +57,7 @@ impl Fraction {
                 return Err("denominator cannot be zero".to_string());
             }
 
-            Ok(Fraction { num, den })
+            Ok(Fraction { num, den }.reduce())
         } else {
             // Whole number: "1", "0"
             let num = s.parse::<u32>()
@@ -66,9 +66,55 @@ impl Fraction {
         }
     }
 
-    /// Convert to f64 for pixel calculations
+    /// Convert to f64 for pixel calculations (only at final stage)
     fn to_f64(&self) -> f64 {
         self.num as f64 / self.den as f64
+    }
+
+    /// Compute GCD for fraction reduction
+    fn gcd(mut a: u32, mut b: u32) -> u32 {
+        while b != 0 {
+            let temp = b;
+            b = a % b;
+            a = temp;
+        }
+        a
+    }
+
+    /// Reduce fraction to lowest terms
+    fn reduce(self) -> Self {
+        if self.num == 0 {
+            return Fraction { num: 0, den: 1 };
+        }
+        let g = Self::gcd(self.num, self.den);
+        Fraction {
+            num: self.num / g,
+            den: self.den / g,
+        }
+    }
+
+    /// Add two fractions: a/b + c/d = (ad + bc) / bd
+    fn add(&self, other: &Fraction) -> Fraction {
+        Fraction {
+            num: self.num * other.den + other.num * self.den,
+            den: self.den * other.den,
+        }.reduce()
+    }
+
+    /// Multiply two fractions: (a/b) * (c/d) = (ac) / (bd)
+    fn mul(&self, other: &Fraction) -> Fraction {
+        Fraction {
+            num: self.num * other.num,
+            den: self.den * other.den,
+        }.reduce()
+    }
+
+    /// Scale and translate: parent_offset + (pane_offset * parent_size)
+    /// Used for relative coordinate transformation
+    fn scale_translate(pane_offset: &Fraction, parent_offset: &Fraction, parent_size: &Fraction) -> Fraction {
+        // result = parent_offset + (pane_offset * parent_size)
+        let scaled = pane_offset.mul(parent_size);
+        parent_offset.add(&scaled)
     }
 }
 
@@ -174,6 +220,7 @@ struct SpaceRule {
 enum Orientation {
     Portrait,
     Landscape,
+    Never,  // Always fails (used for explicit drops via <Include whenOrientation="never"/>)
 }
 
 #[derive(Clone)]
@@ -204,7 +251,7 @@ struct ParsedLayout {
 
 #[derive(Clone)]
 struct ParsedShape {
-    frame: Option<String>, // references Frame name
+    frame: String, // references Frame name (now required)
     when_orientation: Option<Orientation>,
     #[allow(dead_code)] // For future conditional Shape evaluation
     min_width: Option<MeasureRef>,
@@ -214,7 +261,86 @@ struct ParsedShape {
     under_width: Option<MeasureRef>,
     #[allow(dead_code)] // For future conditional Shape evaluation
     under_height: Option<MeasureRef>,
-    children: Vec<ParsedShape>,
+    children: Vec<ShapeChild>,
+}
+
+#[derive(Clone)]
+enum ShapeChild {
+    Shape(ParsedShape),
+    Include(LayoutInclude),
+}
+
+/// Include directive: terminal pane, sublayout reference, or conditional drop
+#[derive(Clone)]
+struct LayoutInclude {
+    layout: Option<String>,  // If Some, inline this layout's structure
+    condition: IncludeCondition,
+}
+
+/// Conditional evaluation for Include (all attributes AND-ed)
+#[derive(Clone)]
+struct IncludeCondition {
+    when_orientation: Option<Orientation>,
+    min_width: Option<u32>,      // Literal pixels only (no Measure references)
+    under_width: Option<u32>,
+    min_height: Option<u32>,
+    under_height: Option<u32>,
+    name_contains: Option<String>,  // Case-insensitive substring match
+}
+
+impl IncludeCondition {
+    /// Check if all conditions match the display (AND logic)
+    /// Returns true if all present conditions pass, false if any fail
+    fn matches(&self, display: &DisplayInfo) -> bool {
+        // Orientation check
+        if let Some(ref orientation) = self.when_orientation {
+            let actual = if display.width >= display.height {
+                Orientation::Landscape
+            } else {
+                Orientation::Portrait
+            };
+
+            match orientation {
+                Orientation::Never => return false,  // "never" always fails
+                Orientation::Portrait if actual != Orientation::Portrait => return false,
+                Orientation::Landscape if actual != Orientation::Landscape => return false,
+                _ => {}
+            }
+        }
+
+        // Display name substring match (case-insensitive)
+        if let Some(ref name_contains) = self.name_contains {
+            if !display.name.to_lowercase().contains(&name_contains.to_lowercase()) {
+                return false;
+            }
+        }
+
+        // Width constraints
+        if let Some(min_width) = self.min_width {
+            if display.width < min_width as f64 {
+                return false;
+            }
+        }
+        if let Some(under_width) = self.under_width {
+            if display.width >= under_width as f64 {
+                return false;
+            }
+        }
+
+        // Height constraints
+        if let Some(min_height) = self.min_height {
+            if display.height < min_height as f64 {
+                return false;
+            }
+        }
+        if let Some(under_height) = self.under_height {
+            if display.height >= under_height as f64 {
+                return false;
+            }
+        }
+
+        true  // All conditions passed
+    }
 }
 
 struct ParsedLayoutAction {
@@ -459,6 +585,7 @@ impl ParsedForm {
                     rule.when_orientation = Some(match value.as_str() {
                         "portrait" => Orientation::Portrait,
                         "landscape" => Orientation::Landscape,
+                        "never" => Orientation::Never,
                         _ => return Err(format!("invalid orientation: {}", value)),
                     });
                 }
@@ -557,7 +684,7 @@ impl ParsedForm {
 
         let name = name.ok_or("Layout missing name attribute")?;
         let mut needed_measures = Vec::new();
-        let mut root_shape = None;
+        let mut root_shapes = Vec::new();
         let mut buf = Vec::new();
 
         loop {
@@ -571,10 +698,10 @@ impl ParsedForm {
                     }
                 }
                 Ok(Event::Start(ref e)) if e.name().as_ref() == b"Shape" => {
-                    root_shape = Some(Self::parse_shape(reader, e)?);
+                    root_shapes.push(Self::parse_shape(reader, e)?);
                 }
                 Ok(Event::Empty(ref e)) if e.name().as_ref() == b"Shape" => {
-                    root_shape = Some(Self::parse_empty_shape(e)?);
+                    return Err("Shape with no children not allowed at Layout level (must have children or use <Leaf/>)".to_string());
                 }
                 Ok(Event::End(ref e)) if e.name().as_ref() == b"Layout" => break,
                 Ok(Event::Eof) => return Err("unexpected EOF in Layout".to_string()),
@@ -584,7 +711,26 @@ impl ParsedForm {
             buf.clear();
         }
 
-        let root_shape = root_shape.ok_or(format!("Layout '{}' missing Shape", name))?;
+        if root_shapes.is_empty() {
+            return Err(format!("Layout '{}' missing Shape", name));
+        }
+
+        // For now, wrap multiple shapes in a single composite root
+        // The flatten logic will handle concatenating results from multiple top-level shapes
+        let root_shape = if root_shapes.len() == 1 {
+            root_shapes.into_iter().next().unwrap()
+        } else {
+            // Create synthetic "multi" frame that will be handled specially during flattening
+            ParsedShape {
+                frame: "__multi__".to_string(),
+                when_orientation: None,
+                min_width: None,
+                min_height: None,
+                under_width: None,
+                under_height: None,
+                children: root_shapes.into_iter().map(ShapeChild::Shape).collect(),
+            }
+        };
 
         Ok(ParsedLayout {
             name,
@@ -601,10 +747,51 @@ impl ParsedForm {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) if e.name().as_ref() == b"Shape" => {
-                    shape.children.push(Self::parse_shape(reader, e)?);
+                    let child_shape = Self::parse_shape(reader, e)?;
+                    shape.children.push(ShapeChild::Shape(child_shape));
                 }
-                Ok(Event::Empty(ref e)) if e.name().as_ref() == b"Shape" => {
-                    shape.children.push(Self::parse_empty_shape(e)?);
+                Ok(Event::Empty(ref e)) => {
+                    match e.name().as_ref() {
+                        b"Shape" => {
+                            return Err("Empty Shape (<Shape/>) not allowed as child (use <Include/>)".to_string());
+                        }
+                        b"Include" => {
+                            let include = Self::parse_include(e)?;
+                            shape.children.push(ShapeChild::Include(include));
+                        }
+                        // Legacy elements - deprecated but kept for backwards compatibility during migration
+                        b"Leaf" => {
+                            eprintln!("LAYOUT: WARNING <Leaf/> is deprecated, use <Include/> instead");
+                            let include = LayoutInclude {
+                                layout: None,
+                                condition: IncludeCondition {
+                                    when_orientation: None,
+                                    min_width: None,
+                                    under_width: None,
+                                    min_height: None,
+                                    under_height: None,
+                                    name_contains: None,
+                                },
+                            };
+                            shape.children.push(ShapeChild::Include(include));
+                        }
+                        b"Drop" => {
+                            // <Drop/> maps to <Include whenOrientation="never"/>
+                            let include = LayoutInclude {
+                                layout: None,
+                                condition: IncludeCondition {
+                                    when_orientation: Some(Orientation::Never),
+                                    min_width: None,
+                                    under_width: None,
+                                    min_height: None,
+                                    under_height: None,
+                                    name_contains: None,
+                                },
+                            };
+                            shape.children.push(ShapeChild::Include(include));
+                        }
+                        _ => {}
+                    }
                 }
                 Ok(Event::End(ref e)) if e.name().as_ref() == b"Shape" => break,
                 Ok(Event::Eof) => return Err("unexpected EOF in Shape".to_string()),
@@ -615,10 +802,6 @@ impl ParsedForm {
         }
 
         Ok(shape)
-    }
-
-    fn parse_empty_shape(e: &quick_xml::events::BytesStart) -> Result<ParsedShape, String> {
-        Self::parse_shape_attrs(e)
     }
 
     fn parse_shape_attrs(e: &quick_xml::events::BytesStart) -> Result<ParsedShape, String> {
@@ -639,6 +822,7 @@ impl ParsedForm {
                     when_orientation = Some(match value.as_str() {
                         "portrait" => Orientation::Portrait,
                         "landscape" => Orientation::Landscape,
+                        "never" => Orientation::Never,
                         _ => return Err(format!("invalid orientation: {}", value)),
                     });
                 }
@@ -650,6 +834,8 @@ impl ParsedForm {
             }
         }
 
+        let frame = frame.ok_or("Shape missing required frame attribute")?;
+
         Ok(ParsedShape {
             frame,
             when_orientation,
@@ -658,6 +844,63 @@ impl ParsedForm {
             under_width,
             under_height,
             children: Vec::new(),
+        })
+    }
+
+    fn parse_include(e: &quick_xml::events::BytesStart) -> Result<LayoutInclude, String> {
+        let mut layout = None;
+        let mut when_orientation = None;
+        let mut min_width = None;
+        let mut under_width = None;
+        let mut min_height = None;
+        let mut under_height = None;
+        let mut name_contains = None;
+
+        for attr in e.attributes() {
+            let attr = attr.map_err(|e| format!("attribute error: {}", e))?;
+            let value = String::from_utf8_lossy(&attr.value).to_string();
+
+            match attr.key.as_ref() {
+                b"layout" => layout = Some(value),
+                b"whenOrientation" => {
+                    when_orientation = Some(match value.as_str() {
+                        "portrait" => Orientation::Portrait,
+                        "landscape" => Orientation::Landscape,
+                        "never" => Orientation::Never,
+                        _ => return Err(format!("invalid orientation: {}", value)),
+                    });
+                }
+                b"minWidth" => {
+                    min_width = Some(value.parse::<u32>()
+                        .map_err(|_| format!("invalid minWidth (must be literal integer): {}", value))?);
+                }
+                b"underWidth" => {
+                    under_width = Some(value.parse::<u32>()
+                        .map_err(|_| format!("invalid underWidth (must be literal integer): {}", value))?);
+                }
+                b"minHeight" => {
+                    min_height = Some(value.parse::<u32>()
+                        .map_err(|_| format!("invalid minHeight (must be literal integer): {}", value))?);
+                }
+                b"underHeight" => {
+                    under_height = Some(value.parse::<u32>()
+                        .map_err(|_| format!("invalid underHeight (must be literal integer): {}", value))?);
+                }
+                b"nameContains" => name_contains = Some(value),
+                _ => {}
+            }
+        }
+
+        Ok(LayoutInclude {
+            layout,
+            condition: IncludeCondition {
+                when_orientation,
+                min_width,
+                under_width,
+                min_height,
+                under_height,
+                name_contains,
+            },
         })
     }
 
@@ -837,32 +1080,53 @@ impl ParsedForm {
             }
         }
 
-        if let Some(ref frame_name) = shape.frame {
-            if let Some(frame) = frames.get(frame_name) {
-                // Validate transitive frame resolution: children must align with panes
-                if shape.children.len() > frame.panes.len() {
-                    errors.push(format!(
-                        "Layout '{}': Shape references Frame '{}' which has {} panes, but Shape has {} children (extras ignored)",
-                        layout_name, frame_name, frame.panes.len(), shape.children.len()
-                    ));
+        // Special case: synthetic "__multi__" frame for multiple top-level shapes
+        if shape.frame == "__multi__" {
+            // Just validate children recursively
+            for child in &shape.children {
+                match child {
+                    ShapeChild::Shape(ref child_shape) => {
+                        Self::validate_shape_tree(child_shape, layout_name, frames, used_measures, errors);
+                    }
+                    ShapeChild::Include(_) => {
+                        // Includes under __multi__ shouldn't happen but not an error
+                    }
                 }
+            }
+            return;
+        }
 
-                // Recursively validate children
-                for child in &shape.children {
-                    Self::validate_shape_tree(child, layout_name, frames, used_measures, errors);
+        // Validate frame reference
+        if let Some(frame) = frames.get(&shape.frame) {
+            // STRICT 1:1 child count enforcement
+            if shape.children.len() != frame.panes.len() {
+                errors.push(format!(
+                    "Layout '{}': child count {} != pane count {} of frame '{}'",
+                    layout_name, shape.children.len(), frame.panes.len(), shape.frame
+                ));
+                return; // Don't recurse into malformed tree
+            }
+
+            // Recursively validate child Shapes and check Include layout references
+            for child in &shape.children {
+                match child {
+                    ShapeChild::Shape(ref child_shape) => {
+                        Self::validate_shape_tree(child_shape, layout_name, frames, used_measures, errors);
+                    }
+                    ShapeChild::Include(ref include) => {
+                        // Note: Layout references in Include will be validated separately
+                        // (we don't have access to layouts map here, and we need cycle detection)
+                        // For now, just validate that the Include is well-formed
+                        // Cycle detection will happen during layout expansion
+                        if let Some(ref _layout_ref) = include.layout {
+                            // Layout reference validation happens in a separate pass
+                        }
+                    }
                 }
-            } else {
-                errors.push(format!("Layout '{}' references undefined Frame '{}'",
-                    layout_name, frame_name));
             }
         } else {
-            // No frame but has children - invalid
-            if !shape.children.is_empty() {
-                errors.push(format!(
-                    "Layout '{}': Shape has {} children but no frame attribute",
-                    layout_name, shape.children.len()
-                ));
-            }
+            errors.push(format!("Layout '{}' references undefined Frame '{}'",
+                layout_name, shape.frame));
         }
     }
 }
@@ -951,11 +1215,16 @@ impl ParsedForm {
                         }
                     }
 
-                    // Flatten shape tree to leaf panes
+                    // Flatten shape tree to leaf panes using pure rational arithmetic
+                    let full = Fraction { num: 1, den: 1 };
+                    let zero = Fraction { num: 0, den: 1 };
                     let leaf_panes = self.flatten_shape_tree(
                         &layout.root_shape,
                         display,
-                        1.0, 0.0, 0.0, 1.0, 1.0 // parent context: full display
+                        &zero,    // parent x = 0
+                        &zero,    // parent y = 0
+                        &full,    // parent width = 1 (full display width)
+                        &full,    // parent height = 1 (full display height)
                     );
 
                     if leaf_panes.is_empty() {
@@ -1085,21 +1354,20 @@ impl ParsedForm {
         }
     }
 
-    // Recursively flatten shape tree to leaf panes
-    // parent_* define the fractional context (relative to display)
+    // Recursively flatten shape tree to leaf panes using pure rational arithmetic
+    // Parent context is defined by fractions (all in range 0..1 relative to display)
     fn flatten_shape_tree(
         &self,
         shape: &ParsedShape,
         display: &DisplayInfo,
-        parent_width: f64,
-        parent_x: f64,
-        parent_y: f64,
-        parent_w_frac: f64,
-        parent_h_frac: f64,
+        parent_x: &Fraction,      // parent pane x offset (relative to display)
+        parent_y: &Fraction,      // parent pane y offset (relative to display)
+        parent_width: &Fraction,  // parent pane width (relative to display)
+        parent_height: &Fraction, // parent pane height (relative to display)
     ) -> Vec<ParsedPane> {
         let mut leaves = Vec::new();
 
-        // Check conditional pruning
+        // Check conditional pruning (orientation)
         if let Some(orientation) = &shape.when_orientation {
             let actual = if display.width >= display.height {
                 Orientation::Landscape
@@ -1111,95 +1379,105 @@ impl ParsedForm {
             }
         }
 
-        // Check dimension constraints (would need to resolve MeasureRefs here)
+        // Check dimension constraints (MeasureRefs would be resolved here)
         // For now, skip dimension constraints on Shapes (can be added later)
 
-        // If no frame, this is an empty leaf shape
-        let frame_name = match &shape.frame {
-            Some(name) => name,
-            None => return leaves,
-        };
-
-        let frame = match self.frames.get(frame_name) {
-            Some(f) => f,
-            None => return leaves,
-        };
-
-        // If no children, all frame panes are leaves
-        if shape.children.is_empty() {
-            for pane in &frame.panes {
-                // Transform pane coordinates to display-relative fractions
-                let abs_x = Fraction {
-                    num: (parent_x * pane.x.den as f64 + pane.x.num as f64 * parent_w_frac) as u32,
-                    den: pane.x.den,
-                };
-                let abs_y = Fraction {
-                    num: (parent_y * pane.y.den as f64 + pane.y.num as f64 * parent_h_frac) as u32,
-                    den: pane.y.den,
-                };
-                let abs_w = Fraction {
-                    num: (pane.width.num as f64 * parent_w_frac) as u32,
-                    den: pane.width.den,
-                };
-                let abs_h = Fraction {
-                    num: (pane.height.num as f64 * parent_h_frac) as u32,
-                    den: pane.height.den,
-                };
-
-                leaves.push(ParsedPane {
-                    x: abs_x,
-                    y: abs_y,
-                    width: abs_w,
-                    height: abs_h,
-                });
+        // Special case: synthetic "__multi__" frame for multiple top-level shapes
+        if shape.frame == "__multi__" {
+            for child in &shape.children {
+                match child {
+                    ShapeChild::Shape(ref child_shape) => {
+                        // Each top-level shape starts with full display context
+                        let full = Fraction { num: 1, den: 1 };
+                        let zero = Fraction { num: 0, den: 1 };
+                        leaves.extend(self.flatten_shape_tree(
+                            child_shape,
+                            display,
+                            &zero,
+                            &zero,
+                            &full,
+                            &full,
+                        ));
+                    }
+                    ShapeChild::Include(_) => {
+                        // Includes under __multi__ shouldn't happen but handle gracefully
+                        eprintln!("LAYOUT: WARNING Include child under __multi__ frame (unexpected)");
+                    }
+                }
             }
-        } else {
-            // Children subdivide parent panes
-            for (i, pane) in frame.panes.iter().enumerate() {
-                if let Some(child_shape) = shape.children.get(i) {
-                    // Calculate absolute position and size for this pane
-                    let pane_x = parent_x + pane.x.to_f64() * parent_w_frac;
-                    let pane_y = parent_y + pane.y.to_f64() * parent_h_frac;
-                    let pane_w = pane.width.to_f64() * parent_w_frac;
-                    let pane_h = pane.height.to_f64() * parent_h_frac;
+            return leaves;
+        }
 
-                    // Recursively flatten child
+        // Get frame definition
+        let frame = match self.frames.get(&shape.frame) {
+            Some(f) => f,
+            None => return leaves, // Already validated, but guard anyway
+        };
+
+        // STRICT 1:1 child-to-pane mapping (already validated, but double-check)
+        if shape.children.len() != frame.panes.len() {
+            eprintln!("LAYOUT: ERROR child count mismatch in flatten_shape_tree (should be caught in validation)");
+            return leaves;
+        }
+
+        // Process each pane with its corresponding child
+        for (pane, child) in frame.panes.iter().zip(&shape.children) {
+            // Calculate this pane's absolute position and size using exact rational arithmetic
+            // Formula: pane_abs_x = parent_x + (pane.x * parent_width)
+            let pane_abs_x = Fraction::scale_translate(&pane.x, parent_x, parent_width);
+            let pane_abs_y = Fraction::scale_translate(&pane.y, parent_y, parent_height);
+            let pane_abs_width = pane.width.mul(parent_width);
+            let pane_abs_height = pane.height.mul(parent_height);
+
+            match child {
+                ShapeChild::Include(ref include) => {
+                    // Check conditions first
+                    if !include.condition.matches(display) {
+                        // Condition failed → skip this pane (local no-op)
+                        continue;
+                    }
+
+                    // Conditions passed - now check if this is a layout reference or terminal
+                    if let Some(ref layout_name) = include.layout {
+                        // Inline the referenced layout's structure
+                        // Note: Layout expansion with cycle detection should happen at parse time
+                        // For now, we'll look up the layout and flatten its root shape(s)
+                        if let Some(layout) = self.layouts.get(layout_name) {
+                            // Flatten the layout's root shape within this pane's context
+                            let layout_leaves = self.flatten_shape_tree(
+                                &layout.root_shape,
+                                display,
+                                &pane_abs_x,
+                                &pane_abs_y,
+                                &pane_abs_width,
+                                &pane_abs_height,
+                            );
+                            leaves.extend(layout_leaves);
+                        } else {
+                            // Layout not found - should have been caught in validation
+                            eprintln!("LAYOUT: ERROR Include references undefined layout '{}'", layout_name);
+                        }
+                    } else {
+                        // No layout reference → this is a terminal pane
+                        leaves.push(ParsedPane {
+                            x: pane_abs_x,
+                            y: pane_abs_y,
+                            width: pane_abs_width,
+                            height: pane_abs_height,
+                        });
+                    }
+                }
+                ShapeChild::Shape(ref child_shape) => {
+                    // Recursively subdivide this pane
                     let child_leaves = self.flatten_shape_tree(
                         child_shape,
                         display,
-                        parent_width,
-                        pane_x,
-                        pane_y,
-                        pane_w,
-                        pane_h,
+                        &pane_abs_x,
+                        &pane_abs_y,
+                        &pane_abs_width,
+                        &pane_abs_height,
                     );
-
                     leaves.extend(child_leaves);
-                } else {
-                    // No child shape = this pane is a leaf
-                    let abs_x = Fraction {
-                        num: (parent_x * pane.x.den as f64 + pane.x.num as f64 * parent_w_frac) as u32,
-                        den: pane.x.den,
-                    };
-                    let abs_y = Fraction {
-                        num: (parent_y * pane.y.den as f64 + pane.y.num as f64 * parent_h_frac) as u32,
-                        den: pane.y.den,
-                    };
-                    let abs_w = Fraction {
-                        num: (pane.width.num as f64 * parent_w_frac) as u32,
-                        den: pane.width.den,
-                    };
-                    let abs_h = Fraction {
-                        num: (pane.height.num as f64 * parent_h_frac) as u32,
-                        den: pane.height.den,
-                    };
-
-                    leaves.push(ParsedPane {
-                        x: abs_x,
-                        y: abs_y,
-                        width: abs_w,
-                        height: abs_h,
-                    });
                 }
             }
         }

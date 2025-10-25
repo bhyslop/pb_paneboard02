@@ -34,6 +34,24 @@
         <xs:element ref="Application" minOccurs="0" maxOccurs="unbounded"/>
       </xs:sequence>
     </xs:complexType>
+    <!-- Referential integrity: Frame names -->
+    <xs:key name="frameNames">
+      <xs:selector xpath="Frame"/>
+      <xs:field xpath="@name"/>
+    </xs:key>
+    <xs:keyref name="shapeFrameRef" refer="frameNames">
+      <xs:selector xpath=".//Shape"/>
+      <xs:field xpath="@frame"/>
+    </xs:keyref>
+    <!-- Referential integrity: Layout names -->
+    <xs:key name="layoutNames">
+      <xs:selector xpath="Layout"/>
+      <xs:field xpath="@name"/>
+    </xs:key>
+    <xs:keyref name="includeLayoutRef" refer="layoutNames">
+      <xs:selector xpath=".//Include"/>
+      <xs:field xpath="@layout"/>
+    </xs:keyref>
   </xs:element>
 
   <!--
@@ -256,8 +274,9 @@
   <!--
     🟥 LAYOUT: Composition of frames into shapes
 
-    A Layout defines how windows are tiled on a display. It contains a tree of Shapes
-    that reference Frames and can be conditionally applied based on display properties.
+    A Layout defines how windows are tiled on a display using a compositional tree model.
+    Each Layout contains one or more top-level Shapes that flatten independently and
+    concatenate their results.
 
     The optional 'space' attribute references a Space by name. When specified, the
     Layout only activates on displays that match that Space. When omitted, the Layout
@@ -277,12 +296,20 @@
 
     Examples:
       <Layout name="sidebar-split" space="LargeDisplays">
-        <Shape frame="sidebar"/>
+        <Shape frame="sidebar">
+          <Include/>
+          <Shape frame="rightColumn"/>
+        </Shape>
       </Layout>
 
-      <Layout name="ultrawide-columns">
-        <Needs measure="ultrawide"/>
-        <Shape frame="wide-thirds" minWidth="ultrawide"/>
+      <Layout name="quad-tl">
+        <Shape frame="full">
+          <Include/>
+        </Shape>
+        <Shape frame="halves-vertical">
+          <Include/>
+          <Include whenOrientation="never"/>
+        </Shape>
       </Layout>
   -->
   <xs:element name="Layout">
@@ -293,7 +320,7 @@
             <xs:attribute name="measure" type="xs:string" use="required"/> <!-- references Measure/@name -->
           </xs:complexType>
         </xs:element>
-        <xs:element name="Shape" type="ShapeType" minOccurs="1" maxOccurs="1"/>
+        <xs:element name="Shape" type="ShapeType" minOccurs="1" maxOccurs="unbounded"/>
       </xs:sequence>
       <xs:attribute name="name" type="xs:string" use="required"/>
       <xs:attribute name="space" type="xs:string" use="optional"/> <!-- references Space/@name -->
@@ -301,37 +328,67 @@
   </xs:element>
 
   <!--
-    ShapeType: Hierarchical pane layout with conditional evaluation
+    ShapeType: Compositional pane subdivision with strict 1:1 child mapping
 
-    Shapes form a tree structure that defines how windows are tiled:
+    Shapes form a tree structure that defines how windows are tiled using a strict
+    compositional model:
 
     1. A Shape with frame="foo" references a Frame by name
-    2. Child Shapes map 1:1 to the parent Frame's Panes (in order)
-    3. Each child Shape subdivides its corresponding parent Pane
-    4. If child Shape has no 'frame' attribute, that Pane is not subdivided
-    5. Extra child Shapes (beyond parent Pane count) are ignored
-    6. Missing child Shapes mean remaining Panes are not subdivided
+    2. The Shape MUST have exactly N children, where N = number of panes in Frame "foo"
+    3. Each child maps 1:1 to the corresponding parent pane (in order)
+    4. Each child is exactly one of:
+       - <Shape frame="..."/> - Subdivide this pane using another Frame
+       - <Include .../> - Terminal pane, sublayout reference, or conditional drop
+
+    Coordinate System:
+    All pane coordinates are relative to their parent pane. When a Shape subdivides
+    a pane, the child frame's coordinates are scaled and translated within the parent
+    pane's geometry.
 
     Conditional attributes (whenOrientation, min/underWidth/Height) allow Shapes
     to be pruned based on display properties. If a Shape's conditions don't match,
     it and its entire subtree are excluded from the layout.
 
-    Example:
-      <Shape frame="sidebar">
-        <Shape frame="leftColumn"/>
-        <Shape/>
+    Child Count Enforcement (XSD 1.1 assertion, enforced in Rust):
+    For any <Shape frame="F">, the number of children MUST equal the number of panes
+    in Frame F. Mismatch is a parse error that disables all LayoutActions.
+
+    Examples:
+      <Shape frame="halves-horizontal">
+        <Include/>            <!-- Emit left half as terminal pane -->
+        <Shape frame="quads"> <!-- Subdivide right half into quadrants -->
+          <Include/><Include/><Include/><Include/>
+        </Shape>
+      </Shape>
+
+      <Shape frame="quads">
+        <Include/>                         <!-- TL quadrant -->
+        <Include whenOrientation="never"/> <!-- TR quadrant (dropped) -->
+        <Include whenOrientation="never"/> <!-- BL quadrant (dropped) -->
+        <Include/>                         <!-- BR quadrant -->
+      </Shape>
+
+      <Shape frame="quads">
+        <Include layout="detail"/>         <!-- TL: inline "detail" layout -->
+        <Include/>                         <!-- TR: terminal pane -->
+        <Include/>                         <!-- BL: terminal pane -->
+        <Include/>                         <!-- BR: terminal pane -->
       </Shape>
   -->
   <xs:complexType name="ShapeType">
     <xs:sequence>
-      <xs:element name="Shape" type="ShapeType" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="Shape" type="ShapeType"/>
+        <xs:element name="Include" type="IncludeType"/>
+      </xs:choice>
     </xs:sequence>
-    <xs:attribute name="frame" type="xs:string" use="optional"/> <!-- references Frame/@name -->
+    <xs:attribute name="frame" type="xs:string" use="required"/> <!-- references Frame/@name -->
     <xs:attribute name="whenOrientation" use="optional">
       <xs:simpleType>
         <xs:restriction base="xs:string">
           <xs:enumeration value="portrait"/>
           <xs:enumeration value="landscape"/>
+          <xs:enumeration value="never"/>
         </xs:restriction>
       </xs:simpleType>
     </xs:attribute>
@@ -340,6 +397,63 @@
     <xs:attribute name="minHeight"   type="MeasureReference" use="optional"/>
     <xs:attribute name="underWidth"  type="MeasureReference" use="optional"/>
     <xs:attribute name="underHeight" type="MeasureReference" use="optional"/>
+  </xs:complexType>
+
+  <!--
+    IncludeType: Unified pane terminal or sublayout inclusion
+
+    Replaces the deprecated Leaf and Drop elements with a unified conditional model.
+
+    An <Include> child maps to one pane slot in the parent Shape's frame.
+    It can either:
+    1. Emit a terminal pane (no 'layout' attribute)
+    2. Inline another layout's structure (with 'layout' attribute)
+    3. Be skipped entirely (if conditions fail)
+
+    Conditional Attributes (all optional, AND-ed if present):
+    - whenOrientation: "portrait" | "landscape" | "never"
+      Computed from display geometry: landscape = width≥height, portrait = height>width
+      "never" always fails (used to replace Drop)
+    - nameContains: Case-insensitive substring match against display name
+    - minWidth, minHeight: Threshold (≥) in literal pixels
+    - underWidth, underHeight: Threshold (<) in literal pixels
+      NOTE: No Measure references allowed (literals only)
+
+    Conditional Evaluation:
+    - All conditions must pass (AND logic)
+    - If any condition fails, this pane slot is skipped (no-op drop)
+    - Skipped slots do NOT violate the 1:1 child-to-pane mapping rule
+
+    Layout Inlining:
+    - If 'layout' attribute present: inline that layout's root Shape structure
+    - Expansion happens at parse time with cycle detection (depth cap 16)
+    - Cycles or missing layouts → structural error → global fail
+
+    Examples:
+      <Include/>                                  <!-- Terminal pane (always) -->
+      <Include layout="sub-detail"/>              <!-- Inline sublayout -->
+      <Include whenOrientation="never"/>          <!-- Explicit drop (replaces <Drop/>) -->
+      <Include whenOrientation="landscape"        <!-- Conditional leaf -->
+               minWidth="1920"/>
+  -->
+  <xs:complexType name="IncludeType">
+    <xs:attribute name="layout" type="xs:string" use="optional"/>
+    <xs:attribute name="whenOrientation" use="optional">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="portrait"/>
+          <xs:enumeration value="landscape"/>
+          <xs:enumeration value="never"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <!-- Dimension constraints: literals only (no Measure references) -->
+    <xs:attribute name="minWidth" type="xs:positiveInteger" use="optional"/>
+    <xs:attribute name="underWidth" type="xs:positiveInteger" use="optional"/>
+    <xs:attribute name="minHeight" type="xs:positiveInteger" use="optional"/>
+    <xs:attribute name="underHeight" type="xs:positiveInteger" use="optional"/>
+    <!-- Display name matching (case-insensitive substring) -->
+    <xs:attribute name="nameContains" type="xs:string" use="optional"/>
   </xs:complexType>
 
   <!--
