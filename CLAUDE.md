@@ -154,7 +154,9 @@ Configured agents in `.claude/agents/`:
 **Branch Strategy:**
 - **develop** - Default branch for daily work; contains all internal files (CLAUDE.md, paneboard-poc.md, etc.)
 - **main** - Clean mirror of `OPEN_SOURCE_UPSTREAM/main`; never commit directly
-- **pr/<feature-name>** - Ephemeral PR branches; created from main, exclude internal files
+- **candidate-###-#** - Ephemeral PR branches; created from main, exclude internal files
+  - `###` = batch/PR number (increments for each new contribution)
+  - `#` = revision within batch (starts at 1, increments if fixes needed)
 
 **Remotes:**
 - **origin** - Your fork (github.com/bhyslop/pb_paneboard02)
@@ -181,8 +183,8 @@ git fetch OPEN_SOURCE_UPSTREAM
 git branch -f main OPEN_SOURCE_UPSTREAM/main
 git push origin main --force
 
-# 3. Create PR branch
-git checkout -b pr/<feature-name> main
+# 3. Create PR branch (use next available batch number)
+git checkout -b candidate-NNN-1 main
 
 # 4. Cherry-pick commits (identify SHAs from develop)
 git log develop --oneline -20
@@ -193,7 +195,7 @@ git ls-files | grep -E '(CLAUDE\.md|paneboard-poc\.md|REFACTORING_ROADMAP\.md|\.
 
 # 6. Review changes, then push
 git log --stat
-# Manual: git push -u origin pr/<feature-name>
+# Manual: git push -u origin candidate-NNN-1
 ```
 
 **Files to exclude from PRs (all markdown except README.md):**
