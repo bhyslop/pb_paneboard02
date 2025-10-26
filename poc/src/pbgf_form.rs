@@ -25,6 +25,7 @@ pub struct DisplayInfo {
     pub design_width: f64,
     pub design_height: f64,
     pub name: String,
+    pub applied_inset_bottom: i32,
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -1214,6 +1215,7 @@ impl ParsedForm {
                 display.design_width,
                 display.design_height - max_bottom_inset as f64,
                 display.name.clone(),
+                max_bottom_inset as i32,
                 runtime_quirks.clone(),
             )
         }).collect()
@@ -1668,13 +1670,8 @@ impl Form {
                 };
 
                 // Apply quirks to design dimensions (physical seam compensation)
-                // Quirks are applied ONCE here at design time, NOT in live_viewport
-                let max_bottom_inset = self.quirks.iter()
-                    .filter(|q| display.name.contains(&q.name_contains))
-                    .map(|q| q.min_bottom_inset)
-                    .max()
-                    .unwrap_or(0);
-                adjusted_height -= max_bottom_inset as f64;
+                // Use the stored quirk inset from apply_display_quirks
+                adjusted_height -= display.applied_inset_bottom as f64;
 
                 // Create new DisplayInfo with fully corrected dimensions
                 DisplayInfo::new(
@@ -1682,6 +1679,7 @@ impl Form {
                     display.design_width,
                     adjusted_height,
                     display.name.clone(),
+                    display.applied_inset_bottom,
                     self.quirks.clone(),
                 )
             }).collect()

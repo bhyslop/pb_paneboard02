@@ -178,17 +178,19 @@ pub struct DisplayInfo {
     pub design_width: f64,   // Design dimensions with quirks already applied
     pub design_height: f64,
     pub name: String,
+    pub applied_inset_bottom: i32,  // Quirk inset applied at design time (default 0)
     quirks: Vec<RuntimeDisplayQuirk>,  // Quirks for runtime viewport adjustment
 }
 
 impl DisplayInfo {
-    /// Create DisplayInfo with embedded quirks
-    pub fn new(index: usize, width: f64, height: f64, name: String, quirks: Vec<RuntimeDisplayQuirk>) -> Self {
+    /// Create DisplayInfo with embedded quirks and applied inset
+    pub fn new(index: usize, width: f64, height: f64, name: String, applied_inset_bottom: i32, quirks: Vec<RuntimeDisplayQuirk>) -> Self {
         DisplayInfo {
             index,
             design_width: width,
             design_height: height,
             name,
+            applied_inset_bottom,
             quirks,
         }
     }
@@ -282,6 +284,7 @@ pub unsafe fn gather_all_display_info() -> Vec<DisplayInfo> {
                 vf.width,
                 vf.height,
                 name,
+                0,  // No quirk inset yet - will be populated during Form parsing
                 Vec::new(),  // Empty quirks - will be populated during Form parsing
             ));
         }
