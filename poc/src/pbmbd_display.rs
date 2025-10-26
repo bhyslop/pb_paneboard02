@@ -178,20 +178,16 @@ pub struct DisplayInfo {
     pub design_width: f64,   // Design dimensions with quirks already applied
     pub design_height: f64,
     pub name: String,
-    pub applied_inset_bottom: i32,  // Quirk inset applied at design time (default 0)
-    quirks: Vec<RuntimeDisplayQuirk>,  // Quirks for runtime viewport adjustment
 }
 
 impl DisplayInfo {
-    /// Create DisplayInfo with embedded quirks and applied inset
-    pub fn new(index: usize, width: f64, height: f64, name: String, applied_inset_bottom: i32, quirks: Vec<RuntimeDisplayQuirk>) -> Self {
+    /// Create DisplayInfo
+    pub fn new(index: usize, width: f64, height: f64, name: String) -> Self {
         DisplayInfo {
             index,
             design_width: width,
             design_height: height,
             name,
-            applied_inset_bottom,
-            quirks,
         }
     }
 
@@ -226,17 +222,7 @@ impl DisplayInfo {
         Some(vf)
     }
 
-    /// Calculate minimum bottom inset from matching quirks
-    pub fn get_min_bottom_inset(&self) -> u32 {
-        self.quirks.iter()
-            .map(|q| q.min_bottom_inset)
-            .max()
-            .unwrap_or(0)
-    }
-
     /// Convert fractional panes to screen pixels (unit conversion only)
-    /// Uses quirk-adjusted design dimensions
-    /// Quirks are applied once at design time and baked into design_height
     #[cfg(target_os = "macos")]
     pub unsafe fn realize_panes(&self, fracs: &[crate::pbgf_form::PaneFrac]) -> Vec<crate::pbgf_form::PixelRect> {
         // Get current screen position for offset calculation
@@ -250,9 +236,7 @@ impl DisplayInfo {
             None => return Vec::new(),
         };
 
-        // Scale fractional coords by DESIGN dimensions
-        // design_height has menu bar + quirks applied once at design time
-        // live_viewport has only menu bar applied (quirks not re-applied)
+        // Scale fractional coords by design dimensions
         fracs.iter()
             .map(|f| crate::pbgf_form::PixelRect {
                 x: screen_frame.min_x + f.x * self.design_width,
@@ -285,7 +269,6 @@ impl DisplayInfo {
 }
 
 // Gather all display information for layout system initialization
-// Note: DisplayInfo created here has empty quirks - quirks will be added during Form parsing
 #[allow(unexpected_cfgs)]
 pub unsafe fn gather_all_display_info() -> Vec<DisplayInfo> {
     let screens = get_all_screens();
@@ -304,14 +287,7 @@ pub unsafe fn gather_all_display_info() -> Vec<DisplayInfo> {
                 format!("Display {}", idx)
             };
 
-            displays.push(DisplayInfo::new(
-                idx,
-                vf.width,
-                vf.height,
-                name,
-                0,  // No quirk inset yet - will be populated during Form parsing
-                Vec::new(),  // Empty quirks - will be populated during Form parsing
-            ));
+            displays.push(DisplayInfo::new(idx, vf.width, vf.height, name));
         }
     }
 

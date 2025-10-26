@@ -25,7 +25,6 @@ pub struct DisplayInfo {
     pub design_width: f64,
     pub design_height: f64,
     pub name: String,
-    pub applied_inset_bottom: i32,
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -1209,14 +1208,12 @@ impl ParsedForm {
                     display.name, max_bottom_inset);
             }
 
-            // Create new DisplayInfo with adjusted dimensions and embedded quirks
+            // Create new DisplayInfo with adjusted dimensions
             DisplayInfo::new(
                 display.index,
                 display.design_width,
                 display.design_height - max_bottom_inset as f64,
                 display.name.clone(),
-                max_bottom_inset as i32,
-                runtime_quirks.clone(),
             )
         }).collect()
     }
@@ -1696,8 +1693,6 @@ impl Form {
                     display.design_width,
                     adjusted_height,
                     display.name.clone(),
-                    max_bottom_inset as i32,
-                    self.quirks.clone(),
                 )
             }).collect()
         }
