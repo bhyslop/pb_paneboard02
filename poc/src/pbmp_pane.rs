@@ -34,7 +34,8 @@ use crate::pbmbd_display::{
     gather_all_display_info,
 };
 
-use crate::pbgf_form::{Form, PixelRect};
+use crate::pbgfr_resolve::Form;
+use crate::pbgft_types::PixelRect;
 
 // Need to import CFRelease separately as it's used in multiple places
 use core_foundation::base::CFRelease;

@@ -224,7 +224,7 @@ impl DisplayInfo {
 
     /// Convert fractional panes to screen pixels (unit conversion only)
     #[cfg(target_os = "macos")]
-    pub unsafe fn realize_panes(&self, fracs: &[crate::pbgf_form::PaneFrac]) -> Vec<crate::pbgf_form::PixelRect> {
+    pub unsafe fn realize_panes(&self, fracs: &[crate::pbgft_types::PaneFrac]) -> Vec<crate::pbgft_types::PixelRect> {
         // Get current screen position for offset calculation
         let screens = get_all_screens();
         if self.index >= screens.len() {
@@ -238,7 +238,7 @@ impl DisplayInfo {
 
         // Scale fractional coords by design dimensions
         fracs.iter()
-            .map(|f| crate::pbgf_form::PixelRect {
+            .map(|f| crate::pbgft_types::PixelRect {
                 x: screen_frame.min_x + f.x * self.design_width,
                 y: screen_frame.min_y + f.y * self.design_height,
                 width: f.width * self.design_width,
@@ -249,7 +249,7 @@ impl DisplayInfo {
 
     /// Filter out panes smaller than minimum usable size
     #[cfg(target_os = "macos")]
-    pub fn filter_small(rects: &[crate::pbgf_form::PixelRect]) -> Vec<crate::pbgf_form::PixelRect> {
+    pub fn filter_small(rects: &[crate::pbgft_types::PixelRect]) -> Vec<crate::pbgft_types::PixelRect> {
         const MIN_PANE_SIZE: f64 = 100.0;
         rects.iter()
             .filter(|r| r.width >= MIN_PANE_SIZE && r.height >= MIN_PANE_SIZE)
@@ -259,8 +259,8 @@ impl DisplayInfo {
 
     /// Get DisplayProps for Form queries
     #[cfg(target_os = "macos")]
-    pub fn as_props(&self) -> crate::pbgf_form::DisplayProps {
-        crate::pbgf_form::DisplayProps {
+    pub fn as_props(&self) -> crate::pbgft_types::DisplayProps {
+        crate::pbgft_types::DisplayProps {
             width: self.design_width,
             height: self.design_height,
             name: self.name.clone(),

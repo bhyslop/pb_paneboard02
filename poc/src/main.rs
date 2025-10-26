@@ -5,7 +5,10 @@
 mod pbgc_core;
 mod pbgr_retry;
 mod pbgk_keylog;
-mod pbgf_form;
+mod pbgft_types;
+mod pbgfp_parse;
+mod pbgfr_resolve;
+mod pbgfc_config;
 
 // macOS base/shared modules
 #[cfg(target_os = "macos")] mod pbmba_ax;

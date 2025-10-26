@@ -622,7 +622,7 @@ pub unsafe fn run_quadrant_poc() -> ! {
     print_all_display_info();
 
     // Deploy fresh default config at startup (before lazy Form initialization)
-    crate::pbgf_form::ensure_fresh_default_config();
+    crate::pbgfc_config::ensure_fresh_default_config();
 
     // Setup MRU tracking
     eprintln!("DEBUG: Initializing MRU tracker...");
