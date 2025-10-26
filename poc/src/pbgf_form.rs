@@ -1734,6 +1734,12 @@ impl Form {
                     leaves.extend(child_leaves);
                 }
                 ShapeChild::Include(ref include) => {
+                    // Check conditional filtering before processing Include
+                    if !include.condition.matches(display) {
+                        // Condition failed, skip this Include (and its pane)
+                        continue;
+                    }
+
                     // Check if this Include references a layout for further subdivision
                     if let Some(ref layout_name) = include.layout {
                         if let Some(layout) = self.layouts.get(layout_name) {
