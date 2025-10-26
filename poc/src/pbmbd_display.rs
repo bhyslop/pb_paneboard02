@@ -39,11 +39,6 @@ pub struct VisibleFrame {
     pub height: f64
 }
 
-impl VisibleFrame {
-    pub fn mid_x(&self) -> f64 { self.min_x + self.width / 2.0 }
-    pub fn mid_y(&self) -> f64 { self.min_y + self.height / 2.0 }
-}
-
 // NSRect structure for Objective-C interop
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -86,6 +81,7 @@ pub unsafe fn visible_frame_main_display() -> Option<VisibleFrame> {
 }
 
 // Note if there are multiple displays
+#[allow(dead_code)]
 pub fn note_if_multi_display() {
     unsafe {
         let mut count: u32 = 0;
@@ -165,6 +161,139 @@ pub unsafe fn visible_frame_for_screen(screen: &NSScreen) -> Option<VisibleFrame
     })
 }
 
+// Runtime display quirk (platform-filtered, embedded in DisplayInfo)
+#[derive(Clone, Debug)]
+pub struct RuntimeDisplayQuirk {
+    pub name_contains: String,
+    pub min_bottom_inset: u32,
+}
+
+// DisplayInfo for layout configuration system
+// Serves dual purpose:
+// - Design dimensions (design_width/height) for parse-time pane precomputation
+// - Live viewport (via live_viewport method) for runtime window positioning
+#[derive(Debug, Clone)]
+pub struct DisplayInfo {
+    pub index: usize,
+    pub design_width: f64,   // Design dimensions with quirks already applied
+    pub design_height: f64,
+    pub name: String,
+}
+
+impl DisplayInfo {
+    /// Create DisplayInfo
+    pub fn new(index: usize, width: f64, height: f64, name: String) -> Self {
+        DisplayInfo {
+            index,
+            design_width: width,
+            design_height: height,
+            name,
+        }
+    }
+
+    /// ### macOS Menu Bar Behavior
+    ///
+    /// macOS reports `visibleFrame` truthfully **only** for the primary display.
+    /// On secondary displays (with "Displays have separate Spaces" enabled),
+    /// `visibleFrame` deceptively equals the full frame height—even though the
+    /// system will automatically *push down* any window that overlaps the menu bar.
+    ///
+    /// Consequence:
+    /// - Primary display → `visibleFrame` already excludes ≈31 px at top.
+    /// - Secondary displays → macOS reports full height but still enforces
+    ///   a ~31 px top exclusion zone during window placement.
+    ///
+    /// ### Design Decision
+    /// We normalize this inconsistency by *always* reserving a 31 px
+    /// top inset in `live_viewport()` on **every** display.
+    /// That prevents macOS from silently shifting windows downward.
+    ///
+    /// If Apple changes this behavior, this constant should be revisited.
+    /// See also: <https://developer.apple.com/documentation/appkit/nsscreen/1388370-visibleframe>
+    pub unsafe fn live_viewport(&self, screen: &NSScreen) -> Option<VisibleFrame> {
+        let mut vf = visible_frame_for_screen(screen)?;
+
+        // --- Normalize top inset across all displays ---
+        // This ensures consistent window placement on both primary and secondary displays
+        const MENU_BAR_HEIGHT: f64 = 31.0;
+        vf.min_y += MENU_BAR_HEIGHT;
+        vf.height -= MENU_BAR_HEIGHT;
+
+        Some(vf)
+    }
+
+    /// Convert fractional panes to screen pixels (unit conversion only)
+    #[cfg(target_os = "macos")]
+    pub unsafe fn realize_panes(&self, fracs: &[crate::pbgft_types::PaneFrac]) -> Vec<crate::pbgft_types::PixelRect> {
+        // Get current screen position for offset calculation
+        let screens = get_all_screens();
+        if self.index >= screens.len() {
+            return Vec::new();
+        }
+
+        let screen_frame = match self.live_viewport(&screens[self.index]) {
+            Some(v) => v,
+            None => return Vec::new(),
+        };
+
+        // Scale fractional coords by design dimensions
+        fracs.iter()
+            .map(|f| crate::pbgft_types::PixelRect {
+                x: screen_frame.min_x + f.x * self.design_width,
+                y: screen_frame.min_y + f.y * self.design_height,
+                width: f.width * self.design_width,
+                height: f.height * self.design_height,
+            })
+            .collect()
+    }
+
+    /// Filter out panes smaller than minimum usable size
+    #[cfg(target_os = "macos")]
+    pub fn filter_small(rects: &[crate::pbgft_types::PixelRect]) -> Vec<crate::pbgft_types::PixelRect> {
+        const MIN_PANE_SIZE: f64 = 100.0;
+        rects.iter()
+            .filter(|r| r.width >= MIN_PANE_SIZE && r.height >= MIN_PANE_SIZE)
+            .cloned()
+            .collect()
+    }
+
+    /// Get DisplayProps for Form queries
+    #[cfg(target_os = "macos")]
+    pub fn as_props(&self) -> crate::pbgft_types::DisplayProps {
+        crate::pbgft_types::DisplayProps {
+            width: self.design_width,
+            height: self.design_height,
+            name: self.name.clone(),
+        }
+    }
+}
+
+// Gather all display information for layout system initialization
+#[allow(unexpected_cfgs)]
+pub unsafe fn gather_all_display_info() -> Vec<DisplayInfo> {
+    let screens = get_all_screens();
+    let mut displays = Vec::new();
+
+    for (idx, screen) in screens.iter().enumerate() {
+        if let Some(vf) = visible_frame_for_screen(screen) {
+            // Get localized name
+            use objc2::msg_send;
+            use objc2_foundation::NSString;
+            let name_ptr: *const NSString = msg_send![screen, localizedName];
+            let name = if !name_ptr.is_null() {
+                let name_str = unsafe { &*name_ptr };
+                name_str.to_string()
+            } else {
+                format!("Display {}", idx)
+            };
+
+            displays.push(DisplayInfo::new(idx, vf.width, vf.height, name));
+        }
+    }
+
+    displays
+}
+
 // Get full frame (not visible frame) for a specific screen
 #[allow(unexpected_cfgs)]
 pub unsafe fn full_frame_for_screen(screen: &NSScreen) -> Option<VisibleFrame> {
@@ -176,30 +305,6 @@ pub unsafe fn full_frame_for_screen(screen: &NSScreen) -> Option<VisibleFrame> {
         width: rect.size.x,
         height: rect.size.y,
     })
-}
-
-// Get the display that currently contains the given window (by window center point)
-pub unsafe fn get_display_for_window(window_rect: Rect) -> Option<VisibleFrame> {
-    let screens = get_all_screens();
-    if screens.is_empty() {
-        return None;
-    }
-
-    let win_center_x = window_rect.x + window_rect.w / 2.0;
-    let win_center_y = window_rect.y + window_rect.h / 2.0;
-
-    // Find which screen contains the window center
-    for screen in &screens {
-        if let Some(vf) = visible_frame_for_screen(screen) {
-            if win_center_x >= vf.min_x && win_center_x < vf.min_x + vf.width &&
-               win_center_y >= vf.min_y && win_center_y < vf.min_y + vf.height {
-                return Some(vf);
-            }
-        }
-    }
-
-    // Fallback to main display if window center isn't on any display
-    visible_frame_main_display()
 }
 
 // Get display info with both visible frame and full frame for validation
@@ -258,4 +363,205 @@ pub unsafe fn get_display_for_window_with_validation(window_rect: Rect) -> Optio
         }
     }
     None
+}
+
+// ===== CGDisplay FFI declarations for detailed display information =====
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+struct CGSize {
+    width: f64,
+    height: f64,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+#[allow(dead_code)]
+struct CGRect {
+    origin: Pt,
+    size: CGSize,
+}
+
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    fn CGMainDisplayID() -> u32;
+    fn CGDisplayIsMain(display: u32) -> bool;
+    fn CGDisplayIsBuiltin(display: u32) -> bool;
+    fn CGDisplayIsActive(display: u32) -> bool;
+    fn CGDisplayIsOnline(display: u32) -> bool;
+    fn CGDisplayIsAsleep(display: u32) -> bool;
+    fn CGDisplaySerialNumber(display: u32) -> u32;
+    fn CGDisplayUnitNumber(display: u32) -> u32;
+    fn CGDisplayVendorNumber(display: u32) -> u32;
+    fn CGDisplayModelNumber(display: u32) -> u32;
+    fn CGDisplayRotation(display: u32) -> f64;
+    fn CGDisplayScreenSize(display: u32) -> CGSize;
+    #[allow(dead_code)]
+    fn CGDisplayBounds(display: u32) -> CGRect;
+    fn CGDisplayCopyDisplayMode(display: u32) -> *mut std::ffi::c_void;
+    fn CGDisplayModeGetWidth(mode: *mut std::ffi::c_void) -> usize;
+    fn CGDisplayModeGetHeight(mode: *mut std::ffi::c_void) -> usize;
+    fn CGDisplayModeGetPixelWidth(mode: *mut std::ffi::c_void) -> usize;
+    fn CGDisplayModeGetPixelHeight(mode: *mut std::ffi::c_void) -> usize;
+    fn CGDisplayModeGetRefreshRate(mode: *mut std::ffi::c_void) -> f64;
+    fn CGDisplayModeRelease(mode: *mut std::ffi::c_void);
+}
+
+// Print comprehensive information about all connected displays
+#[allow(unexpected_cfgs)]
+pub unsafe fn print_all_display_info() {
+    let _mtm = MainThreadMarker::new_unchecked();
+    let screens = get_all_screens();
+
+    if screens.is_empty() {
+        eprintln!("No displays detected");
+        return;
+    }
+
+    let _main_display_id = CGMainDisplayID();
+
+    eprintln!("\n========== CONNECTED DISPLAYS ==========");
+
+    for (idx, screen) in screens.iter().enumerate() {
+        eprintln!("\n--- Display {} ---", idx);
+
+        // Get localized name (macOS 10.15+)
+        {
+            use objc2::msg_send;
+            use objc2_foundation::NSString;
+            let name: *const NSString = msg_send![screen, localizedName];
+            if !name.is_null() {
+                let name_str = unsafe { &*name };
+                eprintln!("  Name: {}", name_str);
+            } else {
+                eprintln!("  Name: <unavailable>");
+            }
+        }
+
+        // Get CGDirectDisplayID from device description
+        let device_desc = screen.deviceDescription();
+        let display_id: u32 = {
+            use objc2::msg_send;
+            use objc2_foundation::NSNumber;
+            let key = objc2_foundation::ns_string!("NSScreenNumber");
+            let screen_num: *const NSNumber = msg_send![&device_desc, objectForKey: key];
+            if !screen_num.is_null() {
+                let num_value: u32 = msg_send![screen_num, unsignedIntValue];
+                num_value
+            } else {
+                0
+            }
+        };
+
+        eprintln!("  Display ID: {} (0x{:x})", display_id, display_id);
+
+        // Display state flags
+        let is_main = CGDisplayIsMain(display_id);
+        let is_builtin = CGDisplayIsBuiltin(display_id);
+        let is_active = CGDisplayIsActive(display_id);
+        let is_online = CGDisplayIsOnline(display_id);
+        let is_asleep = CGDisplayIsAsleep(display_id);
+
+        eprintln!("  Main: {}, Built-in: {}, Active: {}, Online: {}, Asleep: {}",
+                  is_main, is_builtin, is_active, is_online, is_asleep);
+
+        // Geometry from NSScreen
+        let frame: NSRect = msg_send![screen, frame];
+        let visible: NSRect = msg_send![screen, visibleFrame];
+
+        eprintln!("  Frame (NSScreen): ({:.0}, {:.0}, {:.0}, {:.0})",
+                  frame.origin.x, frame.origin.y, frame.size.x, frame.size.y);
+        eprintln!("  Visible Frame: ({:.0}, {:.0}, {:.0}, {:.0})",
+                  visible.origin.x, visible.origin.y, visible.size.x, visible.size.y);
+
+        // Backing scale factor (Retina)
+        let scale: f64 = msg_send![screen, backingScaleFactor];
+        eprintln!("  Backing Scale Factor: {:.1}x", scale);
+
+        // Resolution in points and pixels
+        let points_w = frame.size.x;
+        let points_h = frame.size.y;
+        let pixels_w = points_w * scale;
+        let pixels_h = points_h * scale;
+
+        eprintln!("  Resolution: {:.0}x{:.0} points ({:.0}x{:.0} pixels)",
+                  points_w, points_h, pixels_w, pixels_h);
+
+        // CGDisplay mode information (more accurate pixel dimensions and refresh rate)
+        if display_id != 0 {
+            let mode = CGDisplayCopyDisplayMode(display_id);
+            if !mode.is_null() {
+                let mode_width = CGDisplayModeGetWidth(mode);
+                let mode_height = CGDisplayModeGetHeight(mode);
+                let pixel_width = CGDisplayModeGetPixelWidth(mode);
+                let pixel_height = CGDisplayModeGetPixelHeight(mode);
+                let refresh_rate = CGDisplayModeGetRefreshRate(mode);
+
+                eprintln!("  Display Mode: {}x{} points, {}x{} pixels",
+                          mode_width, mode_height, pixel_width, pixel_height);
+
+                if refresh_rate > 0.0 {
+                    eprintln!("  Refresh Rate: {:.2} Hz", refresh_rate);
+                } else {
+                    eprintln!("  Refresh Rate: default/adaptive");
+                }
+
+                CGDisplayModeRelease(mode);
+            }
+
+            // Rotation
+            let rotation = CGDisplayRotation(display_id);
+            if rotation != 0.0 {
+                eprintln!("  Rotation: {:.0}°", rotation);
+            } else {
+                eprintln!("  Rotation: 0° (normal)");
+            }
+
+            // Physical size
+            let phys_size = CGDisplayScreenSize(display_id);
+            if phys_size.width > 0.0 && phys_size.height > 0.0 {
+                eprintln!("  Physical Size: {:.1}mm x {:.1}mm ({:.1}\" diagonal)",
+                          phys_size.width, phys_size.height,
+                          ((phys_size.width * phys_size.width + phys_size.height * phys_size.height).sqrt() / 25.4));
+            } else {
+                eprintln!("  Physical Size: <unavailable>");
+            }
+
+            // Hardware identifiers
+            let serial = CGDisplaySerialNumber(display_id);
+            let vendor = CGDisplayVendorNumber(display_id);
+            let model = CGDisplayModelNumber(display_id);
+            let unit = CGDisplayUnitNumber(display_id);
+
+            eprintln!("  Hardware IDs: Vendor=0x{:x}, Model=0x{:x}, Serial=0x{:x}, Unit={}",
+                      vendor, model, serial, unit);
+
+            // Color depth from device description
+            {
+                use objc2::msg_send;
+                use objc2_foundation::NSNumber;
+                let key = objc2_foundation::ns_string!("NSDeviceBitsPerSample");
+                let bits_per_sample: *const NSNumber = msg_send![&device_desc, objectForKey: key];
+                if !bits_per_sample.is_null() {
+                    let bits: i64 = msg_send![bits_per_sample, integerValue];
+                    eprintln!("  Color Depth: {} bits per sample", bits);
+                }
+            }
+
+            // Color space
+            if let Some(color_space) = screen.colorSpace() {
+                if let Some(name) = color_space.localizedName() {
+                    eprintln!("  Color Space: {}", name);
+                }
+            }
+
+            // EDR capabilities (macOS 10.15+)
+            let max_edr: f64 = msg_send![screen, maximumPotentialExtendedDynamicRangeColorComponentValue];
+            if max_edr > 1.0 {
+                eprintln!("  Max EDR: {:.1}x (Extended Dynamic Range capable)", max_edr);
+            }
+        }
+    }
+
+    eprintln!("\n========================================\n");
 }

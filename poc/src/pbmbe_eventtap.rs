@@ -8,6 +8,7 @@ use core_foundation::runloop::kCFRunLoopDefaultMode;
 use core_foundation_sys::base::CFTypeRef;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
+use single_instance::SingleInstance;
 
 use crate::pbmbk_keymap::*;
 use crate::pbgk_keylog::{KEY_LOGGING_ENABLED, update_key_state};
@@ -16,6 +17,7 @@ use crate::pbmsa_alttab::{
     ALT_TAB_SESSION,
     show_alt_tab_overlay, update_alt_tab_highlight,
     hide_alt_tab_overlay_and_cleanup, defer_alt_tab_commit,
+    cancel_alt_tab_session,
 };
 use crate::pbmcl_clipboard::{
     CLIPBOARD_SESSION, start_clipboard_monitoring,
@@ -24,11 +26,10 @@ use crate::pbmcl_clipboard::{
 use crate::pbmbo_observer::{setup_mru_observer, setup_workspace_observer};
 use crate::pbmsb_browser::is_chromium_based;
 use crate::pbmp_pane::{
-    TilingJob, tile_window_quadrant,
-    move_window_to_prev_display, move_window_to_next_display,
-    get_next_combo_for_key, reset_all_sequence_indices,
+    handle_configured_key,
+    reset_layout_session,
 };
-use crate::pbmbd_display::{note_if_multi_display};
+use crate::pbmbd_display::{print_all_display_info};
 use crate::pbmba_ax::{
     ax_trusted_or_die, get_frontmost_app_info,
     CFRunLoopGetCurrent, CFRunLoopRun, CFRunLoopAddSource,
@@ -39,6 +40,9 @@ use crate::pbmba_ax::{
 
 // Global state for unknown keycode warning
 static WARNED_UNKNOWN_ONCE: AtomicBool = AtomicBool::new(false);
+
+// Global tap pointer for health check timer
+static EVENT_TAP_PTR: std::sync::atomic::AtomicPtr<c_void> = std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
 
 extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _user: *mut c_void) -> *mut c_void {
     unsafe {
@@ -73,6 +77,26 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
         let has_shift = (flags & K_CG_EVENT_FLAG_MASK_SHIFT) != 0;
         let has_cmd = (flags & K_CG_EVENT_FLAG_MASK_COMMAND) != 0;
         let has_opt = (flags & K_CG_EVENT_FLAG_MASK_ALTERNATE) != 0;
+
+        // ===== MOUSE CLICK: Cancel Alt-Tab session if active =====
+        // Check for any mouse button down event during active Alt-Tab session
+        let is_mouse_down = matches!(event_type,
+            K_CG_EVENT_LEFT_MOUSE_DOWN | K_CG_EVENT_RIGHT_MOUSE_DOWN | K_CG_EVENT_OTHER_MOUSE_DOWN
+        );
+
+        if is_mouse_down {
+            let session_active = {
+                let session = ALT_TAB_SESSION.lock().unwrap();
+                session.active
+            };
+
+            if session_active {
+                // Mouse click during Alt-Tab session - cancel immediately
+                cancel_alt_tab_session();
+                // Consume the click to prevent conflicting activation
+                return std::ptr::null_mut();
+            }
+        }
 
         // ===== CLIPBOARD: Ctrl chord forwarding & Ctrl+Shift+V =====
         // Handle clipboard overlay navigation if active
@@ -143,21 +167,21 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
         if event_type == K_CG_EVENT_FLAGS_CHANGED || event_type == K_CG_EVENT_KEY_UP {
             let session_active = {
                 let session = ALT_TAB_SESSION.lock().unwrap();
-                // eprintln!("DEBUG: [ALT_TAB] session check: active={}", session.active);
+                // eprintln!("SWITCHER: session check: active={}", session.active);
                 session.active
             };
 
             if session_active {
-                eprintln!("DEBUG: [ALT_TAB] checking flags: event_type={} keycode={} has_cmd={} has_shift={}",
+                eprintln!("SWITCHER: checking flags: event_type={} keycode={} has_cmd={} has_shift={}",
                          event_type, keycode, has_cmd, has_shift);
 
                 // If Command is no longer held, commit switch and cleanup
                 if !has_cmd {
-                    eprintln!("DEBUG: [ALT_TAB] Command released (detected via flags)");
+                    eprintln!("SWITCHER: Command released (detected via flags)");
 
                     // Defensive bounds check: verify MRU snapshot is non-empty
                     if snapshot.is_empty() {
-                        eprintln!("ALT_TAB: switch | SKIPPED reason=empty_mru");
+                        eprintln!("SWITCHER: switch | SKIPPED reason=empty_mru");
                         hide_alt_tab_overlay_and_cleanup();
                         return event;
                     }
@@ -170,12 +194,12 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
                                 Some(snapshot[idx].clone())
                             } else {
                                 // Bounds check failed - highlight_index exceeds array
-                                eprintln!("ALT_TAB: switch | SKIPPED reason=index_out_of_bounds idx={} len={}", idx, snapshot.len());
+                                eprintln!("SWITCHER: switch | SKIPPED reason=index_out_of_bounds idx={} len={}", idx, snapshot.len());
                                 None
                             }
                         } else {
                             // No highlight set - should not happen in normal flow
-                            eprintln!("ALT_TAB: switch | SKIPPED reason=no_highlight_index");
+                            eprintln!("SWITCHER: switch | SKIPPED reason=no_highlight_index");
                             None
                         }
                     };
@@ -212,7 +236,7 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
             // Ignore auto-repeat to prevent uncontrolled cycling
             let is_repeat = CGEventGetIntegerValueField(event, K_CG_KEYBOARD_EVENT_AUTOREPEAT) != 0;
             if is_repeat {
-                eprintln!("DEBUG: [ALT_TAB] Ignoring Tab auto-repeat");
+                eprintln!("SWITCHER: Ignoring Tab auto-repeat");
                 return std::ptr::null_mut(); // Discard auto-repeat event
             }
 
@@ -224,7 +248,7 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
                 session.active = true;
                 drop(session); // Release lock before calling prune (which locks MRU_STACK)
 
-                println!("ALT_TAB: session start");
+                println!("SWITCHER: session start");
 
                 // Prune stale MRU entries at session start
                 let pruned = crate::pbmsm_mru::prune_stale_mru_entries();
@@ -251,7 +275,7 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
                 session.popup_shown = false;
                 session.highlight_index = None;
                 drop(session);
-                eprintln!("ALT_TAB: no windows available");
+                eprintln!("SWITCHER: no windows available");
                 println!("BLOCKED: cmd+tab (no windows)");
                 return std::ptr::null_mut();
             }
@@ -276,11 +300,11 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
 
                 let entry = &snapshot[initial_idx];
                 if has_shift {
-                    println!("ALT_TAB: backward step -> index={} app={} win=\"{}\"",
+                    println!("SWITCHER: backward step -> index={} app={} win=\"{}\"",
                              initial_idx, entry.bundle_id, entry.title);
                     println!("BLOCKED: cmd+shift+tab");
                 } else {
-                    println!("ALT_TAB: forward step -> index={} app={} win=\"{}\"",
+                    println!("SWITCHER: forward step -> index={} app={} win=\"{}\"",
                              initial_idx, entry.bundle_id, entry.title);
                     println!("BLOCKED: cmd+tab");
                 }
@@ -308,11 +332,11 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
 
             let entry = &snapshot[new_idx];
             if has_shift {
-                println!("ALT_TAB: backward step -> index={} app={} win=\"{}\"",
+                println!("SWITCHER: backward step -> index={} app={} win=\"{}\"",
                          new_idx, entry.bundle_id, entry.title);
                 println!("BLOCKED: cmd+shift+tab");
             } else {
-                println!("ALT_TAB: forward step -> index={} app={} win=\"{}\"",
+                println!("SWITCHER: forward step -> index={} app={} win=\"{}\"",
                          new_idx, entry.bundle_id, entry.title);
                 println!("BLOCKED: cmd+tab");
             }
@@ -330,7 +354,7 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
 
             if was_held && !ctrl_shift_opt_held {
                 // Ctrl+Shift+Option released - reset all sequence indices
-                reset_all_sequence_indices();
+                reset_layout_session();
             }
 
             CTRL_SHIFT_OPT_WAS_HELD.store(ctrl_shift_opt_held, Ordering::Release);
@@ -360,87 +384,30 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
         // Always log ctrl+shift+option keypresses to help diagnose keycode issues
         eprintln!("DEBUG: ctrl+shift+option+keycode=0x{:02x}", keycode);
 
-        // Check for unknown keycode warning
-        if !known_poc_key(keycode) && !WARNED_UNKNOWN_ONCE.swap(true, Ordering::AcqRel) {
-            eprintln!("NOTE: ctrl+shift+option on unrecognized keycode=0x{:02x}. On some PC keyboards, Insert may not map to 0x72.", keycode);
-            return event;
+        // Unified XML-driven key handler (LayoutAction and DisplayMove)
+        // Map keycode to XML key name using comprehensive mapping
+        let key_name = keycode_to_xml_key(keycode);
+
+        // Warn once per session for unmapped keycodes (excludes modifiers)
+        if key_name.is_none() && !WARNED_UNKNOWN_ONCE.swap(true, Ordering::AcqRel) {
+            eprintln!("NOTE: ctrl+shift+option on unmapped keycode=0x{:02x}. This key is not configured in form.xml.", keycode);
         }
 
-        // Handle PageUp/PageDown for display moves
-        if keycode == KVK_PAGE_UP || keycode == KVK_PAGE_DOWN {
-            let key_name = if keycode == KVK_PAGE_UP { "PageUp" } else { "PageDown" };
-
+        if let Some(key) = key_name {
             // Capture frontmost app info at chord time
             if let Some(frontmost) = get_frontmost_app_info() {
                 let chromium_tag = if is_chromium_based(&frontmost.bundle_id) { " [chromium]" } else { "" };
                 eprintln!("DEBUG: Frontmost at tap: {} (pid={}){}",
                          frontmost.bundle_id, frontmost.pid, chromium_tag);
 
-                // Consume the chord
-                println!("BLOCKED: ctrl+shift+option+{}", key_name);
-
-                // Execute display move directly (no deferred job needed for simple moves)
-                if keycode == KVK_PAGE_UP {
-                    move_window_to_prev_display(frontmost.pid, &frontmost.bundle_id);
-                } else {
-                    move_window_to_next_display(frontmost.pid, &frontmost.bundle_id);
-                }
-
-                std::ptr::null_mut() // <- swallow the event
-            } else {
-                eprintln!("DEBUG: Failed to get frontmost app info, ignoring chord");
-                event
-            }
-        } else if let Some(q) = chord_to_quad(keycode) {
-            let key_name = match keycode {
-                KVK_HELP_INSERT => "Insert",
-                KVK_FWD_DELETE => "Delete",
-                KVK_HOME => "Home",
-                KVK_END => "End",
-                _ => "Unknown",
-            };
-
-            // Capture frontmost app info at chord time
-            if let Some(frontmost) = get_frontmost_app_info() {
-                let chromium_tag = if is_chromium_based(&frontmost.bundle_id) { " [chromium]" } else { "" };
-                eprintln!("DEBUG: Frontmost at tap: {} (pid={}){}",
-                         frontmost.bundle_id, frontmost.pid, chromium_tag);
-
-                // Update MRU with this window
+                // Update MRU with this window (for layout actions)
                 update_mru_with_focus(frontmost.pid, frontmost.bundle_id.clone());
 
-                // Look up layout sequence and get next combo
-                let (custom_combo, combo_index) = match get_next_combo_for_key(key_name) {
-                    Some((combo, index)) => {
-                        eprintln!("DEBUG: [LAYOUT] Using combo {} for key {}", index, key_name);
-                        (Some(combo), Some(index))
-                    }
-                    None => {
-                        eprintln!("DEBUG: [LAYOUT] No sequence found for key {}, using default quad", key_name);
-                        (None, None)
-                    }
-                };
+                // Consume the chord
+                println!("BLOCKED: ctrl+shift+option+{}", key);
 
-                // Consume the chord and enqueue the tiling job for main runloop processing
-                let log_msg = if let Some(idx) = combo_index {
-                    format!("ctrl+shift+option+{} (combo={})", key_name, idx)
-                } else {
-                    format!("ctrl+shift+option+{}", key_name)
-                };
-                println!("BLOCKED: {}", log_msg);
-
-                // Create tiling job with frontmost context and layout info
-                let job = TilingJob {
-                    quad: q,
-                    frontmost,
-                    attempt: 0, // First attempt
-                    key_name: Some(key_name.to_string()),
-                    combo_index,
-                    custom_combo,
-                };
-
-                // Defer job to main runloop instead of doing AX work here (Chrome compatibility)
-                tile_window_quadrant(job);
+                // Dispatch to Form-configured action (LayoutAction or DisplayMove)
+                handle_configured_key(key, frontmost);
 
                 std::ptr::null_mut() // <- swallow the event
             } else {
@@ -453,9 +420,180 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
     }
 }
 
+// Timer callback for auto-exit timeout (testing/automation)
+extern "C" fn timeout_exit_callback(_timer: *mut c_void, _info: *mut c_void) {
+    eprintln!("\nAuto-exit: timeout reached, terminating gracefully");
+    std::process::exit(0);
+}
+
+// Timer callback to check event tap health and switcher state
+extern "C" fn tap_health_check_timer(_timer: *mut c_void, _info: *mut c_void) {
+    unsafe {
+        let tap = EVENT_TAP_PTR.load(std::sync::atomic::Ordering::Acquire);
+        if tap.is_null() {
+            return; // Not initialized yet
+        }
+
+        // Check if the tap is still enabled
+        let is_enabled = crate::pbmba_ax::CGEventTapIsEnabled(tap);
+
+        if !is_enabled {
+            // TAP WAS DISABLED BY macOS - this is abnormal!
+            eprintln!("⚠️  WARNING: CGEventTap was DISABLED by macOS (likely due to slow callback)");
+            eprintln!("⚠️  RECOVERY: Re-enabling event tap automatically");
+
+            crate::pbmba_ax::CGEventTapEnable(tap, true);
+
+            // Verify it was re-enabled
+            let now_enabled = crate::pbmba_ax::CGEventTapIsEnabled(tap);
+            if now_enabled {
+                eprintln!("✓  SUCCESS: Event tap re-enabled");
+            } else {
+                eprintln!("✗  FAILED: Could not re-enable event tap - hotkeys may not work!");
+            }
+        }
+
+        // Check for stuck switcher overlay (Option not held but session active)
+        let session = ALT_TAB_SESSION.lock().unwrap();
+        if session.active {
+            // Check if Option is actually held by querying current event flags
+            // We can't directly query key state here, but we can check if the session
+            // has been active for an unreasonable amount of time without events
+            // For now, just log if session is active (this will help diagnose stuck states)
+            drop(session);
+
+            // Note: A more robust check would query CGEventSourceKeyState for the Option key,
+            // but that requires creating an event source. For this PoC, the user can press
+            // Option again to recover, and the console warning helps diagnose the issue.
+        }
+    }
+}
+
 pub unsafe fn run_quadrant_poc() -> ! {
     // Check AX permissions first
     ax_trusted_or_die();
+
+    // Single-instance enforcement - only one PaneBoard can run at a time
+    let instance_guard = match SingleInstance::new("/tmp/paneboard.lock") {
+        Ok(guard) => {
+            if !guard.is_single() {
+                eprintln!();
+                eprintln!("ERROR: Another instance of PaneBoard is already running.");
+                eprintln!("Only one instance can run at a time.");
+                eprintln!();
+                eprintln!("If you believe this is incorrect, check for a stale lock file at:");
+                eprintln!("  /tmp/paneboard.lock");
+                eprintln!();
+                eprintln!("The lock is automatically released when the process exits.");
+                std::process::exit(1);
+            }
+            guard
+        }
+        Err(e) => {
+            eprintln!();
+            eprintln!("ERROR: Failed to initialize single-instance check: {}", e);
+            eprintln!("PaneBoard cannot start safely.");
+            std::process::exit(1);
+        }
+    };
+
+    // CRITICAL: Keep guard alive for entire program lifetime
+    // This function never returns (runs CFRunLoop), so leak is intentional
+    std::mem::forget(instance_guard);
+
+    // Parse command-line arguments for --timeout flag
+    let args: Vec<String> = std::env::args().collect();
+    let timeout_seconds: Option<f64> = {
+        // Look for --timeout flag (handles both --timeout VALUE and --timeout=VALUE)
+        let mut timeout_opt = None;
+
+        for (i, arg) in args.iter().enumerate().skip(1) {
+            if arg == "--timeout" {
+                // Format: --timeout VALUE
+                if i + 1 >= args.len() {
+                    eprintln!();
+                    eprintln!("ERROR: --timeout flag requires a value");
+                    eprintln!();
+                    eprintln!("Usage: paneboard [OPTIONS]");
+                    eprintln!();
+                    eprintln!("Options:");
+                    eprintln!("  --timeout SECONDS    Auto-exit after SECONDS (must be positive number)");
+                    eprintln!();
+                    eprintln!("Example: paneboard --timeout 5.0");
+                    eprintln!();
+                    std::process::exit(1);
+                }
+
+                let value_str = &args[i + 1];
+                match value_str.parse::<f64>() {
+                    Ok(val) => {
+                        if val <= 0.0 {
+                            eprintln!();
+                            eprintln!("ERROR: --timeout value must be positive, got: {}", val);
+                            eprintln!();
+                            std::process::exit(1);
+                        }
+                        timeout_opt = Some(val);
+                    }
+                    Err(_) => {
+                        eprintln!();
+                        eprintln!("ERROR: --timeout value must be a valid number, got: '{}'", value_str);
+                        eprintln!();
+                        eprintln!("Example: paneboard --timeout 5.0");
+                        eprintln!();
+                        std::process::exit(1);
+                    }
+                }
+                break;
+            } else if arg.starts_with("--timeout=") {
+                // Format: --timeout=VALUE
+                let value_str = &arg[10..]; // Skip "--timeout="
+
+                if value_str.is_empty() {
+                    eprintln!();
+                    eprintln!("ERROR: --timeout= requires a value");
+                    eprintln!();
+                    eprintln!("Example: paneboard --timeout=5.0");
+                    eprintln!();
+                    std::process::exit(1);
+                }
+
+                match value_str.parse::<f64>() {
+                    Ok(val) => {
+                        if val <= 0.0 {
+                            eprintln!();
+                            eprintln!("ERROR: --timeout value must be positive, got: {}", val);
+                            eprintln!();
+                            std::process::exit(1);
+                        }
+                        timeout_opt = Some(val);
+                    }
+                    Err(_) => {
+                        eprintln!();
+                        eprintln!("ERROR: --timeout value must be a valid number, got: '{}'", value_str);
+                        eprintln!();
+                        eprintln!("Example: paneboard --timeout=5.0");
+                        eprintln!();
+                        std::process::exit(1);
+                    }
+                }
+                break;
+            } else if arg.starts_with("--") && arg != "--timeout" {
+                // Unknown flag - fatal error
+                eprintln!();
+                eprintln!("ERROR: Unknown flag: {}", arg);
+                eprintln!();
+                eprintln!("Usage: paneboard [OPTIONS]");
+                eprintln!();
+                eprintln!("Options:");
+                eprintln!("  --timeout SECONDS    Auto-exit after SECONDS (must be positive number)");
+                eprintln!();
+                std::process::exit(1);
+            }
+        }
+
+        timeout_opt
+    };
 
     // Check for key logging toggle (environment variable)
     // Set PANEBOARD_LOG_KEYS=1 to enable diagnostic key logging
@@ -472,12 +610,19 @@ pub unsafe fn run_quadrant_poc() -> ! {
     };
 
     eprintln!("PaneBoard Quadrant Tiling + Alt-Tab MRU + Clipboard Memory PoC");
-    eprintln!("Ctrl+Shift+Option+Insert/Delete/Home/End to tile focused window");
+    eprintln!("Ctrl+Shift+Option + configured keys for window tiling (see ~/.config/paneboard/form.xml)");
     eprintln!("Command+Tab to show MRU window list");
     eprintln!("Ctrl+C/X/V for copy/cut/paste, Ctrl+Shift+V for clipboard history");
 
-    // Multi-display notice right after banner (before setup chatter)
-    note_if_multi_display();
+    if let Some(timeout) = timeout_seconds {
+        eprintln!("Auto-exit enabled: will terminate after {:.1} seconds", timeout);
+    }
+
+    // Print comprehensive display information
+    print_all_display_info();
+
+    // Deploy fresh default config at startup (before lazy Form initialization)
+    crate::pbgfc_config::ensure_fresh_default_config();
 
     // Setup MRU tracking
     eprintln!("DEBUG: Initializing MRU tracker...");
@@ -499,12 +644,15 @@ pub unsafe fn run_quadrant_poc() -> ! {
 
     eprintln!("Ctrl-C to quit...");
 
-    // Create event tap with tighter unsafe scopes
+    // Print expected pane sequences for debugging
+    crate::pbmp_pane::print_expected_pane_sequences();
+
+    // Create event tap with tighter unsafe scopes (includes keyboard + mouse events)
     let tap = CGEventTapCreate(
         K_CG_SESSION_EVENT_TAP,
         K_CG_HEAD_INSERT_EVENT_TAP,
         K_CG_EVENT_TAP_OPTION_DEFAULT,
-        CG_EVENT_MASK_KEYBOARD,
+        CG_EVENT_MASK_ALL,
         tap_cb,
         std::ptr::null_mut(),
     );
@@ -516,6 +664,67 @@ pub unsafe fn run_quadrant_poc() -> ! {
     CGEventTapEnable(tap, true);
     let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0);
     CFRunLoopAddSource(CFRunLoopGetCurrent(), src, kCFRunLoopDefaultMode as *mut c_void);
+
+    // Store tap pointer for health check timer
+    EVENT_TAP_PTR.store(tap, std::sync::atomic::Ordering::Release);
+
+    // Create timer to check tap health every 500ms
+    // This detects if macOS silently disables the tap and auto-recovers
+    use crate::pbmba_ax::{CFAbsoluteTimeGetCurrent, CFRunLoopTimerCreate, CFRunLoopAddTimer, CFRunLoopTimerContext};
+
+    let timer_context = CFRunLoopTimerContext {
+        version: 0,
+        info: std::ptr::null_mut(),
+        retain: None,
+        release: None,
+        copy_description: None,
+    };
+
+    let now = CFAbsoluteTimeGetCurrent();
+    let health_check_timer = CFRunLoopTimerCreate(
+        kCFAllocatorDefault,
+        now + 0.5,                    // First fire after 500ms
+        0.5,                          // Repeat every 500ms
+        0,                            // flags
+        0,                            // order
+        tap_health_check_timer,       // callback
+        &timer_context as *const _,
+    );
+
+    if !health_check_timer.is_null() {
+        CFRunLoopAddTimer(
+            CFRunLoopGetCurrent(),
+            health_check_timer,
+            kCFRunLoopDefaultMode as *mut c_void,
+        );
+        eprintln!("DEBUG: Event tap health monitoring enabled (500ms interval)");
+    } else {
+        eprintln!("WARNING: Failed to create health check timer - tap auto-recovery disabled");
+    }
+
+    // Create auto-exit timeout timer if requested
+    if let Some(timeout) = timeout_seconds {
+        let timeout_timer = CFRunLoopTimerCreate(
+            kCFAllocatorDefault,
+            now + timeout,                // Fire after timeout seconds
+            0.0,                          // No repeat (one-shot)
+            0,                            // flags
+            0,                            // order
+            timeout_exit_callback,        // callback
+            &timer_context as *const _,
+        );
+
+        if !timeout_timer.is_null() {
+            CFRunLoopAddTimer(
+                CFRunLoopGetCurrent(),
+                timeout_timer,
+                kCFRunLoopDefaultMode as *mut c_void,
+            );
+            eprintln!("DEBUG: Auto-exit timer scheduled for {:.1}s", timeout);
+        } else {
+            eprintln!("WARNING: Failed to create timeout timer");
+        }
+    }
 
     eprintln!("DEBUG: Using CFRunLoopPerformBlock for deferred AX operations (Chrome compatibility)");
 

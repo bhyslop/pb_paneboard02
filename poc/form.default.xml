@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Form>
+  <DisplayQuirk nameContains="FlipGo-A" platform="macos" minBottomInset="31"/>
+
+  <!--
+    QUADRANT MODEL (home/pgup/end/pgdn keys)
+
+    Each key produces 11 panes in this sequence:
+    1. Full display
+    2. Top half (home|pgup) or bottom half (end|pgdn)
+    3. The target quadrant: TL (home), TR (pgup), BL (end), BR (pgdn)
+    4. Top half of that quadrant
+    5. Bottom half of that quadrant
+    6. Left half of that quadrant
+    7. Right half of that quadrant
+    8-11. Four sub-quadrants of that quadrant (TL, TR, BL, BR)
+
+    Traversal order controlled by 'traverse' attribute on LayoutAction.
+    This allows repeated presses to cycle through all 11 positions.
+  -->
+
+  <!--
+    FUTURE: TIC-TAC-TOE 3×3 GRID MODEL (u/i/o/j/k/l/m/,/. keys)
+
+    Maps home-row adjacent keys to 3×3 grid positions:
+      u  i  o    (top row)
+      j  k  l    (middle row)
+      m  ,  .    (bottom row)
+
+    Behavior:
+    - 8 outer keys (u/i/o/j/l/m/,/.): single press → that grid cell
+    - Center key (k): 1st press = full screen, 2nd press = center cell only
+
+    Not yet implemented - deferred pending quadrant model debugging.
+  -->
+
+  <!-- ========== REUSABLE BASE FRAMES (compositional building blocks) ========== -->
+
+  <Frame name="full">
+    <Pane x="0" y="0" width="1" height="1"/>
+  </Frame>
+
+  <Frame name="halves-vertical">
+    <Pane x="0" y="0"   width="1" height="1/2"/>
+    <Pane x="0" y="1/2" width="1" height="1/2"/>
+  </Frame>
+
+  <Frame name="halves-vertical-75">
+    <Pane x="0" y="0"   width="3/4" height="1/2"/>
+    <Pane x="0" y="1/2" width="3/4" height="1/2"/>
+  </Frame>
+
+  <Frame name="halves-horizontal">
+    <Pane x="0"   y="0" width="1/2" height="1"/>
+    <Pane x="1/2" y="0" width="1/2" height="1"/>
+  </Frame>
+
+  <Frame name="quads">
+    <Pane x="0"   y="0"   width="1/2" height="1/2"/>
+    <Pane x="1/2" y="0"   width="1/2" height="1/2"/>
+    <Pane x="0"   y="1/2" width="1/2" height="1/2"/>
+    <Pane x="1/2" y="1/2" width="1/2" height="1/2"/>
+  </Frame>
+
+  <!-- ========== QUADRANT DETAIL FRAMES (refinements for any quadrant) ========== -->
+
+  <Frame name="quad-detail-halves">
+    <Pane x="0" y="0"   width="1" height="1/2"/>  <!-- top half of quadrant -->
+    <Pane x="0" y="1/2" width="1" height="1/2"/>  <!-- bottom half of quadrant -->
+  </Frame>
+
+  <Frame name="quad-detail-sides">
+    <Pane x="0"   y="0" width="1/2" height="1"/>  <!-- left half of quadrant -->
+    <Pane x="1/2" y="0" width="1/2" height="1"/>  <!-- right half of quadrant -->
+  </Frame>
+
+  <Frame name="quad-detail-quads">
+    <Pane x="0"   y="0"   width="1/2" height="1/2"/>  <!-- TL sub-quad -->
+    <Pane x="1/2" y="0"   width="1/2" height="1/2"/>  <!-- TR sub-quad -->
+    <Pane x="0"   y="1/2" width="1/2" height="1/2"/>  <!-- BL sub-quad -->
+    <Pane x="1/2" y="1/2" width="1/2" height="1/2"/>  <!-- BR sub-quad -->
+  </Frame>
+
+  <!-- ========== LAYOUTS ========== -->
+
+  <!-- Quadrant base layout: 11-pane compositional pattern
+       Defines geometry for TL quadrant; other quadrants generated via mirroring.
+
+       Pane sequence (sorted by area desc, then traverse):
+       1. Full display
+       2. Top half
+       3. TL quadrant
+       4-5. Top/bottom halves of TL quadrant
+       6-7. Left/right halves of TL quadrant
+       8-11. Four sub-quadrants of TL quadrant
+  -->
+  <Layout name="quadrant-base">
+    <!-- Pane 1: Full display -->
+    <Shape frame="full">
+      <Include/>
+    </Shape>
+
+    <!-- Pane 2: Top half -->
+    <Shape frame="halves-vertical">
+      <Include/>                         <!-- top half -->
+      <Include whenOrientation="never"/> <!-- bottom half (dropped) -->
+    </Shape>
+
+    <!-- Pane 2a: Top half at 75% width -->
+    <Shape frame="halves-vertical-75">
+      <Include/>                         <!-- top half 75% -->
+      <Include whenOrientation="never"/> <!-- bottom half (dropped) -->
+    </Shape>
+
+    <!-- Panes 3-11: TL quadrant and its refinements -->
+    <Shape frame="quads">
+      <!-- TL quadrant: subdivide into detail -->
+      <Shape frame="quad-detail-quads">
+        <Include/>  <!-- Pane 8: TL sub-quad -->
+        <Include/>  <!-- Pane 9: TR sub-quad -->
+        <Include/>  <!-- Pane 10: BL sub-quad -->
+        <Include/>  <!-- Pane 11: BR sub-quad -->
+      </Shape>
+      <!-- TR quadrant (dropped) -->
+      <Include whenOrientation="never"/>
+      <!-- BL quadrant (dropped) -->
+      <Include whenOrientation="never"/>
+      <!-- BR quadrant (dropped) -->
+      <Include whenOrientation="never"/>
+    </Shape>
+
+    <!-- Additional detail shapes for TL quadrant halves -->
+    <Shape frame="quads">
+      <!-- TL quadrant: subdivide into top/bottom halves -->
+      <Shape frame="quad-detail-halves">
+        <Include/>  <!-- Pane 4: top half of TL -->
+        <Include/>  <!-- Pane 5: bottom half of TL -->
+      </Shape>
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+    </Shape>
+
+    <Shape frame="quads">
+      <!-- TL quadrant: subdivide into left/right halves -->
+      <Shape frame="quad-detail-sides">
+        <Include/>  <!-- Pane 6: left half of TL -->
+        <Include/>  <!-- Pane 7: right half of TL -->
+      </Shape>
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+    </Shape>
+
+    <!-- Pane 3: Whole TL quadrant as terminal -->
+    <Shape frame="quads">
+      <Include/>  <!-- Pane 3: TL quadrant -->
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+      <Include whenOrientation="never"/>
+    </Shape>
+  </Layout>
+
+  <!-- ========== LAYOUT ACTIONS ========== -->
+
+  <!-- Quadrant traversal: one base layout, mirrored for each quadrant
+       TL (home):     no mirroring
+       TR (pageup):   flip X (horizontal mirror)
+       BL (end):      flip Y (vertical mirror)
+       BR (pagedown): flip X and Y (both axes)
+  -->
+  <LayoutAction key="home"     layout="quadrant-base" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="pageup"   layout="quadrant-base" traverse="xfyf" mirrorX="flip" mirrorY="keep"/>
+  <LayoutAction key="end"      layout="quadrant-base" traverse="xfyf" mirrorX="keep" mirrorY="flip"/>
+  <LayoutAction key="pagedown" layout="quadrant-base" traverse="xfyf" mirrorX="flip" mirrorY="flip"/>
+
+  <!-- Display movement -->
+  <DisplayMove key="h" target="prev" wrap="true"/>
+  <DisplayMove key="semicolon" target="next" wrap="true"/>
+</Form>

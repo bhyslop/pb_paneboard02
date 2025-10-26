@@ -138,7 +138,3 @@ pub fn usage_to_key_name(usage: u32) -> String {
         _ => format!("0x{:02X}", usage),
     }
 }
-
-// Quadrants
-#[derive(Copy, Clone, Debug)]
-pub enum Quad { UL, UR, LL, LR }

@@ -1,0 +1,783 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           elementFormDefault="qualified"
+           attributeFormDefault="unqualified">
+
+  <!--
+    PaneBoard Layout Configuration Schema
+
+    Configuration Source:
+    - Default: poc/form.default.xml (embedded at build time via include_str!())
+    - Runtime: ~/.config/paneboard/form.xml
+
+    Deployment Strategy:
+    At every application startup:
+    1. Existing form.xml is archived to form.xml.NNNNN (NNNNN starts at 10000)
+    2. Fresh copy of embedded default is written to form.xml
+    3. Configuration is parsed and loaded
+
+    This ensures the latest compiled configuration is always used while preserving
+    user edits as archived files for manual inspection.
+  -->
+
+  <!-- 🟦 FORM: the complete designed system -->
+  <xs:element name="Form">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="Measure" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element ref="DisplayQuirk" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element ref="Space" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element ref="Frame" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element ref="Layout" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element ref="LayoutAction" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element ref="DisplayMove" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element ref="Application" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+    <!-- Referential integrity: Frame names -->
+    <xs:key name="frameNames">
+      <xs:selector xpath="Frame"/>
+      <xs:field xpath="@name"/>
+    </xs:key>
+    <xs:keyref name="shapeFrameRef" refer="frameNames">
+      <xs:selector xpath=".//Shape"/>
+      <xs:field xpath="@frame"/>
+    </xs:keyref>
+    <!-- Referential integrity: Layout names -->
+    <xs:key name="layoutNames">
+      <xs:selector xpath="Layout"/>
+      <xs:field xpath="@name"/>
+    </xs:key>
+    <xs:keyref name="includeLayoutRef" refer="layoutNames">
+      <xs:selector xpath=".//Include"/>
+      <xs:field xpath="@layout"/>
+    </xs:keyref>
+  </xs:element>
+
+  <!--
+    🟫 MEASURE: Named pixel constants
+
+    Defines reusable pixel values that can be referenced by name in dimension
+    constraints (minWidth, minHeight, underWidth, underHeight).
+
+    Example:
+      <Measure name="hdWidth" value="1920"/>
+      <Space name="Large">
+        <Match minWidth="hdWidth"/>
+      </Space>
+  -->
+  <xs:element name="Measure">
+    <xs:complexType>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+      <xs:attribute name="value" type="xs:positiveInteger" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <!-- MeasureReference: either a Measure name or literal pixel value -->
+  <xs:simpleType name="MeasureReference">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9]+|[a-zA-Z_][a-zA-Z0-9_]*"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!--
+    🟤 DISPLAY QUIRK: Platform-specific display geometry corrections
+
+    Defines workarounds for hardware or OS-specific display issues that prevent
+    windows from using the full reported visible frame. These are applied before
+    any layout calculations.
+
+    Common use cases:
+    - External monitors with physically obstructed regions (bezels, built-in controls)
+    - OS bugs where visibleFrame doesn't account for reserved UI space
+    - Platform-specific rendering issues requiring safe margins
+
+    Attributes:
+    - nameContains: Substring match against display name (e.g., "FlipGo-A")
+      Pattern enforces minimum 3 alphanumeric characters to avoid overly broad matches
+    - platform: Target OS (macos, windows, or linux)
+    - minBottomInset: Minimum pixels to reserve at bottom of display
+
+    Merging behavior:
+    When multiple quirks match the same display (by platform + nameContains),
+    the MAXIMUM minBottomInset is applied. This ensures all constraints are satisfied.
+
+    Example:
+      <DisplayQuirk nameContains="FlipGo-A" platform="macos" minBottomInset="31"/>
+
+    This reserves 31 pixels at the bottom of any display named "FlipGo-A" on macOS,
+    preventing window tiling into that region.
+
+    Processing:
+    Quirks are applied at both parse-time and runtime to ensure consistency:
+
+    Parse-time (pane list precomputation):
+    1. Filter quirks by current platform
+    2. For each DisplayInfo, find all quirks where nameContains matches display name
+    3. Take MAX of all matching minBottomInset values
+    4. Adjust DisplayInfo height: height -= inset
+    5. Use adjusted dimensions for Space matching and pane list precomputation
+
+    Runtime (window positioning):
+    1. Quirks are stored in runtime Form struct (platform-filtered)
+    2. When positioning windows, Form::get_min_bottom_inset(display_name) returns
+       the MAX minBottomInset for all matching quirks, or 0 if none match
+    3. VisibleFrame height is reduced by this inset before applying to windows
+
+    Non-holistic design note:
+    This is intentionally a "patch" mechanism for hardware/OS quirks, not integrated
+    with the Space/Measure system. Future versions may add topInset, leftInset,
+    rightInset if needed, or migrate to a more comprehensive inset model.
+  -->
+  <xs:element name="DisplayQuirk">
+    <xs:complexType>
+      <xs:attribute name="nameContains" use="required">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <!-- Minimum 3 alphanumeric chars to avoid overly broad matches -->
+            <xs:pattern value="[A-Za-z0-9]{3,}"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:attribute>
+      <xs:attribute name="platform" use="required">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:enumeration value="macos"/>
+            <xs:enumeration value="windows"/>
+            <xs:enumeration value="linux"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:attribute>
+      <xs:attribute name="minBottomInset" type="xs:positiveInteger" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <!--
+    🟩 SPACE: Physical display environment definitions
+
+    A Space defines matching rules for physical displays based on properties like
+    resolution, orientation, and name. Layouts can reference Spaces to activate only
+    on appropriate displays.
+
+    Matching logic:
+    - Multiple <Match> elements are OR'd: any Match succeeds → display is candidate
+    - Within a single Match, all attributes are AND'd: all must be true
+    - Multiple <Exclude> elements are OR'd: any Exclude vetoes the match
+    - Within a single Exclude, all attributes are AND'd
+    - Final result: (any Match passes) AND (no Exclude vetoes) = display matches Space
+
+    Example:
+      <Space name="LargeDisplays">
+        <Match minWidth="1920" minHeight="1080" whenOrientation="landscape"/>
+        <Match minWidth="1080" minHeight="1920" whenOrientation="portrait"/>
+        <Exclude nameContains="Built-in"/>
+      </Space>
+
+    This matches displays that are:
+      - (≥1920×1080 landscape) OR (≥1080×1920 portrait)
+      - AND NOT named with "Built-in"
+  -->
+  <xs:element name="Space">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Match"   type="SpaceRule" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="Exclude" type="SpaceRule" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:complexType name="SpaceRule">
+    <xs:attribute name="nameContains" type="xs:string" use="optional"/>
+    <xs:attribute name="whenOrientation" use="optional">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="portrait"/>
+          <xs:enumeration value="landscape"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <!-- Dimension constraints: min is inclusive (>=), under is exclusive (<) -->
+    <xs:attribute name="minWidth"    type="MeasureReference" use="optional"/>
+    <xs:attribute name="minHeight"   type="MeasureReference" use="optional"/>
+    <xs:attribute name="underWidth"  type="MeasureReference" use="optional"/>
+    <xs:attribute name="underHeight" type="MeasureReference" use="optional"/>
+  </xs:complexType>
+
+  <!--
+    🟨 FRAME: Reusable geometric patterns
+
+    A Frame defines a collection of Pane geometries that can be referenced by Shapes
+    within Layouts. Each Pane specifies its position and size as fractions relative
+    to its parent context (display visible frame for top-level, or parent Pane for nested).
+
+    Example:
+      <Frame name="sidebar">
+        <Pane x="0" y="0" width="3/10" height="1"/>
+        <Pane x="3/10" y="0" width="7/10" height="1"/>
+      </Frame>
+  -->
+  <xs:element name="Frame">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Pane" type="PaneType" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:complexType name="PaneType">
+    <xs:attribute name="x"      type="ProportionType" use="required"/>
+    <xs:attribute name="y"      type="ProportionType" use="required"/>
+    <xs:attribute name="width"  type="ProportionType" use="required"/>
+    <xs:attribute name="height" type="ProportionType" use="required"/>
+  </xs:complexType>
+
+  <!--
+    ProportionType: Fractional proportions for Pane geometry
+
+    Defines positions and sizes as fractions relative to the parent context:
+    - For top-level Panes: relative to the display's visible frame
+    - For nested Panes: relative to the parent Pane's geometry
+
+    Format:
+    - Fraction: "numerator/denominator" (e.g., "1/3", "2/5")
+    - Whole number shorthand: "1" (equivalent to "1/1")
+    - Zero: "0" (equivalent to "0/1", valid for x/y position)
+
+    Valid examples:
+      <Pane x="0" y="0" width="1/3" height="1"/>
+      <Pane x="1/3" y="0" width="2/3" height="1"/>
+
+    Nesting example - outer pane is 1/9 screen width, subdivided into thirds:
+      <Frame name="column">
+        <Pane x="0" y="0" width="1/9" height="1"/>
+      </Frame>
+      <Frame name="threeRows">
+        <Pane x="0" y="0" width="1" height="1/3"/>
+        <Pane x="0" y="1/3" width="1" height="1/3"/>
+        <Pane x="0" y="2/3" width="1" height="1/3"/>
+      </Frame>
+
+    Schema validation:
+    - Ensures denominator is non-zero
+    - Does not validate semantic constraints (e.g., values >1, zero-sized panes)
+    - Implementation must validate that panes are not too small to be practical
+  -->
+  <xs:simpleType name="ProportionType">
+    <xs:restriction base="xs:string">
+      <!-- Matches: "0", "1", "1/3", "2/5", etc. Denominator cannot be zero. -->
+      <xs:pattern value="0|[1-9][0-9]*(/[1-9][0-9]*)?"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!--
+    🟥 LAYOUT: Composition of frames into shapes
+
+    A Layout defines how windows are tiled on a display using a compositional tree model.
+    Each Layout contains one or more top-level Shapes that flatten independently and
+    concatenate their results.
+
+    The optional 'space' attribute references a Space by name. When specified, the
+    Layout only activates on displays that match that Space. When omitted, the Layout
+    applies to all displays.
+
+    Measure Dependencies:
+    If any Shape within the Layout references a Measure (via minWidth, minHeight,
+    underWidth, or underHeight attributes), that Measure MUST be declared explicitly
+    using a <Needs> element. This makes dependencies self-documenting and allows
+    validation to fail fast at parse time.
+
+    Validation Requirements:
+    - All Measures referenced in Shape trees must appear in <Needs> declarations
+    - Referencing an undeclared Measure is a parse error
+    - If a required Measure is not defined in the hardware configuration, the entire
+      Layout is pruned (it either works completely or not at all)
+
+    Examples:
+      <Layout name="sidebar-split" space="LargeDisplays">
+        <Shape frame="sidebar">
+          <Include/>
+          <Shape frame="rightColumn"/>
+        </Shape>
+      </Layout>
+
+      <Layout name="quad-tl">
+        <Shape frame="full">
+          <Include/>
+        </Shape>
+        <Shape frame="halves-vertical">
+          <Include/>
+          <Include whenOrientation="never"/>
+        </Shape>
+      </Layout>
+  -->
+  <xs:element name="Layout">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Needs" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:attribute name="measure" type="xs:string" use="required"/> <!-- references Measure/@name -->
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Shape" type="ShapeType" minOccurs="1" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="name" type="xs:string" use="required"/>
+      <xs:attribute name="space" type="xs:string" use="optional"/> <!-- references Space/@name -->
+    </xs:complexType>
+  </xs:element>
+
+  <!--
+    ShapeType: Compositional pane subdivision with strict 1:1 child mapping
+
+    Shapes form a tree structure that defines how windows are tiled using a strict
+    compositional model:
+
+    1. A Shape with frame="foo" references a Frame by name
+    2. The Shape MUST have exactly N children, where N = number of panes in Frame "foo"
+    3. Each child maps 1:1 to the corresponding parent pane (in order)
+    4. Each child is exactly one of:
+       - <Shape frame="..."/> - Subdivide this pane using another Frame
+       - <Include .../> - Terminal pane, sublayout reference, or conditional drop
+
+    Coordinate System:
+    All pane coordinates are relative to their parent pane. When a Shape subdivides
+    a pane, the child frame's coordinates are scaled and translated within the parent
+    pane's geometry.
+
+    Conditional attributes (whenOrientation, min/underWidth/Height) allow Shapes
+    to be pruned based on display properties. If a Shape's conditions don't match,
+    it and its entire subtree are excluded from the layout.
+
+    Child Count Enforcement (XSD 1.1 assertion, enforced in Rust):
+    For any <Shape frame="F">, the number of children MUST equal the number of panes
+    in Frame F. Mismatch is a parse error that disables all LayoutActions.
+
+    Examples:
+      <Shape frame="halves-horizontal">
+        <Include/>            <!-- Emit left half as terminal pane -->
+        <Shape frame="quads"> <!-- Subdivide right half into quadrants -->
+          <Include/><Include/><Include/><Include/>
+        </Shape>
+      </Shape>
+
+      <Shape frame="quads">
+        <Include/>                         <!-- TL quadrant -->
+        <Include whenOrientation="never"/> <!-- TR quadrant (dropped) -->
+        <Include whenOrientation="never"/> <!-- BL quadrant (dropped) -->
+        <Include/>                         <!-- BR quadrant -->
+      </Shape>
+
+      <Shape frame="quads">
+        <Include layout="detail"/>         <!-- TL: inline "detail" layout -->
+        <Include/>                         <!-- TR: terminal pane -->
+        <Include/>                         <!-- BL: terminal pane -->
+        <Include/>                         <!-- BR: terminal pane -->
+      </Shape>
+  -->
+  <xs:complexType name="ShapeType">
+    <xs:sequence>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="Shape" type="ShapeType"/>
+        <xs:element name="Include" type="IncludeType"/>
+      </xs:choice>
+    </xs:sequence>
+    <xs:attribute name="frame" type="xs:string" use="required"/> <!-- references Frame/@name -->
+    <xs:attribute name="whenOrientation" use="optional">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="portrait"/>
+          <xs:enumeration value="landscape"/>
+          <xs:enumeration value="never"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <!-- Dimension constraints: min is inclusive (>=), under is exclusive (<) -->
+    <xs:attribute name="minWidth"    type="MeasureReference" use="optional"/>
+    <xs:attribute name="minHeight"   type="MeasureReference" use="optional"/>
+    <xs:attribute name="underWidth"  type="MeasureReference" use="optional"/>
+    <xs:attribute name="underHeight" type="MeasureReference" use="optional"/>
+  </xs:complexType>
+
+  <!--
+    IncludeType: Unified pane terminal or sublayout inclusion
+
+    Replaces the deprecated Leaf and Drop elements with a unified conditional model.
+
+    An <Include> child maps to one pane slot in the parent Shape's frame.
+    It can either:
+    1. Emit a terminal pane (no 'layout' attribute)
+    2. Inline another layout's structure (with 'layout' attribute)
+    3. Be skipped entirely (if conditions fail)
+
+    Conditional Attributes (all optional, AND-ed if present):
+    - whenOrientation: "portrait" | "landscape" | "never"
+      Computed from display geometry: landscape = width≥height, portrait = height>width
+      "never" always fails (used to replace Drop)
+    - nameContains: Case-insensitive substring match against display name
+    - minWidth, minHeight: Threshold (≥) in literal pixels
+    - underWidth, underHeight: Threshold (<) in literal pixels
+      NOTE: No Measure references allowed (literals only)
+
+    Conditional Evaluation:
+    - All conditions must pass (AND logic)
+    - If any condition fails, this pane slot is skipped (no-op drop)
+    - Skipped slots do NOT violate the 1:1 child-to-pane mapping rule
+
+    Layout Inlining:
+    - If 'layout' attribute present: inline that layout's root Shape structure
+    - Expansion happens at parse time with cycle detection (depth cap 16)
+    - Cycles or missing layouts → structural error → global fail
+
+    Examples:
+      <Include/>                                  <!-- Terminal pane (always) -->
+      <Include layout="sub-detail"/>              <!-- Inline sublayout -->
+      <Include whenOrientation="never"/>          <!-- Explicit drop (replaces <Drop/>) -->
+      <Include whenOrientation="landscape"        <!-- Conditional leaf -->
+               minWidth="1920"/>
+  -->
+  <xs:complexType name="IncludeType">
+    <xs:attribute name="layout" type="xs:string" use="optional"/>
+    <xs:attribute name="whenOrientation" use="optional">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="portrait"/>
+          <xs:enumeration value="landscape"/>
+          <xs:enumeration value="never"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <!-- Dimension constraints: literals only (no Measure references) -->
+    <xs:attribute name="minWidth" type="xs:positiveInteger" use="optional"/>
+    <xs:attribute name="underWidth" type="xs:positiveInteger" use="optional"/>
+    <xs:attribute name="minHeight" type="xs:positiveInteger" use="optional"/>
+    <xs:attribute name="underHeight" type="xs:positiveInteger" use="optional"/>
+    <!-- Display name matching (case-insensitive substring) -->
+    <xs:attribute name="nameContains" type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <!--
+    KeyType: Valid unmodified keys for bindings
+
+    Rationale:
+    - Only keys present on both full-size Mac and PC keyboards
+    - Excludes platform-specific keys (eject, insert, printscreen)
+    - Excludes modifier keys (shift, alt, option, command, control)
+    - Excludes fn-chord-dependent keys (Mac fn+delete → PC delete handled separately)
+    - Letters are lowercase; shifted variants handled by modifier configuration
+    - Punctuation spelled out for clarity (e.g., "period" not ".")
+    - Includes numpad for users with full keyboards
+    - Function keys limited to F1-F12 (ubiquitous on both platforms)
+  -->
+  <xs:simpleType name="KeyType">
+    <xs:restriction base="xs:string">
+      <!-- Letters (lowercase) -->
+      <xs:enumeration value="a"/>
+      <xs:enumeration value="b"/>
+      <xs:enumeration value="c"/>
+      <xs:enumeration value="d"/>
+      <xs:enumeration value="e"/>
+      <xs:enumeration value="f"/>
+      <xs:enumeration value="g"/>
+      <xs:enumeration value="h"/>
+      <xs:enumeration value="i"/>
+      <xs:enumeration value="j"/>
+      <xs:enumeration value="k"/>
+      <xs:enumeration value="l"/>
+      <xs:enumeration value="m"/>
+      <xs:enumeration value="n"/>
+      <xs:enumeration value="o"/>
+      <xs:enumeration value="p"/>
+      <xs:enumeration value="q"/>
+      <xs:enumeration value="r"/>
+      <xs:enumeration value="s"/>
+      <xs:enumeration value="t"/>
+      <xs:enumeration value="u"/>
+      <xs:enumeration value="v"/>
+      <xs:enumeration value="w"/>
+      <xs:enumeration value="x"/>
+      <xs:enumeration value="y"/>
+      <xs:enumeration value="z"/>
+
+      <!-- Digits (unshifted) -->
+      <xs:enumeration value="0"/>
+      <xs:enumeration value="1"/>
+      <xs:enumeration value="2"/>
+      <xs:enumeration value="3"/>
+      <xs:enumeration value="4"/>
+      <xs:enumeration value="5"/>
+      <xs:enumeration value="6"/>
+      <xs:enumeration value="7"/>
+      <xs:enumeration value="8"/>
+      <xs:enumeration value="9"/>
+
+      <!-- Function keys (F1-F12 only, ubiquitous) -->
+      <xs:enumeration value="f1"/>
+      <xs:enumeration value="f2"/>
+      <xs:enumeration value="f3"/>
+      <xs:enumeration value="f4"/>
+      <xs:enumeration value="f5"/>
+      <xs:enumeration value="f6"/>
+      <xs:enumeration value="f7"/>
+      <xs:enumeration value="f8"/>
+      <xs:enumeration value="f9"/>
+      <xs:enumeration value="f10"/>
+      <xs:enumeration value="f11"/>
+      <xs:enumeration value="f12"/>
+
+      <!-- Navigation: arrows -->
+      <xs:enumeration value="up"/>
+      <xs:enumeration value="down"/>
+      <xs:enumeration value="left"/>
+      <xs:enumeration value="right"/>
+
+      <!-- Navigation: other -->
+      <xs:enumeration value="home"/>
+      <xs:enumeration value="end"/>
+      <xs:enumeration value="pageup"/>
+      <xs:enumeration value="pagedown"/>
+
+      <!-- Editing/Control -->
+      <xs:enumeration value="escape"/>
+      <xs:enumeration value="tab"/>
+      <xs:enumeration value="space"/>
+      <xs:enumeration value="enter"/>
+      <xs:enumeration value="backspace"/>
+      <xs:enumeration value="delete"/>
+
+      <!-- Punctuation (unshifted, spelled out) -->
+      <xs:enumeration value="grave"/>
+      <xs:enumeration value="minus"/>
+      <xs:enumeration value="equals"/>
+      <xs:enumeration value="leftbracket"/>
+      <xs:enumeration value="rightbracket"/>
+      <xs:enumeration value="backslash"/>
+      <xs:enumeration value="semicolon"/>
+      <xs:enumeration value="apostrophe"/>
+      <xs:enumeration value="comma"/>
+      <xs:enumeration value="period"/>
+      <xs:enumeration value="slash"/>
+
+      <!-- Numpad -->
+      <xs:enumeration value="numpad0"/>
+      <xs:enumeration value="numpad1"/>
+      <xs:enumeration value="numpad2"/>
+      <xs:enumeration value="numpad3"/>
+      <xs:enumeration value="numpad4"/>
+      <xs:enumeration value="numpad5"/>
+      <xs:enumeration value="numpad6"/>
+      <xs:enumeration value="numpad7"/>
+      <xs:enumeration value="numpad8"/>
+      <xs:enumeration value="numpad9"/>
+      <xs:enumeration value="numpadplus"/>
+      <xs:enumeration value="numpadminus"/>
+      <xs:enumeration value="numpadmultiply"/>
+      <xs:enumeration value="numpaddivide"/>
+      <xs:enumeration value="numpadequals"/>
+      <xs:enumeration value="numpadperiod"/>
+      <xs:enumeration value="numpadenter"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!--
+    🟪 LAYOUT ACTION: Keyboard-triggered window tiling
+
+    Maps a keyboard shortcut to a Layout, activating window tiling with configurable
+    traversal and mirroring. The key attribute specifies the unmodified key (modifiers
+    like Shift, Alt, Command, Control are configured elsewhere in the system).
+
+    Traversal behavior:
+    When the user holds the modifier chord and repeatedly presses the key, the system
+    cycles through all panes (including sub-panes) in the Layout. The traverse
+    attribute controls the order of this iteration:
+
+    - First character: primary sort axis ('x' or 'y')
+    - Second character: primary direction ('f'=forward/ascending, 'r'=reverse/descending)
+    - Third character: secondary sort axis ('y' or 'x')
+    - Fourth character: secondary direction ('f' or 'r')
+
+    Examples:
+      xfyf = sort by x ascending, then y ascending (left-to-right, top-to-bottom)
+      yrxf = sort by y descending, then x ascending (bottom-to-top, left-to-right)
+
+    Mirroring:
+    The mirrorX and mirrorY attributes control whether the layout geometry is flipped
+    horizontally or vertically when activated:
+      keep = use original geometry
+      flip = mirror around center axis
+
+    Example:
+      <LayoutAction key="h" layout="sidebar-split" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  -->
+  <xs:element name="LayoutAction">
+    <xs:complexType>
+      <xs:attribute name="key" type="KeyType" use="required"/>
+      <xs:attribute name="layout" type="xs:string" use="required"/> <!-- references Layout/@name -->
+      <xs:attribute name="traverse" use="required">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <!-- 8 legal traversal tokens -->
+            <xs:enumeration value="xfyf"/>
+            <xs:enumeration value="xfyr"/>
+            <xs:enumeration value="xryf"/>
+            <xs:enumeration value="xryr"/>
+            <xs:enumeration value="yfxf"/>
+            <xs:enumeration value="yfxr"/>
+            <xs:enumeration value="yrxf"/>
+            <xs:enumeration value="yrxr"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:attribute>
+      <xs:attribute name="mirrorX" use="required">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:enumeration value="keep"/>
+            <xs:enumeration value="flip"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:attribute>
+      <xs:attribute name="mirrorY" use="required">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:enumeration value="keep"/>
+            <xs:enumeration value="flip"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:attribute>
+    </xs:complexType>
+  </xs:element>
+
+  <!--
+    🟪 DISPLAY MOVE: Keyboard-triggered window movement between displays
+
+    Maps a keyboard shortcut to move the currently focused window to another display
+    while preserving its size and relative position. The key attribute specifies the
+    unmodified key (modifiers configured elsewhere in the system).
+
+    The target attribute determines the destination:
+
+    Relative targets:
+      "next" - Move to the next display in OS enumeration order
+      "prev" - Move to the previous display in OS enumeration order
+
+    Absolute targets:
+      "0", "1", "2", ... - Move to display at specific index (0-based)
+
+    The wrap attribute (optional, defaults to true) controls behavior at boundaries:
+      wrap="true"  - Cycle from last display back to first (and vice versa)
+      wrap="false" - No-op when already at first/last display
+
+    Display indices are platform-specific and determined by OS enumeration order:
+    - macOS: NSScreen.screens[0], [1], etc.
+    - Windows: Monitor enumeration indices
+    - Linux: X11 screen indices / Wayland output indices
+
+    Users can discover their display indices through trial and error, or via
+    a debug overlay showing "Display N" on each screen.
+
+    Examples:
+      <DisplayMove key="m" target="next" wrap="true"/>
+      <DisplayMove key="n" target="prev" wrap="false"/>
+      <DisplayMove key="1" target="0"/>
+      <DisplayMove key="3" target="2" wrap="false"/>
+  -->
+  <xs:element name="DisplayMove">
+    <xs:complexType>
+      <xs:attribute name="key" type="KeyType" use="required"/>
+      <xs:attribute name="target" use="required">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <!-- Matches: "next", "prev", or any non-negative integer -->
+            <xs:pattern value="next|prev|[0-9]+"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:attribute>
+      <xs:attribute name="wrap" type="xs:boolean" use="optional" default="true"/>
+    </xs:complexType>
+  </xs:element>
+
+  <!--
+    🟧 APPLICATION: Per-application behavior overrides
+
+    Defines platform-specific application matching rules and behavior customizations.
+    Each Application has a human-readable name and one or more platform matchers.
+    At runtime, PaneBoard checks the active application against matchers for the
+    current platform and applies the specified behavior overrides.
+
+    Platform Matchers:
+    - <Mac bundleId="..."/> - Match macOS bundle identifier (e.g., "com.google.Chrome")
+    - <Windows exe="..."/> - Match Windows executable name (e.g., "chrome.exe")
+    - <Linux process="..."/> - Match Linux process name (e.g., "chrome")
+
+    Multiple matchers of the same type can be specified to cover application variants
+    (e.g., Chrome stable, beta, and canary builds).
+
+    Behavior Overrides:
+    - <Clipboard monitor="..." copyMirror="..."/>
+      - monitor: Whether to watch clipboard changes from this app (default: true)
+      - copyMirror: Whether to mirror Ctrl+C as Cmd+C on macOS (default: true)
+                    Set to false for apps that already handle this internally
+
+    Discovery:
+    Users can identify application matchers using:
+    - macOS: osascript -e 'tell app "System Events" to get bundle identifier of first process whose frontmost is true'
+    - Windows: Task Manager → Details tab → Name column
+    - Linux: xprop WM_CLASS (then click the window)
+
+    Examples:
+      <!-- Chrome: cross-platform, skip clipboard mirror -->
+      <Application name="Chrome">
+        <Mac bundleId="com.google.Chrome"/>
+        <Windows exe="chrome.exe"/>
+        <Linux process="chrome"/>
+        <Clipboard monitor="true" copyMirror="false"/>
+      </Application>
+
+      <!-- 1Password: privacy-sensitive, no clipboard monitoring -->
+      <Application name="1Password">
+        <Mac bundleId="com.agilebits.1Password"/>
+        <Windows exe="1Password.exe"/>
+        <Clipboard monitor="false" copyMirror="false"/>
+      </Application>
+
+      <!-- iTerm2: macOS-only terminal -->
+      <Application name="iTerm2">
+        <Mac bundleId="com.googlecode.iterm2"/>
+        <Clipboard monitor="true" copyMirror="true"/>
+      </Application>
+  -->
+  <xs:element name="Application">
+    <xs:complexType>
+      <xs:sequence>
+        <!-- Platform matchers (at least one required) -->
+        <xs:element name="Mac" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:attribute name="bundleId" type="xs:string" use="required"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Windows" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:attribute name="exe" type="xs:string" use="required"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Linux" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:attribute name="process" type="xs:string" use="required"/>
+          </xs:complexType>
+        </xs:element>
+
+        <!-- Behavior overrides -->
+        <xs:element name="Clipboard" minOccurs="0" maxOccurs="1">
+          <xs:complexType>
+            <xs:attribute name="monitor" type="xs:boolean" use="optional" default="true"/>
+            <xs:attribute name="copyMirror" type="xs:boolean" use="optional" default="true"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+
+      <!-- Human-readable application name for documentation -->
+      <xs:attribute name="name" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

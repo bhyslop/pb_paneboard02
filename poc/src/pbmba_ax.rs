@@ -119,6 +119,7 @@ extern "C" {
         context: *mut c_void,
     ) -> *mut c_void;
     pub fn CGEventTapEnable(tap: *mut c_void, enable: bool);
+    pub fn CGEventTapIsEnabled(tap: *mut c_void) -> bool;
     pub fn CGEventGetIntegerValueField(event: *mut c_void, field: u32) -> i64;
     pub fn CGEventGetFlags(event: *mut c_void) -> u64;
     pub fn CGEventSetFlags(event: *mut c_void, flags: u64);
