@@ -3,14 +3,6 @@
 
 #![cfg(target_os = "macos")]
 
-// Key constants (mac virtual keycodes)
-pub const KVK_HELP_INSERT: u16 = 0x72;
-pub const KVK_FWD_DELETE: u16 = 0x75;
-pub const KVK_HOME: u16 = 0x73;
-pub const KVK_END: u16 = 0x77;
-pub const KVK_PAGE_UP: u16 = 0x74;
-pub const KVK_PAGE_DOWN: u16 = 0x79;
-
 // Virtual keycodes for clipboard chords
 pub const VK_C: u16 = 8;
 pub const VK_V: u16 = 9;
@@ -40,10 +32,6 @@ pub const K_CG_EVENT_FLAG_MASK_CONTROL: u64 = 1 << 18;
 pub const K_CG_EVENT_FLAG_MASK_SHIFT: u64 = 1 << 17;
 pub const K_CG_EVENT_FLAG_MASK_COMMAND: u64 = 1 << 20;
 pub const K_CG_EVENT_FLAG_MASK_ALTERNATE: u64 = 1 << 19;
-
-pub fn known_poc_key(keycode: u16) -> bool {
-    matches!(keycode, KVK_HELP_INSERT | KVK_FWD_DELETE | KVK_HOME | KVK_END | KVK_PAGE_UP | KVK_PAGE_DOWN)
-}
 
 /// Map macOS virtual keycode to XML key name (per KeyType in pbxs_schema.xsd)
 /// Returns None for unmapped or modifier keys
