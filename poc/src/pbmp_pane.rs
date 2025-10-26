@@ -104,8 +104,8 @@ pub unsafe fn print_expected_pane_sequences() {
     eprintln!("=============================================\n");
 }
 
-// Helper function to get visible frame with quirks applied
-// Gets DisplayInfo directly and uses its live_viewport method
+// Helper function to get design-based viewport
+// Gets DisplayInfo and uses its live_viewport method (returns design dimensions)
 unsafe fn visible_frame_with_quirks_for_index(screen: &objc2_app_kit::NSScreen, display_index: usize) -> Option<VisibleFrame> {
     if let Some(display_info) = ADJUSTED_DISPLAYS.get(display_index) {
         return display_info.live_viewport(screen);
@@ -546,8 +546,8 @@ pub fn should_use_observer_on_error(error_msg: &str) -> bool {
 /// Convert PixelRect to Rect (passthrough - coordinates already absolute)
 ///
 /// PixelRect coordinates are produced by DisplayInfo::realize_panes() which:
-/// 1. Calls live_viewport() to get quirk-corrected viewport at runtime
-/// 2. Converts fractions to absolute screen coordinates: vf.min_x + f.x * vf.width
+/// 1. Calls live_viewport() to get design-based viewport (quirks applied at design time)
+/// 2. Converts fractions to absolute screen coordinates: vf.min_x + f.x * design_width
 ///
 /// Therefore PixelRect already contains absolute screen coordinates ready for AX API.
 /// No additional offset or quirk correction should be applied here.
@@ -825,9 +825,9 @@ pub fn tile_window_quadrant(job: TilingJob) {
                 let screens = get_all_screens();
                 if disp_idx < screens.len() {
                     if let Some(display_info) = ADJUSTED_DISPLAYS.get(disp_idx) {
-                        // Replace visible frame with quirk-adjusted version from DisplayInfo
-                        if let Some(quirked_vf) = display_info.live_viewport(&screens[disp_idx]) {
-                            visible = quirked_vf;
+                        // Replace visible frame with design-based viewport from DisplayInfo
+                        if let Some(design_vf) = display_info.live_viewport(&screens[disp_idx]) {
+                            visible = design_vf;
                         }
                     }
                 }

@@ -1636,9 +1636,9 @@ impl Form {
         });
     }
 
-    /// Apply menu bar + quirk corrections to design dimensions
+    /// Apply menu bar + quirk corrections to design dimensions (ONCE, at design time)
     /// Design dimensions = fully corrected viewport (menu bar + quirks applied)
-    /// This ensures fractional coords scale correctly to match live_viewport()
+    /// live_viewport() returns these same design dimensions - no re-application
     #[cfg(target_os = "macos")]
     pub fn adjust_displays(&self, displays: &[DisplayInfo]) -> Vec<DisplayInfo> {
         use crate::pbmbd_display::{get_all_screens, visible_frame_for_screen, full_frame_for_screen, get_menu_bar_height};
@@ -1667,7 +1667,8 @@ impl Form {
                     display.design_height
                 };
 
-                // Apply quirks to design dimensions (must match live_viewport dimensions)
+                // Apply quirks to design dimensions (physical seam compensation)
+                // Quirks are applied ONCE here at design time, NOT in live_viewport
                 let max_bottom_inset = self.quirks.iter()
                     .filter(|q| display.name.contains(&q.name_contains))
                     .map(|q| q.min_bottom_inset)

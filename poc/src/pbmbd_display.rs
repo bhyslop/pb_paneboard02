@@ -194,28 +194,8 @@ impl DisplayInfo {
     }
 
     /// Get live viewport for runtime window positioning
-    /// Fetches current visible frame from NSScreen and applies quirks and menu bar correction
     pub unsafe fn live_viewport(&self, screen: &NSScreen) -> Option<VisibleFrame> {
-        let mut vf = visible_frame_for_screen(screen)?;
-
-        // Apply menu bar correction if NSScreen hasn't already done so
-        // Check: if visibleFrame.height == frame.height, menu bar not accounted for
-        if let Some(ff) = full_frame_for_screen(screen) {
-            if vf.height == ff.height {
-                // NSScreen didn't subtract menu bar, we need to
-                let menu_bar_height = get_menu_bar_height();
-                vf.min_y += menu_bar_height;
-                vf.height -= menu_bar_height;
-            }
-            // else: NSScreen already subtracted it, don't double-subtract
-        }
-
-        // Apply quirk-based bottom inset
-        let inset = self.get_min_bottom_inset();
-        if inset > 0 {
-            vf.height -= inset as f64;
-        }
-        Some(vf)
+        visible_frame_for_screen(screen)
     }
 
     /// Calculate minimum bottom inset from matching quirks
@@ -228,7 +208,8 @@ impl DisplayInfo {
     }
 
     /// Convert fractional panes to screen pixels (unit conversion only)
-    /// Uses quirk-adjusted design dimensions (no double-quirk application)
+    /// Uses quirk-adjusted design dimensions
+    /// Quirks are applied once at design time and baked into design_height
     #[cfg(target_os = "macos")]
     pub unsafe fn realize_panes(&self, fracs: &[crate::pbgf_form::PaneFrac]) -> Vec<crate::pbgf_form::PixelRect> {
         // Get current screen position for offset calculation
@@ -242,8 +223,9 @@ impl DisplayInfo {
             None => return Vec::new(),
         };
 
-        // Scale fractional coords by DESIGN dimensions (which match viewport dimensions)
-        // Both design_height and viewport height have menu bar + quirks applied
+        // Scale fractional coords by DESIGN dimensions
+        // design_height has menu bar + quirks applied once at design time
+        // live_viewport has only menu bar applied (quirks not re-applied)
         fracs.iter()
             .map(|f| crate::pbgf_form::PixelRect {
                 x: screen_frame.min_x + f.x * self.design_width,
