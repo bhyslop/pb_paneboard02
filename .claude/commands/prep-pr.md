@@ -6,15 +6,30 @@ You are helping prepare a PR branch for upstream contribution following the work
 
 **Execute these steps automatically:**
 
+0. **Request permissions upfront:**
+   - Ask user for permission to execute all git operations needed:
+     - `git status`, `git push origin develop`
+     - `git checkout main`, `git fetch OPEN_SOURCE_UPSTREAM`, `git pull OPEN_SOURCE_UPSTREAM main`
+     - `git push origin main`
+     - `git ls-remote --heads OPEN_SOURCE_UPSTREAM`, `git branch -a`
+     - `git checkout -b candidate-NNN-R main`
+     - `git log develop --oneline -30`
+     - `git cherry-pick` (based on user selection)
+     - `git ls-files` verification commands
+     - `git log --stat`, `git diff main..HEAD --stat`
+   - Get approval before proceeding with any operations
+
 1. **Verify develop is clean and pushed:**
    - Check `git status` on develop branch
    - Ensure working tree is clean
    - Push any uncommitted changes to origin/develop
 
-2. **Sync main with upstream:**
+2. **Sync main with upstream (safe pull method):**
+   - `git checkout main`
    - `git fetch OPEN_SOURCE_UPSTREAM`
-   - `git branch -f main OPEN_SOURCE_UPSTREAM/main`
-   - `git push origin main --force`
+   - `git pull OPEN_SOURCE_UPSTREAM main`
+   - If pull fails (non-fast-forward or conflicts), **ABORT** and ask user to resolve manually
+   - `git push origin main` (should be fast-forward)
 
 3. **Auto-detect next candidate branch:**
    - Find max batch number from upstream: `git ls-remote --heads OPEN_SOURCE_UPSTREAM | grep 'candidate-'`
