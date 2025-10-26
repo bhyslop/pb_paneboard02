@@ -200,9 +200,12 @@ git log --stat
 
 **Files to exclude from PRs (all markdown except README.md):**
 - CLAUDE.md
-- .claude/ directory (including coda.md, sema.md)
+- .claude/ directory (including agents/, commands/, all configuration)
 - poc/paneboard-poc.md
 - poc/REFACTORING_ROADMAP.md
 - Any other internal notes/documentation
 
 **Note:** README.md is the ONLY markdown file that should be included in upstream PRs.
+
+**Slash Commands:**
+- `/prep-pr` - Automated workflow to prepare a candidate branch for upstream contribution
