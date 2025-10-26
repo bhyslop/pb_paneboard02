@@ -1645,14 +1645,23 @@ impl Form {
     pub fn adjust_displays(&self, displays: &[DisplayInfo]) -> Vec<DisplayInfo> {
         use crate::pbmbd_display::{get_all_screens, visible_frame_for_screen, full_frame_for_screen, get_menu_bar_height};
 
-        // First apply quirks to set applied_inset_bottom field
-        let quirked_displays = self.apply_display_quirks(displays);
-
         unsafe {
             let screens = get_all_screens();
             let menu_bar_height = get_menu_bar_height();
 
-            quirked_displays.iter().map(|display| {
+            displays.iter().map(|display| {
+                // Find MAX bottom inset from matching quirks
+                let max_bottom_inset = self.quirks.iter()
+                    .filter(|q| display.name.contains(&q.name_contains))
+                    .map(|q| q.min_bottom_inset)
+                    .max()
+                    .unwrap_or(0);
+
+                if max_bottom_inset > 0 {
+                    eprintln!("LAYOUT: DisplayQuirk matched '{}' → applying {}px bottom inset",
+                        display.name, max_bottom_inset);
+                }
+
                 // Start from CURRENT visible frame, not cached gather value
                 // (NSScreen may have changed between gather and adjust calls)
                 let mut adjusted_height = if display.index < screens.len() {
@@ -1674,11 +1683,10 @@ impl Form {
 
                 // Apply quirks to design dimensions (physical seam compensation)
                 // --- BEGIN REQUIRED FIX ---
-                let bottom_inset = display.applied_inset_bottom;  // read stored quirk
-                adjusted_height -= bottom_inset as f64;
+                adjusted_height -= max_bottom_inset as f64;
                 eprintln!(
                     "DEBUG: adjust_displays(): applied quirk bottom_inset={} → design_height={}",
-                    bottom_inset, adjusted_height
+                    max_bottom_inset, adjusted_height
                 );
                 // --- END REQUIRED FIX ---
 
@@ -1688,7 +1696,7 @@ impl Form {
                     display.design_width,
                     adjusted_height,
                     display.name.clone(),
-                    bottom_inset,
+                    max_bottom_inset as i32,
                     self.quirks.clone(),
                 )
             }).collect()

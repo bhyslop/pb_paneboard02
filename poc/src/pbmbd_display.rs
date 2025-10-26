@@ -197,7 +197,18 @@ impl DisplayInfo {
 
     /// Get live viewport for runtime window positioning
     pub unsafe fn live_viewport(&self, screen: &NSScreen) -> Option<VisibleFrame> {
-        visible_frame_for_screen(screen)
+        let mut vf = visible_frame_for_screen(screen)?;
+
+        // Apply menu bar correction if NSScreen hasn't already done so
+        if let Some(ff) = full_frame_for_screen(screen) {
+            if vf.height == ff.height {
+                let menu_bar_height = get_menu_bar_height();
+                vf.min_y += menu_bar_height;
+                vf.height -= menu_bar_height;
+            }
+        }
+
+        Some(vf)
     }
 
     /// Calculate minimum bottom inset from matching quirks
