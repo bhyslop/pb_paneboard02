@@ -227,6 +227,51 @@ impl DisplayInfo {
             .max()
             .unwrap_or(0)
     }
+
+    /// Convert fractional panes to screen pixels (unit conversion only)
+    #[cfg(target_os = "macos")]
+    pub unsafe fn realize_panes(&self, fracs: &[crate::pbgf_form::PaneFrac]) -> Vec<crate::pbgf_form::PixelRect> {
+        // Get live viewport from current NSScreen
+        let screens = get_all_screens();
+        if self.index >= screens.len() {
+            return Vec::new();
+        }
+
+        let vf = match self.live_viewport(&screens[self.index]) {
+            Some(v) => v,
+            None => return Vec::new(),
+        };
+
+        // Map fractions to pixels using viewport
+        fracs.iter()
+            .map(|f| crate::pbgf_form::PixelRect {
+                x: vf.min_x + f.x * vf.width,
+                y: vf.min_y + f.y * vf.height,
+                width: f.width * vf.width,
+                height: f.height * vf.height,
+            })
+            .collect()
+    }
+
+    /// Filter out panes smaller than minimum usable size
+    #[cfg(target_os = "macos")]
+    pub fn filter_small(rects: &[crate::pbgf_form::PixelRect]) -> Vec<crate::pbgf_form::PixelRect> {
+        const MIN_PANE_SIZE: f64 = 100.0;
+        rects.iter()
+            .filter(|r| r.width >= MIN_PANE_SIZE && r.height >= MIN_PANE_SIZE)
+            .cloned()
+            .collect()
+    }
+
+    /// Get DisplayProps for Form queries
+    #[cfg(target_os = "macos")]
+    pub fn as_props(&self) -> crate::pbgf_form::DisplayProps {
+        crate::pbgf_form::DisplayProps {
+            width: self.design_width,
+            height: self.design_height,
+            name: self.name.clone(),
+        }
+    }
 }
 
 // Gather all display information for layout system initialization

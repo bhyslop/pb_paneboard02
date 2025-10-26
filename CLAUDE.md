@@ -100,29 +100,27 @@ Window layouts are defined in XML using the schema in `pbxs_schema.xsd`.
 
 ### Current File Map
 
-**All files located in:** `poc/src/`
-
 | File | Responsibility |
 |------|----------------|
-| `main.rs` | Program entry point and runtime orchestration |
-| `pbgc_core.rs` | Generic core constants and state structures |
-| `pbgr_retry.rs` | Generic retry and timing utilities |
-| `pbgk_keylog.rs` | Optional diagnostic key state logging |
-| `pbgx_layout.rs` | Generic layout and geometry utilities |
-| `pbxs_schema.xsd` | XML schema defining layout configuration format |
-| `pbmba_ax.rs` | Core AX FFI, types, and RAII wrappers shared across features |
-| `pbmbe_eventtap.rs` | Main event tap that dispatches to all features |
-| `pbmbd_display.rs` | NSScreen enumeration and visible frame calculations |
-| `pbmbk_keymap.rs` | Key code mappings and virtual key to HID conversions |
-| `pbmbo_overlay.rs` | Base overlay rendering utilities |
-| `pbmbo_observer.h` | C-ABI header for NSWorkspace observers |
-| `pbmbo_observer.rs` | App activation/termination observers for switcher |
-| `pbmbo_observer.swift` | Swift NSWorkspace observers and overlay |
-| `pbmcl_clipboard.rs` | Clipboard history management and monitoring |
-| `pbmp_pane.rs` | Window tiling and geometry |
-| `pbmsa_alttab.rs` | Alt-Tab session state and overlay UI coordination |
-| `pbmsb_browser.rs` | MRU browser logic for switcher |
-| `pbmsm_mru.rs` | MRU stack management and window tracking |
+| `poc/src/main.rs` | Program entry point and runtime orchestration |
+| `poc/src/pbgc_core.rs` | Generic core constants and state structures |
+| `poc/src/pbgr_retry.rs` | Generic retry and timing utilities |
+| `poc/src/pbgk_keylog.rs` | Optional diagnostic key state logging |
+| `poc/src/pbgx_layout.rs` | Generic layout and geometry utilities |
+| `poc/src/pbxs_schema.xsd` | XML schema defining layout configuration format |
+| `poc/src/pbmba_ax.rs` | Core AX FFI, types, and RAII wrappers shared across features |
+| `poc/src/pbmbe_eventtap.rs` | Main event tap that dispatches to all features |
+| `poc/src/pbmbd_display.rs` | NSScreen enumeration and visible frame calculations |
+| `poc/src/pbmbk_keymap.rs` | Key code mappings and virtual key to HID conversions |
+| `poc/src/pbmbo_overlay.rs` | Base overlay rendering utilities |
+| `poc/src/pbmbo_observer.h` | C-ABI header for NSWorkspace observers |
+| `poc/src/pbmbo_observer.rs` | App activation/termination observers for switcher |
+| `poc/src/pbmbo_observer.swift` | Swift NSWorkspace observers and overlay |
+| `poc/src/pbmcl_clipboard.rs` | Clipboard history management and monitoring |
+| `poc/src/pbmp_pane.rs` | Window tiling and geometry |
+| `poc/src/pbmsa_alttab.rs` | Alt-Tab session state and overlay UI coordination |
+| `poc/src/pbmsb_browser.rs` | MRU browser logic for switcher |
+| `poc/src/pbmsm_mru.rs` | MRU stack management and window tracking |
 
 **Note:** The file naming convention uses 'b' for base/shared macOS components, and 'x' for cross-platform XML/schema files
 

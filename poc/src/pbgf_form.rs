@@ -129,30 +129,62 @@ impl Fraction {
 // SECTION 2: Runtime structures (kept after parse, no XML ties)
 // ============================================================================
 
-/// Main runtime form - contains pre-computed pane lists per (key, display)
-pub struct Form {
-    // Pre-computed pane lists: (key_name, display_index) → sorted pixel rects
-    pane_lists: HashMap<(String, usize), Vec<PixelRect>>,
-
-    // DisplayMove bindings: key_name → target spec
-    display_moves: HashMap<String, DisplayMoveTarget>,
-
-    // Display information with embedded quirks for runtime viewport access
-    displays: Vec<DisplayInfo>,
-
-    // Current layout session state (ephemeral, reset on chord release)
-    layout_session: Option<LayoutSession>,
-
-    // DisplayMove session state (tracks original size for consecutive moves)
-    display_move_session: Option<DisplayMoveSession>,
+/// Logical display properties for conditional matching (Form input)
+#[derive(Debug, Clone)]
+pub struct DisplayProps {
+    pub width: f64,
+    pub height: f64,
+    pub name: String,
 }
 
+/// Fractional pane in [0,1] relative to display (Form output)
+#[derive(Debug, Clone)]
+pub struct PaneFrac {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// Pixel rectangle in screen coordinates (Display layer output)
 #[derive(Debug, Clone)]
 pub struct PixelRect {
     pub x: f64,
     pub y: f64,
     pub width: f64,
     pub height: f64,
+}
+
+/// Runtime layout configuration (stores layout data for on-demand computation)
+struct RuntimeLayout {
+    space: Option<String>,
+    root_shape: ParsedShape,
+    traverse: TraverseOrder,
+    mirror_x: MirrorMode,
+    mirror_y: MirrorMode,
+}
+
+/// Main runtime form - immutable configuration provider
+pub struct Form {
+    // Layout configurations: key_name → layout data
+    layouts: HashMap<String, RuntimeLayout>,
+
+    // Parsed data needed for runtime computation
+    spaces: HashMap<String, ParsedSpace>,
+    frames: HashMap<String, ParsedFrame>,
+    measures: HashMap<String, u32>,
+
+    // Runtime quirks for display adjustment
+    quirks: Vec<RuntimeDisplayQuirk>,
+
+    // DisplayMove bindings: key_name → target spec
+    display_moves: HashMap<String, DisplayMoveTarget>,
+
+    // Current layout session state (ephemeral, reset on chord release)
+    layout_session: Option<LayoutSession>,
+
+    // DisplayMove session state (tracks original size for consecutive moves)
+    display_move_session: Option<DisplayMoveSession>,
 }
 
 #[derive(Debug, Clone)]
@@ -164,7 +196,6 @@ pub enum DisplayMoveTarget {
 
 struct LayoutSession {
     current_key: String,
-    display_index: usize,
     pane_index: usize,
 }
 
@@ -200,6 +231,7 @@ enum Platform {
     Linux,
 }
 
+#[derive(Clone)]
 struct ParsedSpace {
     name: String,
     matches: Vec<SpaceRule>,
@@ -216,7 +248,7 @@ struct SpaceRule {
     under_height: Option<MeasureRef>,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum Orientation {
     Portrait,
     Landscape,
@@ -229,6 +261,7 @@ enum MeasureRef {
     Literal(u32),
 }
 
+#[derive(Clone)]
 struct ParsedFrame {
     name: String,
     panes: Vec<ParsedPane>,
@@ -291,10 +324,10 @@ struct IncludeCondition {
 impl IncludeCondition {
     /// Check if all conditions match the display (AND logic)
     /// Returns true if all present conditions pass, false if any fail
-    fn matches(&self, display: &DisplayInfo) -> bool {
+    fn matches(&self, display: &DisplayProps) -> bool {
         // Orientation check
         if let Some(ref orientation) = self.when_orientation {
-            let actual = if display.design_width >= display.design_height {
+            let actual = if display.width >= display.height {
                 Orientation::Landscape
             } else {
                 Orientation::Portrait
@@ -317,24 +350,24 @@ impl IncludeCondition {
 
         // Width constraints
         if let Some(min_width) = self.min_width {
-            if display.design_width < min_width as f64 {
+            if display.width < min_width as f64 {
                 return false;
             }
         }
         if let Some(under_width) = self.under_width {
-            if display.design_width >= under_width as f64 {
+            if display.width >= under_width as f64 {
                 return false;
             }
         }
 
         // Height constraints
         if let Some(min_height) = self.min_height {
-            if display.design_height < min_height as f64 {
+            if display.height < min_height as f64 {
                 return false;
             }
         }
         if let Some(under_height) = self.under_height {
-            if display.design_height >= under_height as f64 {
+            if display.height >= under_height as f64 {
                 return false;
             }
         }
@@ -1195,94 +1228,60 @@ impl ParsedForm {
     }
 
     fn build_runtime(&self, displays: &[DisplayInfo]) -> Form {
-        let mut pane_lists = HashMap::new();
+        let mut layouts = HashMap::new();
         let mut display_moves = HashMap::new();
 
-        // Apply DisplayQuirks to displays (adjusts dimensions and embeds quirks)
-        let adjusted_displays = self.apply_display_quirks(displays);
+        // Determine current platform and filter quirks
+        #[cfg(target_os = "macos")]
+        let current_platform = Platform::MacOS;
+        #[cfg(target_os = "windows")]
+        let current_platform = Platform::Windows;
+        #[cfg(target_os = "linux")]
+        let current_platform = Platform::Linux;
+
+        let runtime_quirks: Vec<RuntimeDisplayQuirk> = self.display_quirks.iter()
+            .filter(|q| q.platform == current_platform)
+            .map(|q| RuntimeDisplayQuirk {
+                name_contains: q.name_contains.clone(),
+                min_bottom_inset: q.min_bottom_inset,
+            })
+            .collect();
+
+        // Apply DisplayQuirks to displays (for initial validation only)
+        let _adjusted_displays = self.apply_display_quirks(displays);
 
         // Build DisplayMove bindings
         for dm in &self.display_moves {
             display_moves.insert(dm.key.clone(), dm.target.clone());
         }
 
-        // Build pane lists for each LayoutAction × Display
+        // Build RuntimeLayout for each LayoutAction
         for action in &self.layout_actions {
             if let Some(layout) = self.layouts.get(&action.layout) {
-                for display in &adjusted_displays {
-                    // Check if Layout's Space matches this display
-                    if let Some(ref space_name) = layout.space {
-                        if let Some(space) = self.spaces.get(space_name) {
-                            if !self.space_matches_display(space, display) {
-                                continue; // Skip this display for this layout
-                            }
-                        }
-                    }
-
-                    // Flatten shape tree to leaf panes using pure rational arithmetic
-                    let full = Fraction { num: 1, den: 1 };
-                    let zero = Fraction { num: 0, den: 1 };
-                    let leaf_panes = self.flatten_shape_tree(
-                        &layout.root_shape,
-                        display,
-                        &zero,    // parent x = 0
-                        &zero,    // parent y = 0
-                        &full,    // parent width = 1 (full display width)
-                        &full,    // parent height = 1 (full display height)
-                    );
-
-                    if leaf_panes.is_empty() {
-                        continue;
-                    }
-
-                    // Convert to pixels FIRST (before mirroring)
-                    let mut pixel_rects: Vec<PixelRect> = leaf_panes.iter()
-                        .map(|p| PixelRect {
-                            x: display.design_width * p.x.to_f64(),
-                            y: display.design_height * p.y.to_f64(),
-                            width: display.design_width * p.width.to_f64(),
-                            height: display.design_height * p.height.to_f64(),
-                        })
-                        .collect();
-
-                    // Apply mirroring in pixel space
-                    Self::apply_mirroring_pixels(&mut pixel_rects, action.mirror_x, action.mirror_y, display.design_width, display.design_height);
-
-                    // Cull undersized panes (< 100×100 pixels)
-                    pixel_rects.retain(|r| r.width >= 100.0 && r.height >= 100.0);
-
-                    if pixel_rects.is_empty() {
-                        continue;
-                    }
-
-                    // Sort by area descending, then by traverse order
-                    self.sort_pane_list(&mut pixel_rects, action.traverse);
-
-                    // Debug: show final sorted pane sequence
-                    eprintln!("LAYOUT: action={} display={} | {} panes after sort:",
-                        action.key, display.index, pixel_rects.len());
-                    for (idx, rect) in pixel_rects.iter().enumerate() {
-                        let area = rect.width * rect.height;
-                        eprintln!("  [{}] x={:.1} y={:.1} w={:.1} h={:.1} area={:.0}",
-                            idx, rect.x, rect.y, rect.width, rect.height, area);
-                    }
-
-                    // Cache sorted list
-                    pane_lists.insert((action.key.clone(), display.index), pixel_rects);
-                }
+                let runtime_layout = RuntimeLayout {
+                    space: layout.space.clone(),
+                    root_shape: layout.root_shape.clone(),
+                    traverse: action.traverse,
+                    mirror_x: action.mirror_x,
+                    mirror_y: action.mirror_y,
+                };
+                layouts.insert(action.key.clone(), runtime_layout);
             }
         }
 
         Form {
-            pane_lists,
+            layouts,
+            spaces: self.spaces.clone(),
+            frames: self.frames.clone(),
+            measures: self.measures.clone(),
+            quirks: runtime_quirks,
             display_moves,
-            displays: adjusted_displays,
             layout_session: None,
             display_move_session: None,
         }
     }
 
-    fn space_matches_display(&self, space: &ParsedSpace, display: &DisplayInfo) -> bool {
+    fn space_matches_display(&self, space: &ParsedSpace, display: &DisplayProps) -> bool {
         // Multiple Match elements are OR'd
         let any_match = space.matches.is_empty() || space.matches.iter().any(|rule| {
             self.rule_matches_display(rule, display, &self.measures)
@@ -1300,7 +1299,7 @@ impl ParsedForm {
         !any_exclude
     }
 
-    fn rule_matches_display(&self, rule: &SpaceRule, display: &DisplayInfo, measures: &HashMap<String, u32>) -> bool {
+    fn rule_matches_display(&self, rule: &SpaceRule, display: &DisplayProps, measures: &HashMap<String, u32>) -> bool {
         // All attributes within a rule are AND'd
 
         if let Some(ref name_contains) = rule.name_contains {
@@ -1310,7 +1309,7 @@ impl ParsedForm {
         }
 
         if let Some(orientation) = &rule.when_orientation {
-            let actual = if display.design_width >= display.design_height {
+            let actual = if display.width >= display.height {
                 Orientation::Landscape
             } else {
                 Orientation::Portrait
@@ -1322,28 +1321,28 @@ impl ParsedForm {
 
         if let Some(ref min_width) = rule.min_width {
             let threshold = self.resolve_measure_ref(min_width, measures);
-            if display.design_width < threshold as f64 {
+            if display.width < threshold as f64 {
                 return false;
             }
         }
 
         if let Some(ref min_height) = rule.min_height {
             let threshold = self.resolve_measure_ref(min_height, measures);
-            if display.design_height < threshold as f64 {
+            if display.height < threshold as f64 {
                 return false;
             }
         }
 
         if let Some(ref under_width) = rule.under_width {
             let threshold = self.resolve_measure_ref(under_width, measures);
-            if display.design_width >= threshold as f64 {
+            if display.width >= threshold as f64 {
                 return false;
             }
         }
 
         if let Some(ref under_height) = rule.under_height {
             let threshold = self.resolve_measure_ref(under_height, measures);
-            if display.design_height >= threshold as f64 {
+            if display.height >= threshold as f64 {
                 return false;
             }
         }
@@ -1363,7 +1362,7 @@ impl ParsedForm {
     fn flatten_shape_tree(
         &self,
         shape: &ParsedShape,
-        display: &DisplayInfo,
+        display: &DisplayProps,
         parent_x: &Fraction,      // parent pane x offset (relative to display)
         parent_y: &Fraction,      // parent pane y offset (relative to display)
         parent_width: &Fraction,  // parent pane width (relative to display)
@@ -1371,14 +1370,20 @@ impl ParsedForm {
     ) -> Vec<ParsedPane> {
         let mut leaves = Vec::new();
 
+        eprintln!("DEBUG: flatten_shape_tree ENTRY frame='{}' children={} whenOrientation={:?}",
+            shape.frame, shape.children.len(), shape.when_orientation);
+
         // Check conditional pruning (orientation)
         if let Some(orientation) = &shape.when_orientation {
-            let actual = if display.design_width >= display.design_height {
+            let actual = if display.width >= display.height {
                 Orientation::Landscape
             } else {
                 Orientation::Portrait
             };
+            eprintln!("DEBUG: Checking orientation: required={:?} actual={:?} ({}x{})",
+                orientation, actual, display.width, display.height);
             if *orientation != actual {
+                eprintln!("DEBUG: PRUNED - orientation mismatch");
                 return leaves; // Prune this subtree
             }
         }
@@ -1388,6 +1393,7 @@ impl ParsedForm {
 
         // Special case: synthetic "__multi__" frame for multiple top-level shapes
         if shape.frame == "__multi__" {
+            eprintln!("DEBUG: Processing __multi__ with {} children", shape.children.len());
             for child in &shape.children {
                 match child {
                     ShapeChild::Shape(ref child_shape) => {
@@ -1415,8 +1421,13 @@ impl ParsedForm {
         // Get frame definition
         let frame = match self.frames.get(&shape.frame) {
             Some(f) => f,
-            None => return leaves, // Already validated, but guard anyway
+            None => {
+                eprintln!("DEBUG: Frame '{}' not found", shape.frame);
+                return leaves;
+            }
         };
+
+        eprintln!("DEBUG: Processing frame='{}' with {} panes", shape.frame, frame.panes.len());
 
         // STRICT 1:1 child-to-pane mapping (already validated, but double-check)
         if shape.children.len() != frame.panes.len() {
@@ -1436,10 +1447,13 @@ impl ParsedForm {
             match child {
                 ShapeChild::Include(ref include) => {
                     // Check conditions first
+                    eprintln!("DEBUG: Checking Include condition for pane");
                     if !include.condition.matches(display) {
+                        eprintln!("DEBUG: Include condition FAILED - skipping pane");
                         // Condition failed → skip this pane (local no-op)
                         continue;
                     }
+                    eprintln!("DEBUG: Include condition PASSED");
 
                     // Conditions passed - now check if this is a layout reference or terminal
                     if let Some(ref layout_name) = include.layout {
@@ -1463,6 +1477,7 @@ impl ParsedForm {
                         }
                     } else {
                         // No layout reference → this is a terminal pane
+                        eprintln!("DEBUG: Found terminal pane (adding leaf)");
                         leaves.push(ParsedPane {
                             x: pane_abs_x,
                             y: pane_abs_y,
@@ -1473,6 +1488,7 @@ impl ParsedForm {
                 }
                 ShapeChild::Shape(ref child_shape) => {
                     // Recursively subdivide this pane
+                    eprintln!("DEBUG: Recursing into nested Shape");
                     let child_leaves = self.flatten_shape_tree(
                         child_shape,
                         display,
@@ -1486,24 +1502,10 @@ impl ParsedForm {
             }
         }
 
+        eprintln!("DEBUG: flatten_shape_tree returning {} leaves", leaves.len());
         leaves
     }
 
-    /// Apply mirroring in pixel space (correct approach per code review)
-    /// Mirroring formula: x' = display_width - x - width (for X flip)
-    fn apply_mirroring_pixels(rects: &mut [PixelRect], mirror_x: MirrorMode, mirror_y: MirrorMode, display_width: f64, display_height: f64) {
-        for rect in rects.iter_mut() {
-            if mirror_x == MirrorMode::Flip {
-                // x' = display_width - x - width
-                rect.x = display_width - rect.x - rect.width;
-            }
-
-            if mirror_y == MirrorMode::Flip {
-                // y' = display_height - y - height
-                rect.y = display_height - rect.y - rect.height;
-            }
-        }
-    }
 
     fn sort_pane_list(&self, rects: &mut Vec<PixelRect>, traverse: TraverseOrder) {
         // Decode traverse order
@@ -1522,6 +1524,66 @@ impl ParsedForm {
         // 1. Primary: descending by area (largest first = zoom-out progression)
         // 2. Secondary: traverse order using pane centers (for panes of same area)
         rects.sort_by(|a, b| {
+            let area_a = a.width * a.height;
+            let area_b = b.width * b.height;
+
+            // Primary key: area descending (larger areas first)
+            let area_cmp = area_b.partial_cmp(&area_a).unwrap();
+            if area_cmp != std::cmp::Ordering::Equal {
+                return area_cmp;
+            }
+
+            // Secondary key: spatial traverse order (for panes of same area)
+            let a_center_x = a.x + a.width / 2.0;
+            let a_center_y = a.y + a.height / 2.0;
+            let b_center_x = b.x + b.width / 2.0;
+            let b_center_y = b.y + b.height / 2.0;
+
+            let (a_primary, b_primary) = if primary_axis == 'x' {
+                (a_center_x, b_center_x)
+            } else {
+                (a_center_y, b_center_y)
+            };
+
+            let (a_secondary, b_secondary) = if secondary_axis == 'x' {
+                (a_center_x, b_center_x)
+            } else {
+                (a_center_y, b_center_y)
+            };
+
+            let primary_cmp = if primary_dir == 1 {
+                a_primary.partial_cmp(&b_primary).unwrap()
+            } else {
+                b_primary.partial_cmp(&a_primary).unwrap()
+            };
+
+            if primary_cmp != std::cmp::Ordering::Equal {
+                return primary_cmp;
+            }
+
+            if secondary_dir == 1 {
+                a_secondary.partial_cmp(&b_secondary).unwrap()
+            } else {
+                b_secondary.partial_cmp(&a_secondary).unwrap()
+            }
+        });
+    }
+
+    fn sort_pane_list_fracs(&self, panes: &mut Vec<PaneFrac>, traverse: TraverseOrder) {
+        // Decode traverse order
+        let (primary_axis, primary_dir, secondary_axis, secondary_dir) = match traverse {
+            TraverseOrder::XfYf => ('x', 1, 'y', 1),
+            TraverseOrder::XfYr => ('x', 1, 'y', -1),
+            TraverseOrder::XrYf => ('x', -1, 'y', 1),
+            TraverseOrder::XrYr => ('x', -1, 'y', -1),
+            TraverseOrder::YfXf => ('y', 1, 'x', 1),
+            TraverseOrder::YfXr => ('y', 1, 'x', -1),
+            TraverseOrder::YrXf => ('y', -1, 'x', 1),
+            TraverseOrder::YrXr => ('y', -1, 'x', -1),
+        };
+
+        // Sort by area descending, then by traverse order
+        panes.sort_by(|a, b| {
             let area_a = a.width * a.height;
             let area_b = b.width * b.height;
 
@@ -1616,8 +1678,8 @@ impl Form {
         eprintln!("LAYOUT: loaded {} Measures, {} Spaces, {} Frames, {} Layouts, {} LayoutActions",
             parsed.measures.len(), parsed.spaces.len(), parsed.frames.len(),
             parsed.layouts.len(), parsed.layout_actions.len());
-        eprintln!("LAYOUT: precomputed {} pane lists across {} displays",
-            form.pane_lists.len(), displays.len());
+        eprintln!("LAYOUT: loaded {} layout actions for on-demand computation",
+            form.layouts.len());
 
         form
     }
@@ -1635,9 +1697,12 @@ impl Form {
 
     fn empty() -> Self {
         Form {
-            pane_lists: HashMap::new(),
+            layouts: HashMap::new(),
+            spaces: HashMap::new(),
+            frames: HashMap::new(),
+            measures: HashMap::new(),
+            quirks: Vec::new(),
             display_moves: HashMap::new(),
-            displays: Vec::new(),
             layout_session: None,
             display_move_session: None,
         }
@@ -1651,10 +1716,343 @@ impl Form {
         path
     }
 
-    /// Get next pane in sequence for a given key and display
-    /// Returns (PixelRect, pane_index) or None if no panes available
-    pub fn get_next_pane(&mut self, key: &str, display_index: usize) -> Option<(PixelRect, usize)> {
-        let pane_list = self.pane_lists.get(&(key.to_string(), display_index))?;
+    // Private helper methods (moved from ParsedForm)
+
+    fn space_matches_display(&self, space: &ParsedSpace, display: &DisplayProps) -> bool {
+        // Multiple Match elements are OR'd
+        let any_match = space.matches.is_empty() || space.matches.iter().any(|rule| {
+            self.rule_matches_display(rule, display)
+        });
+
+        if !any_match {
+            return false;
+        }
+
+        // Multiple Exclude elements are OR'd (any exclude vetoes)
+        let any_exclude = space.excludes.iter().any(|rule| {
+            self.rule_matches_display(rule, display)
+        });
+
+        !any_exclude
+    }
+
+    fn rule_matches_display(&self, rule: &SpaceRule, display: &DisplayProps) -> bool {
+        // All attributes within a rule are AND'd
+
+        if let Some(ref name_contains) = rule.name_contains {
+            if !display.name.contains(name_contains) {
+                return false;
+            }
+        }
+
+        if let Some(orientation) = &rule.when_orientation {
+            let actual = if display.width >= display.height {
+                Orientation::Landscape
+            } else {
+                Orientation::Portrait
+            };
+            if *orientation != actual {
+                return false;
+            }
+        }
+
+        if let Some(ref min_width) = rule.min_width {
+            let threshold = self.resolve_measure_ref(min_width);
+            if display.width < threshold as f64 {
+                return false;
+            }
+        }
+
+        if let Some(ref min_height) = rule.min_height {
+            let threshold = self.resolve_measure_ref(min_height);
+            if display.height < threshold as f64 {
+                return false;
+            }
+        }
+
+        if let Some(ref under_width) = rule.under_width {
+            let threshold = self.resolve_measure_ref(under_width);
+            if display.width >= threshold as f64 {
+                return false;
+            }
+        }
+
+        if let Some(ref under_height) = rule.under_height {
+            let threshold = self.resolve_measure_ref(under_height);
+            if display.height >= threshold as f64 {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn resolve_measure_ref(&self, mref: &MeasureRef) -> u32 {
+        match mref {
+            MeasureRef::Literal(n) => *n,
+            MeasureRef::Name(name) => *self.measures.get(name).unwrap_or(&0),
+        }
+    }
+
+    fn flatten_shape_tree(
+        &self,
+        shape: &ParsedShape,
+        display: &DisplayProps,
+        parent_x: &Fraction,
+        parent_y: &Fraction,
+        parent_width: &Fraction,
+        parent_height: &Fraction,
+    ) -> Vec<ParsedPane> {
+        let mut leaves = Vec::new();
+
+        eprintln!("DEBUG: Form::flatten_shape_tree ENTRY frame='{}' children={} whenOrientation={:?}",
+            shape.frame, shape.children.len(), shape.when_orientation);
+
+        // Check conditional pruning (orientation)
+        if let Some(orientation) = &shape.when_orientation {
+            let actual = if display.width >= display.height {
+                Orientation::Landscape
+            } else {
+                Orientation::Portrait
+            };
+            eprintln!("DEBUG: Orientation check: required={:?} actual={:?}", orientation, actual);
+            if *orientation != actual {
+                eprintln!("DEBUG: PRUNED by orientation");
+                return leaves; // Prune this subtree
+            }
+        }
+
+        // Special case: synthetic "__multi__" frame for multiple top-level shapes
+        if shape.frame == "__multi__" {
+            eprintln!("DEBUG: Processing __multi__ with {} children", shape.children.len());
+            for child in &shape.children {
+                match child {
+                    ShapeChild::Shape(ref child_shape) => {
+                        // Each top-level shape starts with full display context
+                        let full = Fraction { num: 1, den: 1 };
+                        let zero = Fraction { num: 0, den: 1 };
+                        leaves.extend(self.flatten_shape_tree(
+                            child_shape,
+                            display,
+                            &zero,
+                            &zero,
+                            &full,
+                            &full,
+                        ));
+                    }
+                    ShapeChild::Include(_) => {
+                        eprintln!("LAYOUT: WARNING Include child under __multi__ frame (unexpected)");
+                    }
+                }
+            }
+            eprintln!("DEBUG: Form::flatten_shape_tree returning {} leaves from __multi__", leaves.len());
+            return leaves;
+        }
+
+        // Get frame reference
+        eprintln!("DEBUG: Looking up frame='{}' (available: {:?})", shape.frame, self.frames.keys().collect::<Vec<_>>());
+        if let Some(frame) = self.frames.get(&shape.frame) {
+            eprintln!("DEBUG: Found frame='{}' with {} panes", shape.frame, frame.panes.len());
+            for pane in &frame.panes {
+                // Compute absolute position within display (pure fraction arithmetic)
+                let abs_x = parent_x.add(&parent_width.mul(&pane.x));
+                let abs_y = parent_y.add(&parent_height.mul(&pane.y));
+                let abs_width = parent_width.mul(&pane.width);
+                let abs_height = parent_height.mul(&pane.height);
+
+                // All panes are leaves (nesting happens at Shape level, not Pane level)
+                leaves.push(ParsedPane {
+                    x: abs_x,
+                    y: abs_y,
+                    width: abs_width,
+                    height: abs_height,
+                });
+            }
+        } else {
+            eprintln!("DEBUG: Frame '{}' NOT FOUND", shape.frame);
+        }
+
+        eprintln!("DEBUG: Form::flatten_shape_tree returning {} leaves", leaves.len());
+        leaves
+    }
+
+    fn apply_mirroring_fracs(&self, panes: &mut [PaneFrac], mirror_x: MirrorMode, mirror_y: MirrorMode) {
+        for pane in panes.iter_mut() {
+            if mirror_x == MirrorMode::Flip {
+                // x' = 1.0 - x - width (fractional space)
+                pane.x = 1.0 - pane.x - pane.width;
+            }
+
+            if mirror_y == MirrorMode::Flip {
+                // y' = 1.0 - y - height (fractional space)
+                pane.y = 1.0 - pane.y - pane.height;
+            }
+        }
+    }
+
+    fn sort_pane_list_fracs(&self, panes: &mut Vec<PaneFrac>, traverse: TraverseOrder) {
+        // Decode traverse order
+        let (primary_axis, primary_dir, secondary_axis, secondary_dir) = match traverse {
+            TraverseOrder::XfYf => ('x', 1, 'y', 1),
+            TraverseOrder::XfYr => ('x', 1, 'y', -1),
+            TraverseOrder::XrYf => ('x', -1, 'y', 1),
+            TraverseOrder::XrYr => ('x', -1, 'y', -1),
+            TraverseOrder::YfXf => ('y', 1, 'x', 1),
+            TraverseOrder::YfXr => ('y', 1, 'x', -1),
+            TraverseOrder::YrXf => ('y', -1, 'x', 1),
+            TraverseOrder::YrXr => ('y', -1, 'x', -1),
+        };
+
+        // Sort by area descending, then by traverse order
+        panes.sort_by(|a, b| {
+            let area_a = a.width * a.height;
+            let area_b = b.width * b.height;
+
+            // Primary key: area descending (larger areas first)
+            let area_cmp = area_b.partial_cmp(&area_a).unwrap();
+            if area_cmp != std::cmp::Ordering::Equal {
+                return area_cmp;
+            }
+
+            // Secondary key: spatial traverse order (for panes of same area)
+            let a_center_x = a.x + a.width / 2.0;
+            let a_center_y = a.y + a.height / 2.0;
+            let b_center_x = b.x + b.width / 2.0;
+            let b_center_y = b.y + b.height / 2.0;
+
+            let (a_primary, b_primary) = if primary_axis == 'x' {
+                (a_center_x, b_center_x)
+            } else {
+                (a_center_y, b_center_y)
+            };
+
+            let (a_secondary, b_secondary) = if secondary_axis == 'x' {
+                (a_center_x, b_center_x)
+            } else {
+                (a_center_y, b_center_y)
+            };
+
+            let primary_cmp = if primary_dir == 1 {
+                a_primary.partial_cmp(&b_primary).unwrap()
+            } else {
+                b_primary.partial_cmp(&a_primary).unwrap()
+            };
+
+            if primary_cmp != std::cmp::Ordering::Equal {
+                return primary_cmp;
+            }
+
+            if secondary_dir == 1 {
+                a_secondary.partial_cmp(&b_secondary).unwrap()
+            } else {
+                b_secondary.partial_cmp(&a_secondary).unwrap()
+            }
+        });
+    }
+
+    /// Adjust raw displays using parsed quirks (for caller caching)
+    /// Caller should invoke this once at startup and cache the result
+    #[cfg(target_os = "macos")]
+    pub fn adjust_displays(&self, displays: &[DisplayInfo]) -> Vec<DisplayInfo> {
+        displays.iter().map(|display| {
+            // Find MAX bottom inset from matching quirks
+            let max_bottom_inset = self.quirks.iter()
+                .filter(|q| display.name.contains(&q.name_contains))
+                .map(|q| q.min_bottom_inset)
+                .max()
+                .unwrap_or(0);
+
+            if max_bottom_inset > 0 {
+                eprintln!("LAYOUT: DisplayQuirk matched '{}' → applying {}px bottom inset",
+                    display.name, max_bottom_inset);
+            }
+
+            // Create new DisplayInfo with adjusted dimensions and embedded quirks
+            DisplayInfo::new(
+                display.index,
+                display.design_width,
+                display.design_height - max_bottom_inset as f64,
+                display.name.clone(),
+                self.quirks.clone(),
+            )
+        }).collect()
+    }
+
+    /// Compute fractional panes for a given action and display
+    /// Returns None if key not found or no panes after conditional pruning
+    pub fn panes_for_action(&self, key: &str, display: &DisplayProps) -> Option<Vec<PaneFrac>> {
+        eprintln!("DEBUG: panes_for_action key='{}' display='{}' {}x{}",
+            key, display.name, display.width, display.height);
+
+        let layout = match self.layouts.get(key) {
+            Some(l) => l,
+            None => {
+                eprintln!("DEBUG: Layout not found for key='{}'", key);
+                eprintln!("DEBUG: Available keys: {:?}", self.layouts.keys().collect::<Vec<_>>());
+                return None;
+            }
+        };
+
+        eprintln!("DEBUG: Found layout for key='{}'", key);
+
+        // Check if Layout's Space matches this display
+        if let Some(ref space_name) = layout.space {
+            eprintln!("DEBUG: Layout requires Space='{}'", space_name);
+            if let Some(space) = self.spaces.get(space_name) {
+                if !self.space_matches_display(space, display) {
+                    eprintln!("DEBUG: Space '{}' DOES NOT MATCH display", space_name);
+                    return None; // Space doesn't match
+                }
+                eprintln!("DEBUG: Space '{}' MATCHES display", space_name);
+            } else {
+                eprintln!("DEBUG: Space '{}' NOT FOUND in config", space_name);
+            }
+        } else {
+            eprintln!("DEBUG: Layout has no Space requirement (matches all displays)");
+        }
+
+        // Flatten shape tree to leaf panes using pure rational arithmetic
+        let full = Fraction { num: 1, den: 1 };
+        let zero = Fraction { num: 0, den: 1 };
+        let leaf_panes = self.flatten_shape_tree(
+            &layout.root_shape,
+            display,
+            &zero,    // parent x = 0
+            &zero,    // parent y = 0
+            &full,    // parent width = 1
+            &full,    // parent height = 1
+        );
+
+        eprintln!("DEBUG: flatten_shape_tree returned {} leaf panes", leaf_panes.len());
+
+        if leaf_panes.is_empty() {
+            eprintln!("DEBUG: No panes after flattening - returning None");
+            return None;
+        }
+
+        // Convert ParsedPane (fractions) to PaneFrac
+        let mut frac_panes: Vec<PaneFrac> = leaf_panes.iter()
+            .map(|p| PaneFrac {
+                x: p.x.to_f64(),
+                y: p.y.to_f64(),
+                width: p.width.to_f64(),
+                height: p.height.to_f64(),
+            })
+            .collect();
+
+        // Apply mirroring in fractional space
+        self.apply_mirroring_fracs(&mut frac_panes, layout.mirror_x, layout.mirror_y);
+
+        // Sort by area descending, then by traverse order
+        self.sort_pane_list_fracs(&mut frac_panes, layout.traverse);
+
+        Some(frac_panes)
+    }
+
+    /// Get next pane with MRU session tracking
+    /// Returns (fractional pane, index) or None if no panes available
+    pub fn get_next_pane(&mut self, key: &str, display: &DisplayProps) -> Option<(PaneFrac, usize)> {
+        let pane_list = self.panes_for_action(key, display)?;
 
         if pane_list.is_empty() {
             return None;
@@ -1662,11 +2060,11 @@ impl Form {
 
         // Check if we're continuing the same session
         let pane_index = if let Some(ref session) = self.layout_session {
-            if session.current_key == key && session.display_index == display_index {
+            if session.current_key == key {
                 // Continue session, advance index
                 session.pane_index % pane_list.len()
             } else {
-                // Different key or display, start new session
+                // Different key, start new session
                 0
             }
         } else {
@@ -1680,7 +2078,6 @@ impl Form {
         // Update session
         self.layout_session = Some(LayoutSession {
             current_key: key.to_string(),
-            display_index,
             pane_index: next_index,
         });
 
@@ -1702,7 +2099,7 @@ impl Form {
 
     /// Check if a key has a LayoutAction binding
     pub fn has_layout_action(&self, key: &str) -> bool {
-        self.pane_lists.keys().any(|(k, _)| k == key)
+        self.layouts.contains_key(key)
     }
 
     /// Check if a key has a DisplayMove binding
@@ -1744,19 +2141,6 @@ impl Form {
                 }
             }
         }
-    }
-
-    /// Get minimum bottom inset for a display by name
-    /// Returns the MAX of all matching DisplayQuirk minBottomInset values, or 0 if none match
-    /// Get DisplayInfo for a given display index
-    /// Returns None if index is out of bounds
-    pub fn get_display_info(&self, index: usize) -> Option<&DisplayInfo> {
-        self.displays.get(index)
-    }
-
-    /// Get number of displays
-    pub fn display_count(&self) -> usize {
-        self.displays.len()
     }
 }
 

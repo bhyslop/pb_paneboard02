@@ -52,17 +52,24 @@ lazy_static! {
             Mutex::new(Form::load_from_file(&displays))
         }
     };
+
+    // Quirk-adjusted displays cached at startup (caller ownership pattern)
+    static ref ADJUSTED_DISPLAYS: Vec<crate::pbmbd_display::DisplayInfo> = {
+        unsafe {
+            let raw_displays = gather_all_display_info();
+            let form = FORM.lock().unwrap();
+            form.adjust_displays(&raw_displays)
+        }
+    };
 }
 
 // Helper function to get visible frame with quirks applied
-// Fetches DisplayInfo from Form and uses its live_viewport method
+// Gets DisplayInfo directly and uses its live_viewport method
 unsafe fn visible_frame_with_quirks_for_index(screen: &objc2_app_kit::NSScreen, display_index: usize) -> Option<VisibleFrame> {
-    if let Ok(form) = FORM.lock() {
-        if let Some(display_info) = form.get_display_info(display_index) {
-            return display_info.live_viewport(screen);
-        }
+    if let Some(display_info) = ADJUSTED_DISPLAYS.get(display_index) {
+        return display_info.live_viewport(screen);
     }
-    // Fallback: return raw visible frame if Form lookup fails
+    // Fallback: return raw visible frame if lookup fails
     visible_frame_for_screen(screen)
 }
 
@@ -495,22 +502,18 @@ pub fn should_use_observer_on_error(error_msg: &str) -> bool {
     error_msg.contains("ax_cannot_complete_retry_needed")
 }
 
-/// Convert PixelRect to Rect (with visible frame offset)
-/// Note: PixelRect dimensions are from parse-time display info, which may differ
-/// from runtime visible frame due to menu bar corrections or OS changes.
-/// We scale the pane dimensions to match the current visible frame.
-fn pixel_rect_to_rect(pr: &PixelRect, vf: &VisibleFrame) -> Rect {
-    // The PixelRect was computed relative to a display with certain dimensions.
-    // Those dimensions were the visible frame with quirks applied at parse time.
-    // At runtime, the visible frame might have different dimensions (e.g., due to
-    // menu bar correction), so we need to use the pane's x, y, width, height
-    // directly without scaling - they're already in the quirk-adjusted coordinate space.
-    //
-    // Actually, we just offset by the visible frame origin since the pane coordinates
-    // are relative to (0,0) of the display.
+/// Convert PixelRect to Rect (passthrough - coordinates already absolute)
+///
+/// PixelRect coordinates are produced by DisplayInfo::realize_panes() which:
+/// 1. Calls live_viewport() to get quirk-corrected viewport at runtime
+/// 2. Converts fractions to absolute screen coordinates: vf.min_x + f.x * vf.width
+///
+/// Therefore PixelRect already contains absolute screen coordinates ready for AX API.
+/// No additional offset or quirk correction should be applied here.
+fn pixel_rect_to_rect(pr: &PixelRect, _vf: &VisibleFrame) -> Rect {
     Rect {
-        x: vf.min_x + pr.x,
-        y: vf.min_y + pr.y,
+        x: pr.x,
+        y: pr.y,
         w: pr.width,
         h: pr.height,
     }
@@ -706,22 +709,35 @@ pub extern "C" fn ax_observer_callback(
             (visible, 0)
         };
 
-        // Look up pane from Form
+        // Look up pane from Form and convert to pixels
         let key = guard.job.key_name.as_deref().unwrap_or("UNKNOWN");
-        let mut form = FORM.lock().unwrap();
-        let pane_result = form.get_next_pane(key, display_index);
-        drop(form);
 
-        if let Some((pixel_rect, pane_idx)) = pane_result {
-            let r = pixel_rect_to_rect(&pixel_rect, &vf);
-            let win = AxElement(element);
-            match set_window_rect_safe(&win, r) {
-                Ok(()) => println!("TILE: {tag} | SUCCESS after_observer=yes | key={} pane={} app=\"{}\"", key, pane_idx, guard.job.frontmost.bundle_id),
-                Err(e) => println!("TILE: {tag} | FAILED reason={}", e),
+        if let Some(display_info) = ADJUSTED_DISPLAYS.get(display_index) {
+            let display_props = display_info.as_props();
+            let mut form = FORM.lock().unwrap();
+            let pane_result = form.get_next_pane(key, &display_props);
+            drop(form);
+
+            if let Some((frac_pane, pane_idx)) = pane_result {
+                // Convert fractional pane to pixels and filter small panes
+                let pixel_rects = display_info.realize_panes(&[frac_pane]);
+                let filtered = crate::pbmbd_display::DisplayInfo::filter_small(&pixel_rects);
+                if let Some(pixel_rect) = filtered.first() {
+                    let r = pixel_rect_to_rect(pixel_rect, &vf);
+                    let win = AxElement(element);
+                    match set_window_rect_safe(&win, r) {
+                        Ok(()) => println!("TILE: {tag} | SUCCESS after_observer=yes | key={} pane={} app=\"{}\"", key, pane_idx, guard.job.frontmost.bundle_id),
+                        Err(e) => println!("TILE: {tag} | FAILED reason={}", e),
+                    }
+                    std::mem::forget(win); // prevent CFRelease
+                } else {
+                    println!("TILE: {tag} | FAILED reason=pane_too_small key={}", key);
+                }
+            } else {
+                println!("TILE: {tag} | FAILED reason=no_pane_for_key key={}", key);
             }
-            std::mem::forget(win); // prevent CFRelease
         } else {
-            println!("TILE: {tag} | FAILED reason=no_pane_for_key key={}", key);
+            println!("TILE: {tag} | FAILED reason=no_display_info");
         }
 
         guard.active = false;
@@ -775,12 +791,10 @@ pub fn tile_window_quadrant(job: TilingJob) {
                 // Apply quirks via DisplayInfo
                 let screens = get_all_screens();
                 if disp_idx < screens.len() {
-                    if let Ok(form) = FORM.lock() {
-                        if let Some(display_info) = form.get_display_info(disp_idx) {
-                            // Replace visible frame with quirk-adjusted version from DisplayInfo
-                            if let Some(quirked_vf) = display_info.live_viewport(&screens[disp_idx]) {
-                                visible = quirked_vf;
-                            }
+                    if let Some(display_info) = ADJUSTED_DISPLAYS.get(disp_idx) {
+                        // Replace visible frame with quirk-adjusted version from DisplayInfo
+                        if let Some(quirked_vf) = display_info.live_viewport(&screens[disp_idx]) {
+                            visible = quirked_vf;
                         }
                     }
                 }
@@ -809,33 +823,46 @@ pub fn tile_window_quadrant(job: TilingJob) {
             (visible, 0)
         };
 
-        // Look up pane from Form
+        // Look up pane from Form and convert to pixels
         let key = job.key_name.as_deref().unwrap_or("UNKNOWN");
-        let mut form = FORM.lock().unwrap();
-        let pane_result = form.get_next_pane(key, display_index);
-        drop(form);
 
-        if let Some((pixel_rect, pane_idx)) = pane_result {
-            let r = pixel_rect_to_rect(&pixel_rect, &vf);
-            match set_window_rect_safe(&win, r) {
-                Ok(()) => println!("TILE: {} | SUCCESS | key={} pane={} app=\"{}\"", tag, key, pane_idx, job.frontmost.bundle_id),
-                Err(reason) => {
-                    // Check if we should retry with observer
-                    if reason.contains("not_ready") || reason.contains("cannot_complete") {
-                        if job.attempt == 0 {
-                            eprintln!("DEBUG: Will use AXObserver approach due to: {}", reason);
-                            tile_window_with_observer(job);
-                        } else {
-                            println!("TILE: {} | FAILED reason={}", tag, reason);
+        if let Some(display_info) = ADJUSTED_DISPLAYS.get(display_index) {
+            let display_props = display_info.as_props();
+            let mut form = FORM.lock().unwrap();
+            let pane_result = form.get_next_pane(key, &display_props);
+            drop(form);
+
+            if let Some((frac_pane, pane_idx)) = pane_result {
+                // Convert fractional pane to pixels and filter small panes
+                let pixel_rects = display_info.realize_panes(&[frac_pane]);
+                let filtered = crate::pbmbd_display::DisplayInfo::filter_small(&pixel_rects);
+                if let Some(pixel_rect) = filtered.first() {
+                    let r = pixel_rect_to_rect(pixel_rect, &vf);
+                    match set_window_rect_safe(&win, r) {
+                        Ok(()) => println!("TILE: {} | SUCCESS | key={} pane={} app=\"{}\"", tag, key, pane_idx, job.frontmost.bundle_id),
+                        Err(reason) => {
+                            // Check if we should retry with observer
+                            if reason.contains("not_ready") || reason.contains("cannot_complete") {
+                                if job.attempt == 0 {
+                                    eprintln!("DEBUG: Will use AXObserver approach due to: {}", reason);
+                                    tile_window_with_observer(job);
+                                } else {
+                                    println!("TILE: {} | FAILED reason={}", tag, reason);
+                                }
+                            } else {
+                                println!("TILE: {} | FAILED reason={}", tag, reason);
+                            }
                         }
-                    } else {
-                        println!("TILE: {} | FAILED reason={}", tag, reason);
                     }
+                } else {
+                    println!("TILE: {} | FAILED reason=pane_too_small", tag);
                 }
+            } else {
+                eprintln!("LAYOUT: no panes available for key={} on display={}", key, display_index);
+                println!("TILE: {} | FAILED reason=no_pane_for_key", tag);
             }
         } else {
-            eprintln!("LAYOUT: no panes available for key={} on display={}", key, display_index);
-            println!("TILE: {} | FAILED reason=no_pane_for_key", tag);
+            println!("TILE: {} | FAILED reason=no_display_info", tag);
         }
     }
 }
