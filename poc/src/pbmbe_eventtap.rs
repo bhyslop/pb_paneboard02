@@ -383,23 +383,14 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
         // Always log ctrl+shift+option keypresses to help diagnose keycode issues
         eprintln!("DEBUG: ctrl+shift+option+keycode=0x{:02x}", keycode);
 
-        // Check for unknown keycode warning
-        if !known_poc_key(keycode) && !WARNED_UNKNOWN_ONCE.swap(true, Ordering::AcqRel) {
-            eprintln!("NOTE: ctrl+shift+option on unrecognized keycode=0x{:02x}. On some PC keyboards, Insert may not map to 0x72.", keycode);
-            return event;
-        }
-
         // Unified XML-driven key handler (LayoutAction and DisplayMove)
-        // Map keycode to XML key name
-        let key_name = match keycode {
-            KVK_HELP_INSERT => Some("insert"),
-            KVK_FWD_DELETE => Some("delete"),
-            KVK_HOME => Some("home"),
-            KVK_END => Some("end"),
-            KVK_PAGE_UP => Some("pageup"),
-            KVK_PAGE_DOWN => Some("pagedown"),
-            _ => None,
-        };
+        // Map keycode to XML key name using comprehensive mapping
+        let key_name = keycode_to_xml_key(keycode);
+
+        // Warn once per session for unmapped keycodes (excludes modifiers)
+        if key_name.is_none() && !WARNED_UNKNOWN_ONCE.swap(true, Ordering::AcqRel) {
+            eprintln!("NOTE: ctrl+shift+option on unmapped keycode=0x{:02x}. This key is not configured in form.xml.", keycode);
+        }
 
         if let Some(key) = key_name {
             // Capture frontmost app info at chord time
