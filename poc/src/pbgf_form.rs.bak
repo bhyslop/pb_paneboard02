@@ -1359,6 +1359,152 @@ impl ParsedForm {
 
     // Recursively flatten shape tree to leaf panes using pure rational arithmetic
     // Parent context is defined by fractions (all in range 0..1 relative to display)
+    fn flatten_shape_tree(
+        &self,
+        shape: &ParsedShape,
+        display: &DisplayProps,
+        parent_x: &Fraction,      // parent pane x offset (relative to display)
+        parent_y: &Fraction,      // parent pane y offset (relative to display)
+        parent_width: &Fraction,  // parent pane width (relative to display)
+        parent_height: &Fraction, // parent pane height (relative to display)
+    ) -> Vec<ParsedPane> {
+        let mut leaves = Vec::new();
+
+        eprintln!("DEBUG: flatten_shape_tree ENTRY frame='{}' children={} whenOrientation={:?}",
+            shape.frame, shape.children.len(), shape.when_orientation);
+
+        // Check conditional pruning (orientation)
+        if let Some(orientation) = &shape.when_orientation {
+            let actual = if display.width >= display.height {
+                Orientation::Landscape
+            } else {
+                Orientation::Portrait
+            };
+            eprintln!("DEBUG: Checking orientation: required={:?} actual={:?} ({}x{})",
+                orientation, actual, display.width, display.height);
+            if *orientation != actual {
+                eprintln!("DEBUG: PRUNED - orientation mismatch");
+                return leaves; // Prune this subtree
+            }
+        }
+
+        // Check dimension constraints (MeasureRefs would be resolved here)
+        // For now, skip dimension constraints on Shapes (can be added later)
+
+        // Special case: synthetic "__multi__" frame for multiple top-level shapes
+        if shape.frame == "__multi__" {
+            eprintln!("DEBUG: Processing __multi__ with {} children", shape.children.len());
+            for child in &shape.children {
+                match child {
+                    ShapeChild::Shape(ref child_shape) => {
+                        // Each top-level shape starts with full display context
+                        let full = Fraction { num: 1, den: 1 };
+                        let zero = Fraction { num: 0, den: 1 };
+                        leaves.extend(self.flatten_shape_tree(
+                            child_shape,
+                            display,
+                            &zero,
+                            &zero,
+                            &full,
+                            &full,
+                        ));
+                    }
+                    ShapeChild::Include(_) => {
+                        // Includes under __multi__ shouldn't happen but handle gracefully
+                        eprintln!("LAYOUT: WARNING Include child under __multi__ frame (unexpected)");
+                    }
+                }
+            }
+            return leaves;
+        }
+
+        // Get frame definition
+        let frame = match self.frames.get(&shape.frame) {
+            Some(f) => f,
+            None => {
+                eprintln!("DEBUG: Frame '{}' not found", shape.frame);
+                return leaves;
+            }
+        };
+
+        eprintln!("DEBUG: Processing frame='{}' with {} panes", shape.frame, frame.panes.len());
+
+        // STRICT 1:1 child-to-pane mapping (already validated, but double-check)
+        if shape.children.len() != frame.panes.len() {
+            eprintln!("LAYOUT: ERROR child count mismatch in flatten_shape_tree (should be caught in validation)");
+            return leaves;
+        }
+
+        // Process each pane with its corresponding child
+        for (pane, child) in frame.panes.iter().zip(&shape.children) {
+            // Calculate this pane's absolute position and size using exact rational arithmetic
+            // Formula: pane_abs_x = parent_x + (pane.x * parent_width)
+            let pane_abs_x = Fraction::scale_translate(&pane.x, parent_x, parent_width);
+            let pane_abs_y = Fraction::scale_translate(&pane.y, parent_y, parent_height);
+            let pane_abs_width = pane.width.mul(parent_width);
+            let pane_abs_height = pane.height.mul(parent_height);
+
+            match child {
+                ShapeChild::Include(ref include) => {
+                    // Check conditions first
+                    eprintln!("DEBUG: Checking Include condition for pane");
+                    if !include.condition.matches(display) {
+                        eprintln!("DEBUG: Include condition FAILED - skipping pane");
+                        // Condition failed → skip this pane (local no-op)
+                        continue;
+                    }
+                    eprintln!("DEBUG: Include condition PASSED");
+
+                    // Conditions passed - now check if this is a layout reference or terminal
+                    if let Some(ref layout_name) = include.layout {
+                        // Inline the referenced layout's structure
+                        // Note: Layout expansion with cycle detection should happen at parse time
+                        // For now, we'll look up the layout and flatten its root shape(s)
+                        if let Some(layout) = self.layouts.get(layout_name) {
+                            // Flatten the layout's root shape within this pane's context
+                            let layout_leaves = self.flatten_shape_tree(
+                                &layout.root_shape,
+                                display,
+                                &pane_abs_x,
+                                &pane_abs_y,
+                                &pane_abs_width,
+                                &pane_abs_height,
+                            );
+                            leaves.extend(layout_leaves);
+                        } else {
+                            // Layout not found - should have been caught in validation
+                            eprintln!("LAYOUT: ERROR Include references undefined layout '{}'", layout_name);
+                        }
+                    } else {
+                        // No layout reference → this is a terminal pane
+                        eprintln!("DEBUG: Found terminal pane (adding leaf)");
+                        leaves.push(ParsedPane {
+                            x: pane_abs_x,
+                            y: pane_abs_y,
+                            width: pane_abs_width,
+                            height: pane_abs_height,
+                        });
+                    }
+                }
+                ShapeChild::Shape(ref child_shape) => {
+                    // Recursively subdivide this pane
+                    eprintln!("DEBUG: Recursing into nested Shape");
+                    let child_leaves = self.flatten_shape_tree(
+                        child_shape,
+                        display,
+                        &pane_abs_x,
+                        &pane_abs_y,
+                        &pane_abs_width,
+                        &pane_abs_height,
+                    );
+                    leaves.extend(child_leaves);
+                }
+            }
+        }
+
+        eprintln!("DEBUG: flatten_shape_tree returning {} leaves", leaves.len());
+        leaves
+    }
 
 
     fn sort_pane_list(&self, rects: &mut Vec<PixelRect>, traverse: TraverseOrder) {
@@ -1705,76 +1851,25 @@ impl Form {
 
         // Get frame reference
         eprintln!("DEBUG: Looking up frame='{}' (available: {:?})", shape.frame, self.frames.keys().collect::<Vec<_>>());
-        let frame = match self.frames.get(&shape.frame) {
-            Some(f) => f,
-            None => {
-                eprintln!("DEBUG: Frame '{}' NOT FOUND", shape.frame);
-                return leaves;
+        if let Some(frame) = self.frames.get(&shape.frame) {
+            eprintln!("DEBUG: Found frame='{}' with {} panes", shape.frame, frame.panes.len());
+            for pane in &frame.panes {
+                // Compute absolute position within display (pure fraction arithmetic)
+                let abs_x = parent_x.add(&parent_width.mul(&pane.x));
+                let abs_y = parent_y.add(&parent_height.mul(&pane.y));
+                let abs_width = parent_width.mul(&pane.width);
+                let abs_height = parent_height.mul(&pane.height);
+
+                // All panes are leaves (nesting happens at Shape level, not Pane level)
+                leaves.push(ParsedPane {
+                    x: abs_x,
+                    y: abs_y,
+                    width: abs_width,
+                    height: abs_height,
+                });
             }
-        };
-
-        eprintln!("DEBUG: Found frame='{}' with {} panes, {} children",
-            shape.frame, frame.panes.len(), shape.children.len());
-
-        // Validate 1:1 pane-to-child mapping
-        if frame.panes.len() != shape.children.len() {
-            eprintln!("LAYOUT: ERROR Frame '{}' has {} panes but Shape has {} children",
-                shape.frame, frame.panes.len(), shape.children.len());
-            return leaves;
-        }
-
-        // Process each pane with its corresponding child
-        for (pane, child) in frame.panes.iter().zip(&shape.children) {
-            // Compute absolute position within display (pure fraction arithmetic)
-            let abs_x = parent_x.add(&parent_width.mul(&pane.x));
-            let abs_y = parent_y.add(&parent_height.mul(&pane.y));
-            let abs_width = parent_width.mul(&pane.width);
-            let abs_height = parent_height.mul(&pane.height);
-
-            match child {
-                ShapeChild::Shape(ref child_shape) => {
-                    // Recursively subdivide this pane
-                    eprintln!("DEBUG: Recursing into nested Shape in pane");
-                    let child_leaves = self.flatten_shape_tree(
-                        child_shape,
-                        display,
-                        &abs_x,
-                        &abs_y,
-                        &abs_width,
-                        &abs_height,
-                    );
-                    leaves.extend(child_leaves);
-                }
-                ShapeChild::Include(ref include) => {
-                    // Check if this Include references a layout for further subdivision
-                    if let Some(ref layout_name) = include.layout {
-                        eprintln!("DEBUG: Include references layout '{}'", layout_name);
-                        if let Some(layout) = self.layouts.get(layout_name) {
-                            // Recurse into the referenced layout's structure
-                            let layout_leaves = self.flatten_shape_tree(
-                                &layout.root_shape,
-                                display,
-                                &abs_x,
-                                &abs_y,
-                                &abs_width,
-                                &abs_height,
-                            );
-                            leaves.extend(layout_leaves);
-                        } else {
-                            eprintln!("LAYOUT: ERROR Include references undefined layout '{}'", layout_name);
-                        }
-                    } else {
-                        // No layout reference → this is a terminal pane
-                        eprintln!("DEBUG: Terminal pane (Include with no layout)");
-                        leaves.push(ParsedPane {
-                            x: abs_x,
-                            y: abs_y,
-                            width: abs_width,
-                            height: abs_height,
-                        });
-                    }
-                }
-            }
+        } else {
+            eprintln!("DEBUG: Frame '{}' NOT FOUND", shape.frame);
         }
 
         eprintln!("DEBUG: Form::flatten_shape_tree returning {} leaves", leaves.len());
