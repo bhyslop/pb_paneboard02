@@ -151,7 +151,33 @@ pub unsafe fn hide_alt_tab_overlay_and_cleanup() {
     let mut session = ALT_TAB_SESSION.lock().unwrap();
     *session = AltTabSession::default();
 
-    println!("ALT_TAB: cleanup | overlays hidden, state reset");
+    println!("SWITCHER: cleanup | overlays hidden, state reset");
+}
+
+/// Cancel Alt-Tab session without performing focus switch
+/// Called when mouse click occurs during active session
+pub unsafe fn cancel_alt_tab_session() {
+    use block2::StackBlock;
+
+    // Create block that calls Swift function to hide overlay
+    let block = StackBlock::new(|| {
+        pbmbo_hide_alt_tab_overlay();
+    });
+
+    // Schedule on main runloop
+    let main_runloop = crate::pbmba_ax::CFRunLoopGetMain();
+    crate::pbmba_ax::CFRunLoopPerformBlock(
+        main_runloop,
+        core_foundation::runloop::kCFRunLoopDefaultMode as CFTypeRef,
+        &*block as *const _ as *const c_void,
+    );
+    crate::pbmba_ax::CFRunLoopWakeUp(main_runloop);
+
+    // Reset session state (can do this immediately)
+    let mut session = ALT_TAB_SESSION.lock().unwrap();
+    *session = AltTabSession::default();
+
+    println!("SWITCHER: cancelled | reason=mouse_click");
 }
 
 /// Defer Alt-Tab switch commit to main runloop for thread safety
@@ -184,7 +210,7 @@ pub unsafe fn commit_alt_tab_switch(target_entry: &MruWindowEntry) -> bool {
 
     // Check AX permissions first
     if !crate::pbmba_ax::check_ax_permissions() {
-        eprintln!("ALT_TAB: switch | FAILED reason=ax_permission_missing");
+        eprintln!("SWITCHER: switch | FAILED reason=ax_permission_missing");
         return false;
     }
 
@@ -212,7 +238,7 @@ pub unsafe fn commit_alt_tab_switch(target_entry: &MruWindowEntry) -> bool {
         ];
 
         if ns_running_app.is_null() {
-            eprintln!("ALT_TAB: switch | FAILED reason=nsrunningapp_not_found app=\"{}\" pid={}", bundle_id, target_pid);
+            eprintln!("SWITCHER: switch | FAILED reason=nsrunningapp_not_found app=\"{}\" pid={}", bundle_id, target_pid);
             return false;
         }
 
@@ -221,7 +247,7 @@ pub unsafe fn commit_alt_tab_switch(target_entry: &MruWindowEntry) -> bool {
         let activated: Bool = msg_send![ns_running_app, activateWithOptions: 2u64];
 
         if !activated.as_bool() {
-            eprintln!("ALT_TAB: switch | FAILED reason=activation_failed app=\"{}\" win=\"{}\"", bundle_id, window_title);
+            eprintln!("SWITCHER: switch | FAILED reason=activation_failed app=\"{}\" win=\"{}\"", bundle_id, window_title);
             return false;
         }
 
@@ -256,7 +282,7 @@ pub unsafe fn commit_alt_tab_switch(target_entry: &MruWindowEntry) -> bool {
             let focus_success = focus_window_by_id(target_pid, target_window_id);
 
             if !focus_success {
-                eprintln!("ALT_TAB: switch | WARNING failed to focus window_id={}", target_window_id);
+                eprintln!("SWITCHER: switch | WARNING failed to focus window_id={}", target_window_id);
                 // Don't return false - app activation may have succeeded
             } else {
                 eprintln!("DEBUG: [ALT_TAB] Window focus succeeded");
@@ -266,6 +292,6 @@ pub unsafe fn commit_alt_tab_switch(target_entry: &MruWindowEntry) -> bool {
         }
     }
 
-    println!("ALT_TAB: switch | SUCCESS app=\"{}\" win=\"{}\"", bundle_id, window_title);
+    println!("SWITCHER: switch | SUCCESS app=\"{}\" win=\"{}\"", bundle_id, window_title);
     true
 }

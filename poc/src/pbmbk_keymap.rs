@@ -3,14 +3,6 @@
 
 #![cfg(target_os = "macos")]
 
-// Key constants (mac virtual keycodes)
-pub const KVK_HELP_INSERT: u16 = 0x72;
-pub const KVK_FWD_DELETE: u16 = 0x75;
-pub const KVK_HOME: u16 = 0x73;
-pub const KVK_END: u16 = 0x77;
-pub const KVK_PAGE_UP: u16 = 0x74;
-pub const KVK_PAGE_DOWN: u16 = 0x79;
-
 // Virtual keycodes for clipboard chords
 pub const VK_C: u16 = 8;
 pub const VK_V: u16 = 9;
@@ -24,25 +16,134 @@ pub const K_CG_EVENT_TAP_OPTION_DEFAULT: u32 = 0;
 pub const K_CG_EVENT_KEY_DOWN: u32 = 10;
 pub const K_CG_EVENT_KEY_UP: u32 = 11;
 pub const K_CG_EVENT_FLAGS_CHANGED: u32 = 12;
+pub const K_CG_EVENT_LEFT_MOUSE_DOWN: u32 = 1;
+pub const K_CG_EVENT_LEFT_MOUSE_UP: u32 = 2;
+pub const K_CG_EVENT_RIGHT_MOUSE_DOWN: u32 = 3;
+pub const K_CG_EVENT_RIGHT_MOUSE_UP: u32 = 4;
+pub const K_CG_EVENT_OTHER_MOUSE_DOWN: u32 = 25;
+pub const K_CG_EVENT_OTHER_MOUSE_UP: u32 = 26;
 pub const CG_EVENT_MASK_KEYBOARD: u64 = (1u64 << K_CG_EVENT_KEY_DOWN) | (1u64 << K_CG_EVENT_KEY_UP) | (1u64 << K_CG_EVENT_FLAGS_CHANGED);
+pub const CG_EVENT_MASK_MOUSE: u64 = (1u64 << K_CG_EVENT_LEFT_MOUSE_DOWN) | (1u64 << K_CG_EVENT_LEFT_MOUSE_UP)
+    | (1u64 << K_CG_EVENT_RIGHT_MOUSE_DOWN) | (1u64 << K_CG_EVENT_RIGHT_MOUSE_UP)
+    | (1u64 << K_CG_EVENT_OTHER_MOUSE_DOWN) | (1u64 << K_CG_EVENT_OTHER_MOUSE_UP);
+pub const CG_EVENT_MASK_ALL: u64 = CG_EVENT_MASK_KEYBOARD | CG_EVENT_MASK_MOUSE;
 pub const K_CG_KEYCODE_FIELD_KEYCODE: u32 = 9;
 pub const K_CG_EVENT_FLAG_MASK_CONTROL: u64 = 1 << 18;
 pub const K_CG_EVENT_FLAG_MASK_SHIFT: u64 = 1 << 17;
 pub const K_CG_EVENT_FLAG_MASK_COMMAND: u64 = 1 << 20;
 pub const K_CG_EVENT_FLAG_MASK_ALTERNATE: u64 = 1 << 19;
 
-use crate::pbgc_core::Quad;
-
-pub fn known_poc_key(keycode: u16) -> bool {
-    matches!(keycode, KVK_HELP_INSERT | KVK_FWD_DELETE | KVK_HOME | KVK_END | KVK_PAGE_UP | KVK_PAGE_DOWN)
-}
-
-pub fn chord_to_quad(keycode: u16) -> Option<Quad> {
+/// Map macOS virtual keycode to XML key name (per KeyType in pbxs_schema.xsd)
+/// Returns None for unmapped or modifier keys
+pub fn keycode_to_xml_key(keycode: u16) -> Option<&'static str> {
     match keycode {
-        KVK_HELP_INSERT => Some(Quad::UL),
-        KVK_FWD_DELETE => Some(Quad::LL),
-        KVK_HOME => Some(Quad::UR),
-        KVK_END => Some(Quad::LR),
+        // Letters (lowercase, per schema)
+        0x00 => Some("a"),
+        0x0B => Some("b"),
+        0x08 => Some("c"),
+        0x02 => Some("d"),
+        0x0E => Some("e"),
+        0x03 => Some("f"),
+        0x05 => Some("g"),
+        0x04 => Some("h"),
+        0x22 => Some("i"),
+        0x26 => Some("j"),
+        0x28 => Some("k"),
+        0x25 => Some("l"),
+        0x2E => Some("m"),
+        0x2D => Some("n"),
+        0x1F => Some("o"),
+        0x23 => Some("p"),
+        0x0C => Some("q"),
+        0x0F => Some("r"),
+        0x01 => Some("s"),
+        0x11 => Some("t"),
+        0x20 => Some("u"),
+        0x09 => Some("v"),
+        0x0D => Some("w"),
+        0x07 => Some("x"),
+        0x10 => Some("y"),
+        0x06 => Some("z"),
+
+        // Digits (unshifted)
+        0x1D => Some("0"),
+        0x12 => Some("1"),
+        0x13 => Some("2"),
+        0x14 => Some("3"),
+        0x15 => Some("4"),
+        0x17 => Some("5"),
+        0x16 => Some("6"),
+        0x1A => Some("7"),
+        0x1C => Some("8"),
+        0x19 => Some("9"),
+
+        // Function keys (F1-F12)
+        0x7A => Some("f1"),
+        0x78 => Some("f2"),
+        0x63 => Some("f3"),
+        0x76 => Some("f4"),
+        0x60 => Some("f5"),
+        0x61 => Some("f6"),
+        0x62 => Some("f7"),
+        0x64 => Some("f8"),
+        0x65 => Some("f9"),
+        0x6D => Some("f10"),
+        0x67 => Some("f11"),
+        0x6F => Some("f12"),
+
+        // Navigation: arrows
+        0x7E => Some("up"),
+        0x7D => Some("down"),
+        0x7B => Some("left"),
+        0x7C => Some("right"),
+
+        // Navigation: other
+        0x73 => Some("home"),
+        0x77 => Some("end"),
+        0x74 => Some("pageup"),
+        0x79 => Some("pagedown"),
+
+        // Editing/Control
+        0x35 => Some("escape"),
+        0x30 => Some("tab"),
+        0x31 => Some("space"),
+        0x24 => Some("enter"),
+        0x33 => Some("backspace"),
+        0x75 => Some("delete"),
+
+        // Punctuation (unshifted, spelled out per schema)
+        0x32 => Some("grave"),
+        0x1B => Some("minus"),
+        0x18 => Some("equals"),
+        0x21 => Some("leftbracket"),
+        0x1E => Some("rightbracket"),
+        0x2A => Some("backslash"),
+        0x29 => Some("semicolon"),
+        0x27 => Some("apostrophe"),
+        0x2B => Some("comma"),
+        0x2F => Some("period"),
+        0x2C => Some("slash"),
+
+        // Numpad (basic operators and digits)
+        0x52 => Some("numpad0"),
+        0x53 => Some("numpad1"),
+        0x54 => Some("numpad2"),
+        0x55 => Some("numpad3"),
+        0x56 => Some("numpad4"),
+        0x57 => Some("numpad5"),
+        0x58 => Some("numpad6"),
+        0x59 => Some("numpad7"),
+        0x5B => Some("numpad8"),
+        0x5C => Some("numpad9"),
+        0x45 => Some("numpadplus"),
+        0x4E => Some("numpadminus"),
+        0x43 => Some("numpadmultiply"),
+        0x4B => Some("numpaddivide"),
+        0x51 => Some("numpadequals"),
+        0x41 => Some("numpadperiod"),
+        0x4C => Some("numpadenter"),
+
+        // Modifiers and unknown keys return None
         _ => None,
     }
 }
