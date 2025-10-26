@@ -1645,11 +1645,14 @@ impl Form {
     pub fn adjust_displays(&self, displays: &[DisplayInfo]) -> Vec<DisplayInfo> {
         use crate::pbmbd_display::{get_all_screens, visible_frame_for_screen, full_frame_for_screen, get_menu_bar_height};
 
+        // First apply quirks to set applied_inset_bottom field
+        let quirked_displays = self.apply_display_quirks(displays);
+
         unsafe {
             let screens = get_all_screens();
             let menu_bar_height = get_menu_bar_height();
 
-            displays.iter().map(|display| {
+            quirked_displays.iter().map(|display| {
                 // Start from CURRENT visible frame, not cached gather value
                 // (NSScreen may have changed between gather and adjust calls)
                 let mut adjusted_height = if display.index < screens.len() {
@@ -1670,14 +1673,14 @@ impl Form {
                 };
 
                 // Apply quirks to design dimensions (physical seam compensation)
-                // --- BEGIN FIX ---
-                let bottom_inset = display.get_min_bottom_inset() as i32;
+                // --- BEGIN REQUIRED FIX ---
+                let bottom_inset = display.applied_inset_bottom;  // read stored quirk
                 adjusted_height -= bottom_inset as f64;
                 eprintln!(
                     "DEBUG: adjust_displays(): applied quirk bottom_inset={} → design_height={}",
                     bottom_inset, adjusted_height
                 );
-                // --- END FIX ---
+                // --- END REQUIRED FIX ---
 
                 // Create new DisplayInfo with fully corrected dimensions
                 DisplayInfo::new(
