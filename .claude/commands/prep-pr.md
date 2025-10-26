@@ -9,12 +9,14 @@ You are helping prepare a PR branch for upstream contribution following the work
 0. **Request permissions upfront:**
    - Ask user for permission to execute all git operations needed:
      - `git status`, `git push origin develop`
-     - `git checkout main`, `git fetch OPEN_SOURCE_UPSTREAM`, `git pull OPEN_SOURCE_UPSTREAM main`
+     - `git checkout main`, `git fetch OPEN_SOURCE_UPSTREAM`, `git pull OPEN_SOURCE_UPSTREAM main`, `git pull`
      - `git push origin main`
      - `git ls-remote --heads OPEN_SOURCE_UPSTREAM`, `git branch -a`
      - `git checkout -b candidate-NNN-R main`
-     - `git log develop --oneline -30`
-     - `git cherry-pick` (based on user selection)
+     - `git log main..develop` (to show what will be included)
+     - `git merge --squash develop`
+     - `git rm` commands to remove internal files
+     - `git commit` with generated message
      - `git ls-files` verification commands
      - `git log --stat`, `git diff main..HEAD --stat`
    - Get approval before proceeding with any operations
@@ -44,24 +46,50 @@ You are helping prepare a PR branch for upstream contribution following the work
 4. **Create and checkout the branch:**
    - `git checkout -b candidate-NNN-R main`
 
-5. **Show available commits from develop:**
-   - `git log develop --oneline -30`
-   - Ask user which commits to cherry-pick (they can specify SHAs or a range)
+5. **Analyze and squash merge develop changes:**
+   - Show commits that will be included: `git log main..develop --oneline`
+   - Show summary of changes: `git diff main..develop --stat`
+   - Execute: `git merge --squash develop`
+   - This stages all changes from develop as a single commit
 
-6. **Cherry-pick selected commits:**
-   - Execute `git cherry-pick` with user's selections
-   - Handle conflicts if they occur
-
-7. **Verify no internal files present:**
-   - `git ls-files | grep -E '(CLAUDE\.md|paneboard-poc\.md|REFACTORING_ROADMAP\.md|\.claude/)'`
+6. **Remove internal files before committing:**
+   - Remove internal documentation and config files:
+     - `git rm --cached --ignore-unmatch .claude/` (entire directory)
+     - `git rm --cached --ignore-unmatch CLAUDE.md`
+     - `git rm --cached --ignore-unmatch poc/paneboard-poc.md`
+     - `git rm --cached --ignore-unmatch poc/REFACTORING_ROADMAP.md`
+   - **Verify removal**: `git ls-files | grep -E '(CLAUDE\.md|paneboard-poc\.md|REFACTORING_ROADMAP\.md|\.claude/)'`
    - **This should return nothing** - if files found, ERROR and stop
    - List all .md files to confirm only README.md present
 
-8. **Final review and stop:**
-   - Show `git log --stat` for the new branch
+7. **Generate and create feature rollup commit:**
+   - Analyze all commits from `git log main..develop --format="%s%n%b"`
+   - Analyze staged changes with `git diff --cached --stat`
+   - Draft a consolidated commit message that:
+     - Summarizes the key features/fixes added since last merge
+     - Groups related changes logically
+     - Explains the "why" at a higher level than individual commits
+     - Uses conventional commit format if appropriate
+   - **Show the proposed commit message to user**
+   - Create commit locally with: `git commit -m "message"` including standard footer:
+     ```
+     🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+     Co-Authored-By: Claude <noreply@anthropic.com>
+     ```
+
+8. **Final review and amendment instructions:**
+   - Show `git log -1 --stat` (the commit just created)
    - Show `git diff main..HEAD --stat`
-   - **STOP** - tell user to manually review and then push with:
-     - `git push -u origin candidate-NNN-R`
+   - **Display amendment instructions:**
+     ```
+     To amend the commit message before pushing:
+     git commit --amend
+
+     To push to origin when ready:
+     git push -u origin candidate-NNN-R
+     ```
+   - **STOP** - user manually reviews and pushes when satisfied
 
 **Important:**
 - Be methodical and show output at each step
