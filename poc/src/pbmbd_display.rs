@@ -195,18 +195,32 @@ impl DisplayInfo {
         }
     }
 
-    /// Get live viewport for runtime window positioning
+    /// ### macOS Menu Bar Behavior
+    ///
+    /// macOS reports `visibleFrame` truthfully **only** for the primary display.
+    /// On secondary displays (with "Displays have separate Spaces" enabled),
+    /// `visibleFrame` deceptively equals the full frame height—even though the
+    /// system will automatically *push down* any window that overlaps the menu bar.
+    ///
+    /// Consequence:
+    /// - Primary display → `visibleFrame` already excludes ≈31 px at top.
+    /// - Secondary displays → macOS reports full height but still enforces
+    ///   a ~31 px top exclusion zone during window placement.
+    ///
+    /// ### Design Decision
+    /// We normalize this inconsistency by *always* reserving a 31 px
+    /// top inset in `live_viewport()` on **every** display.
+    /// That prevents macOS from silently shifting windows downward.
+    ///
+    /// If Apple changes this behavior, this constant should be revisited.
+    /// See also: <https://developer.apple.com/documentation/appkit/nsscreen/1388370-visibleframe>
     pub unsafe fn live_viewport(&self, screen: &NSScreen) -> Option<VisibleFrame> {
         let mut vf = visible_frame_for_screen(screen)?;
 
-        // Apply menu bar correction if NSScreen hasn't already done so
-        if let Some(ff) = full_frame_for_screen(screen) {
-            if vf.height == ff.height {
-                let menu_bar_height = get_menu_bar_height();
-                vf.min_y += menu_bar_height;
-                vf.height -= menu_bar_height;
-            }
-        }
+        // --- Normalize top inset across all displays ---
+        const MENU_BAR_HEIGHT: f64 = 31.0;
+        vf.min_y += MENU_BAR_HEIGHT;
+        vf.height -= MENU_BAR_HEIGHT;
 
         Some(vf)
     }
