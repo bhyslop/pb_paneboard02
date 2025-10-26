@@ -201,9 +201,8 @@ impl DisplayInfo {
     }
 
     /// Calculate minimum bottom inset from matching quirks
-    fn get_min_bottom_inset(&self) -> u32 {
+    pub fn get_min_bottom_inset(&self) -> u32 {
         self.quirks.iter()
-            .filter(|q| self.name.contains(&q.name_contains))
             .map(|q| q.min_bottom_inset)
             .max()
             .unwrap_or(0)
