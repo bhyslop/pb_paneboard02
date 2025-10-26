@@ -503,14 +503,96 @@ pub unsafe fn run_quadrant_poc() -> ! {
 
     // Parse command-line arguments for --timeout flag
     let args: Vec<String> = std::env::args().collect();
-    let timeout_seconds = if let Some(pos) = args.iter().position(|arg| arg == "--timeout") {
-        if pos + 1 < args.len() {
-            args[pos + 1].parse::<f64>().ok()
-        } else {
-            None
+    let timeout_seconds: Option<f64> = {
+        // Look for --timeout flag (handles both --timeout VALUE and --timeout=VALUE)
+        let mut timeout_opt = None;
+
+        for (i, arg) in args.iter().enumerate().skip(1) {
+            if arg == "--timeout" {
+                // Format: --timeout VALUE
+                if i + 1 >= args.len() {
+                    eprintln!();
+                    eprintln!("ERROR: --timeout flag requires a value");
+                    eprintln!();
+                    eprintln!("Usage: paneboard [OPTIONS]");
+                    eprintln!();
+                    eprintln!("Options:");
+                    eprintln!("  --timeout SECONDS    Auto-exit after SECONDS (must be positive number)");
+                    eprintln!();
+                    eprintln!("Example: paneboard --timeout 5.0");
+                    eprintln!();
+                    std::process::exit(1);
+                }
+
+                let value_str = &args[i + 1];
+                match value_str.parse::<f64>() {
+                    Ok(val) => {
+                        if val <= 0.0 {
+                            eprintln!();
+                            eprintln!("ERROR: --timeout value must be positive, got: {}", val);
+                            eprintln!();
+                            std::process::exit(1);
+                        }
+                        timeout_opt = Some(val);
+                    }
+                    Err(_) => {
+                        eprintln!();
+                        eprintln!("ERROR: --timeout value must be a valid number, got: '{}'", value_str);
+                        eprintln!();
+                        eprintln!("Example: paneboard --timeout 5.0");
+                        eprintln!();
+                        std::process::exit(1);
+                    }
+                }
+                break;
+            } else if arg.starts_with("--timeout=") {
+                // Format: --timeout=VALUE
+                let value_str = &arg[10..]; // Skip "--timeout="
+
+                if value_str.is_empty() {
+                    eprintln!();
+                    eprintln!("ERROR: --timeout= requires a value");
+                    eprintln!();
+                    eprintln!("Example: paneboard --timeout=5.0");
+                    eprintln!();
+                    std::process::exit(1);
+                }
+
+                match value_str.parse::<f64>() {
+                    Ok(val) => {
+                        if val <= 0.0 {
+                            eprintln!();
+                            eprintln!("ERROR: --timeout value must be positive, got: {}", val);
+                            eprintln!();
+                            std::process::exit(1);
+                        }
+                        timeout_opt = Some(val);
+                    }
+                    Err(_) => {
+                        eprintln!();
+                        eprintln!("ERROR: --timeout value must be a valid number, got: '{}'", value_str);
+                        eprintln!();
+                        eprintln!("Example: paneboard --timeout=5.0");
+                        eprintln!();
+                        std::process::exit(1);
+                    }
+                }
+                break;
+            } else if arg.starts_with("--") && arg != "--timeout" {
+                // Unknown flag - fatal error
+                eprintln!();
+                eprintln!("ERROR: Unknown flag: {}", arg);
+                eprintln!();
+                eprintln!("Usage: paneboard [OPTIONS]");
+                eprintln!();
+                eprintln!("Options:");
+                eprintln!("  --timeout SECONDS    Auto-exit after SECONDS (must be positive number)");
+                eprintln!();
+                std::process::exit(1);
+            }
         }
-    } else {
-        None
+
+        timeout_opt
     };
 
     // Check for key logging toggle (environment variable)
