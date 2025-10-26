@@ -218,6 +218,7 @@ impl DisplayInfo {
         let mut vf = visible_frame_for_screen(screen)?;
 
         // --- Normalize top inset across all displays ---
+        // This ensures consistent window placement on both primary and secondary displays
         const MENU_BAR_HEIGHT: f64 = 31.0;
         vf.min_y += MENU_BAR_HEIGHT;
         vf.height -= MENU_BAR_HEIGHT;
