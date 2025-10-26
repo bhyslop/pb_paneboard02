@@ -284,7 +284,7 @@ PaneBoard now enforces a **single-instance constraint** using file-based advisor
 
 **Mechanism:**
 1. On startup (immediately after AX permission check), PaneBoard attempts to create an exclusive lock
-2. Lock file location: `~/.local/share/paneboard.lock` (user-specific)
+2. Lock file location: `/tmp/paneboard.lock` (system-wide)
 3. If lock succeeds: PaneBoard proceeds normally and holds the lock for entire lifetime
 4. If lock fails: Another instance is already running → print error and exit immediately
 5. Lock is **automatically released** when process terminates (crash-safe, no stale locks)
@@ -302,15 +302,16 @@ ERROR: Another instance of PaneBoard is already running.
 Only one instance can run at a time.
 
 If you believe this is incorrect, check for a stale lock file at:
-  ~/.local/share/paneboard.lock
+  /tmp/paneboard.lock
 
 The lock is automatically released when the process exits.
 ```
 
 **Implementation notes:**
 * Lock guard is intentionally leaked via `std::mem::forget()` to ensure lifetime = process lifetime
-* Lock file path uses XDG Base Directory specification (`~/.local/share/`)
-* User-specific location allows different users to run separate PaneBoard instances
+* Lock file uses `/tmp` directory (world-writable, requires no setup)
+* System-wide location prevents multiple instances across all users
+* Lock automatically disappears on reboot (prevents stale locks)
 * Location is logged in error message for transparency
 
 **Testing scenarios verified:**

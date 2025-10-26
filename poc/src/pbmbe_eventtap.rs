@@ -474,7 +474,7 @@ pub unsafe fn run_quadrant_poc() -> ! {
     ax_trusted_or_die();
 
     // Single-instance enforcement - only one PaneBoard can run at a time
-    let instance_guard = match SingleInstance::new("paneboard") {
+    let instance_guard = match SingleInstance::new("/tmp/paneboard.lock") {
         Ok(guard) => {
             if !guard.is_single() {
                 eprintln!();
@@ -482,7 +482,7 @@ pub unsafe fn run_quadrant_poc() -> ! {
                 eprintln!("Only one instance can run at a time.");
                 eprintln!();
                 eprintln!("If you believe this is incorrect, check for a stale lock file at:");
-                eprintln!("  ~/.local/share/paneboard.lock");
+                eprintln!("  /tmp/paneboard.lock");
                 eprintln!();
                 eprintln!("The lock is automatically released when the process exits.");
                 std::process::exit(1);
