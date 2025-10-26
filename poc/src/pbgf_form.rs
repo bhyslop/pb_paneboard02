@@ -1670,8 +1670,9 @@ impl Form {
                 };
 
                 // Apply quirks to design dimensions (physical seam compensation)
-                let bottom_inset = display.get_min_bottom_inset();
-                adjusted_height -= bottom_inset as f64;
+                // Get quirk inset once (already stored during apply_display_quirks)
+                let inset = display.applied_inset_bottom;
+                adjusted_height -= inset as f64;
 
                 // Create new DisplayInfo with fully corrected dimensions
                 DisplayInfo::new(
@@ -1679,7 +1680,7 @@ impl Form {
                     display.design_width,
                     adjusted_height,
                     display.name.clone(),
-                    bottom_inset as i32,
+                    inset,
                     self.quirks.clone(),
                 )
             }).collect()
