@@ -161,16 +161,76 @@ pub unsafe fn visible_frame_for_screen(screen: &NSScreen) -> Option<VisibleFrame
     })
 }
 
+// Runtime display quirk (platform-filtered, embedded in DisplayInfo)
+#[derive(Clone, Debug)]
+pub struct RuntimeDisplayQuirk {
+    pub name_contains: String,
+    pub min_bottom_inset: u32,
+}
+
 // DisplayInfo for layout configuration system
+// Serves dual purpose:
+// - Design dimensions (design_width/height) for parse-time pane precomputation
+// - Live viewport (via live_viewport method) for runtime window positioning
 #[derive(Debug, Clone)]
 pub struct DisplayInfo {
     pub index: usize,
-    pub width: f64,
-    pub height: f64,
+    pub design_width: f64,   // Design dimensions with quirks already applied
+    pub design_height: f64,
     pub name: String,
+    quirks: Vec<RuntimeDisplayQuirk>,  // Quirks for runtime viewport adjustment
+}
+
+impl DisplayInfo {
+    /// Create DisplayInfo with embedded quirks
+    pub fn new(index: usize, width: f64, height: f64, name: String, quirks: Vec<RuntimeDisplayQuirk>) -> Self {
+        DisplayInfo {
+            index,
+            design_width: width,
+            design_height: height,
+            name,
+            quirks,
+        }
+    }
+
+    /// Get design rectangle for parse-time pane precomputation
+    /// This uses design dimensions which already have quirks baked in
+    pub fn design_rect(&self) -> VisibleFrame {
+        VisibleFrame {
+            min_x: 0.0,
+            min_y: 0.0,
+            width: self.design_width,
+            height: self.design_height,
+        }
+    }
+
+    /// Get live viewport for runtime window positioning
+    /// Fetches current visible frame from NSScreen and applies quirks
+    pub unsafe fn live_viewport(&self, screen: &NSScreen) -> Option<VisibleFrame> {
+        let mut vf = visible_frame_for_screen(screen)?;
+        let inset = self.get_min_bottom_inset();
+        if inset > 0 {
+            eprintln!("QUIRK: Display '{}' before quirk: bounds=({:.0},{:.0},{:.0},{:.0})",
+                self.name, vf.min_x, vf.min_y, vf.width, vf.height);
+            vf.height -= inset as f64;
+            eprintln!("QUIRK: Display '{}' after {}px bottom inset: bounds=({:.0},{:.0},{:.0},{:.0})",
+                self.name, inset, vf.min_x, vf.min_y, vf.width, vf.height);
+        }
+        Some(vf)
+    }
+
+    /// Calculate minimum bottom inset from matching quirks
+    fn get_min_bottom_inset(&self) -> u32 {
+        self.quirks.iter()
+            .filter(|q| self.name.contains(&q.name_contains))
+            .map(|q| q.min_bottom_inset)
+            .max()
+            .unwrap_or(0)
+    }
 }
 
 // Gather all display information for layout system initialization
+// Note: DisplayInfo created here has empty quirks - quirks will be added during Form parsing
 #[allow(unexpected_cfgs)]
 pub unsafe fn gather_all_display_info() -> Vec<DisplayInfo> {
     let screens = get_all_screens();
@@ -189,12 +249,13 @@ pub unsafe fn gather_all_display_info() -> Vec<DisplayInfo> {
                 format!("Display {}", idx)
             };
 
-            displays.push(DisplayInfo {
-                index: idx,
-                width: vf.width,
-                height: vf.height,
+            displays.push(DisplayInfo::new(
+                idx,
+                vf.width,
+                vf.height,
                 name,
-            });
+                Vec::new(),  // Empty quirks - will be populated during Form parsing
+            ));
         }
     }
 

@@ -15,16 +15,23 @@ use std::fs;
 use std::path::PathBuf;
 
 #[cfg(target_os = "macos")]
-use crate::pbmbd_display::DisplayInfo;
+use crate::pbmbd_display::{DisplayInfo, RuntimeDisplayQuirk};
 
-// Stub DisplayInfo for non-macOS platforms (not used, but needed for compilation)
+// Stub types for non-macOS platforms (not used, but needed for compilation)
 #[cfg(not(target_os = "macos"))]
 #[derive(Clone)]
 pub struct DisplayInfo {
     pub index: usize,
-    pub width: f64,
-    pub height: f64,
+    pub design_width: f64,
+    pub design_height: f64,
     pub name: String,
+}
+
+#[cfg(not(target_os = "macos"))]
+#[derive(Clone)]
+pub struct RuntimeDisplayQuirk {
+    pub name_contains: String,
+    pub min_bottom_inset: u32,
 }
 
 // ============================================================================
@@ -122,13 +129,6 @@ impl Fraction {
 // SECTION 2: Runtime structures (kept after parse, no XML ties)
 // ============================================================================
 
-/// Runtime display quirk (platform-filtered, ready for runtime matching)
-#[derive(Clone)]
-struct RuntimeDisplayQuirk {
-    name_contains: String,
-    min_bottom_inset: u32,
-}
-
 /// Main runtime form - contains pre-computed pane lists per (key, display)
 pub struct Form {
     // Pre-computed pane lists: (key_name, display_index) → sorted pixel rects
@@ -137,8 +137,8 @@ pub struct Form {
     // DisplayMove bindings: key_name → target spec
     display_moves: HashMap<String, DisplayMoveTarget>,
 
-    // DisplayQuirks: platform-filtered, ready for runtime application
-    display_quirks: Vec<RuntimeDisplayQuirk>,
+    // Display information with embedded quirks for runtime viewport access
+    displays: Vec<DisplayInfo>,
 
     // Current layout session state (ephemeral, reset on chord release)
     layout_session: Option<LayoutSession>,
@@ -294,7 +294,7 @@ impl IncludeCondition {
     fn matches(&self, display: &DisplayInfo) -> bool {
         // Orientation check
         if let Some(ref orientation) = self.when_orientation {
-            let actual = if display.width >= display.height {
+            let actual = if display.design_width >= display.design_height {
                 Orientation::Landscape
             } else {
                 Orientation::Portrait
@@ -317,24 +317,24 @@ impl IncludeCondition {
 
         // Width constraints
         if let Some(min_width) = self.min_width {
-            if display.width < min_width as f64 {
+            if display.design_width < min_width as f64 {
                 return false;
             }
         }
         if let Some(under_width) = self.under_width {
-            if display.width >= under_width as f64 {
+            if display.design_width >= under_width as f64 {
                 return false;
             }
         }
 
         // Height constraints
         if let Some(min_height) = self.min_height {
-            if display.height < min_height as f64 {
+            if display.design_height < min_height as f64 {
                 return false;
             }
         }
         if let Some(under_height) = self.under_height {
-            if display.height >= under_height as f64 {
+            if display.design_height >= under_height as f64 {
                 return false;
             }
         }
@@ -1136,8 +1136,8 @@ impl ParsedForm {
 // ============================================================================
 
 impl ParsedForm {
-    /// Apply DisplayQuirks to adjust display dimensions
-    /// Returns a new Vec<DisplayInfo> with adjusted width/height based on matching quirks
+    /// Apply DisplayQuirks to adjust display dimensions and embed quirks
+    /// Returns a new Vec<DisplayInfo> with adjusted dimensions and quirks embedded
     fn apply_display_quirks(&self, displays: &[DisplayInfo]) -> Vec<DisplayInfo> {
         // Determine current platform
         #[cfg(target_os = "macos")]
@@ -1159,46 +1159,7 @@ impl ParsedForm {
                 quirk.name_contains, platform_str, quirk.min_bottom_inset);
         }
 
-        displays.iter().map(|display| {
-            eprintln!("DEBUG: checking display '{}' against quirks", display.name);
-            // Find all quirks matching this display (by platform and nameContains)
-            let matching_quirks = self.display_quirks.iter()
-                .filter(|q| q.platform == current_platform)
-                .filter(|q| display.name.contains(&q.name_contains));
-
-            // Take MAX of all matching minBottomInset values
-            let max_bottom_inset = matching_quirks
-                .map(|q| q.min_bottom_inset)
-                .max()
-                .unwrap_or(0);
-
-            if max_bottom_inset > 0 {
-                eprintln!("LAYOUT: DisplayQuirk matched '{}' → applying {}px bottom inset",
-                    display.name, max_bottom_inset);
-                DisplayInfo {
-                    index: display.index,
-                    width: display.width,
-                    height: display.height - max_bottom_inset as f64,
-                    name: display.name.clone(),
-                }
-            } else {
-                display.clone()
-            }
-        }).collect()
-    }
-
-    fn build_runtime(&self, displays: &[DisplayInfo]) -> Form {
-        let mut pane_lists = HashMap::new();
-        let mut display_moves = HashMap::new();
-
-        // Build runtime DisplayQuirks (platform-filtered)
-        #[cfg(target_os = "macos")]
-        let current_platform = Platform::MacOS;
-        #[cfg(target_os = "windows")]
-        let current_platform = Platform::Windows;
-        #[cfg(target_os = "linux")]
-        let current_platform = Platform::Linux;
-
+        // Filter quirks to only those matching current platform
         let runtime_quirks: Vec<RuntimeDisplayQuirk> = self.display_quirks.iter()
             .filter(|q| q.platform == current_platform)
             .map(|q| RuntimeDisplayQuirk {
@@ -1207,7 +1168,37 @@ impl ParsedForm {
             })
             .collect();
 
-        // Apply DisplayQuirks to displays
+        displays.iter().map(|display| {
+            eprintln!("DEBUG: checking display '{}' against quirks", display.name);
+
+            // Find MAX bottom inset from matching quirks
+            let max_bottom_inset = runtime_quirks.iter()
+                .filter(|q| display.name.contains(&q.name_contains))
+                .map(|q| q.min_bottom_inset)
+                .max()
+                .unwrap_or(0);
+
+            if max_bottom_inset > 0 {
+                eprintln!("LAYOUT: DisplayQuirk matched '{}' → applying {}px bottom inset",
+                    display.name, max_bottom_inset);
+            }
+
+            // Create new DisplayInfo with adjusted dimensions and embedded quirks
+            DisplayInfo::new(
+                display.index,
+                display.design_width,
+                display.design_height - max_bottom_inset as f64,
+                display.name.clone(),
+                runtime_quirks.clone(),
+            )
+        }).collect()
+    }
+
+    fn build_runtime(&self, displays: &[DisplayInfo]) -> Form {
+        let mut pane_lists = HashMap::new();
+        let mut display_moves = HashMap::new();
+
+        // Apply DisplayQuirks to displays (adjusts dimensions and embeds quirks)
         let adjusted_displays = self.apply_display_quirks(displays);
 
         // Build DisplayMove bindings
@@ -1247,15 +1238,15 @@ impl ParsedForm {
                     // Convert to pixels FIRST (before mirroring)
                     let mut pixel_rects: Vec<PixelRect> = leaf_panes.iter()
                         .map(|p| PixelRect {
-                            x: display.width * p.x.to_f64(),
-                            y: display.height * p.y.to_f64(),
-                            width: display.width * p.width.to_f64(),
-                            height: display.height * p.height.to_f64(),
+                            x: display.design_width * p.x.to_f64(),
+                            y: display.design_height * p.y.to_f64(),
+                            width: display.design_width * p.width.to_f64(),
+                            height: display.design_height * p.height.to_f64(),
                         })
                         .collect();
 
                     // Apply mirroring in pixel space
-                    Self::apply_mirroring_pixels(&mut pixel_rects, action.mirror_x, action.mirror_y, display.width, display.height);
+                    Self::apply_mirroring_pixels(&mut pixel_rects, action.mirror_x, action.mirror_y, display.design_width, display.design_height);
 
                     // Cull undersized panes (< 100×100 pixels)
                     pixel_rects.retain(|r| r.width >= 100.0 && r.height >= 100.0);
@@ -1285,7 +1276,7 @@ impl ParsedForm {
         Form {
             pane_lists,
             display_moves,
-            display_quirks: runtime_quirks,
+            displays: adjusted_displays,
             layout_session: None,
             display_move_session: None,
         }
@@ -1319,7 +1310,7 @@ impl ParsedForm {
         }
 
         if let Some(orientation) = &rule.when_orientation {
-            let actual = if display.width >= display.height {
+            let actual = if display.design_width >= display.design_height {
                 Orientation::Landscape
             } else {
                 Orientation::Portrait
@@ -1331,28 +1322,28 @@ impl ParsedForm {
 
         if let Some(ref min_width) = rule.min_width {
             let threshold = self.resolve_measure_ref(min_width, measures);
-            if display.width < threshold as f64 {
+            if display.design_width < threshold as f64 {
                 return false;
             }
         }
 
         if let Some(ref min_height) = rule.min_height {
             let threshold = self.resolve_measure_ref(min_height, measures);
-            if display.height < threshold as f64 {
+            if display.design_height < threshold as f64 {
                 return false;
             }
         }
 
         if let Some(ref under_width) = rule.under_width {
             let threshold = self.resolve_measure_ref(under_width, measures);
-            if display.width >= threshold as f64 {
+            if display.design_width >= threshold as f64 {
                 return false;
             }
         }
 
         if let Some(ref under_height) = rule.under_height {
             let threshold = self.resolve_measure_ref(under_height, measures);
-            if display.height >= threshold as f64 {
+            if display.design_height >= threshold as f64 {
                 return false;
             }
         }
@@ -1382,7 +1373,7 @@ impl ParsedForm {
 
         // Check conditional pruning (orientation)
         if let Some(orientation) = &shape.when_orientation {
-            let actual = if display.width >= display.height {
+            let actual = if display.design_width >= display.design_height {
                 Orientation::Landscape
             } else {
                 Orientation::Portrait
@@ -1586,7 +1577,7 @@ impl Form {
     pub fn load_from_file(displays: &[DisplayInfo]) -> Self {
         eprintln!("DEBUG: Form::load_from_file called with {} displays", displays.len());
         for (i, d) in displays.iter().enumerate() {
-            eprintln!("DEBUG:   display[{}]: name='{}' size={}x{}", i, d.name, d.width, d.height);
+            eprintln!("DEBUG:   display[{}]: name='{}' size={}x{}", i, d.name, d.design_width, d.design_height);
         }
 
         let config_path = Self::config_path();
@@ -1646,7 +1637,7 @@ impl Form {
         Form {
             pane_lists: HashMap::new(),
             display_moves: HashMap::new(),
-            display_quirks: Vec::new(),
+            displays: Vec::new(),
             layout_session: None,
             display_move_session: None,
         }
@@ -1757,22 +1748,15 @@ impl Form {
 
     /// Get minimum bottom inset for a display by name
     /// Returns the MAX of all matching DisplayQuirk minBottomInset values, or 0 if none match
-    pub fn get_min_bottom_inset(&self, display_name: &str) -> u32 {
-        eprintln!("DEBUG: get_min_bottom_inset called for display_name='{}'", display_name);
-        eprintln!("DEBUG: available quirks: {} total", self.display_quirks.len());
-        for q in &self.display_quirks {
-            eprintln!("DEBUG:   quirk nameContains='{}' inset={} | match={}",
-                q.name_contains, q.min_bottom_inset, display_name.contains(&q.name_contains));
-        }
+    /// Get DisplayInfo for a given display index
+    /// Returns None if index is out of bounds
+    pub fn get_display_info(&self, index: usize) -> Option<&DisplayInfo> {
+        self.displays.get(index)
+    }
 
-        let result = self.display_quirks.iter()
-            .filter(|q| display_name.contains(&q.name_contains))
-            .map(|q| q.min_bottom_inset)
-            .max()
-            .unwrap_or(0);
-
-        eprintln!("DEBUG: get_min_bottom_inset returning {} for '{}'", result, display_name);
-        result
+    /// Get number of displays
+    pub fn display_count(&self) -> usize {
+        self.displays.len()
     }
 }
 

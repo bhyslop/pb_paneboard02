@@ -55,32 +55,15 @@ lazy_static! {
 }
 
 // Helper function to get visible frame with quirks applied
-unsafe fn visible_frame_with_quirks(screen: &objc2_app_kit::NSScreen) -> Option<VisibleFrame> {
-    use objc2::msg_send;
-    use objc2_foundation::NSString;
-
-    let mut vf = visible_frame_for_screen(screen)?;
-
-    // Get display name
-    let name_ptr: *const NSString = msg_send![screen, localizedName];
-    if !name_ptr.is_null() {
-        let name_str = unsafe { &*name_ptr };
-        let display_name = name_str.to_string();
-
-        // Apply quirks from FORM
-        if let Ok(form) = FORM.lock() {
-            let inset = form.get_min_bottom_inset(&display_name);
-            if inset > 0 {
-                eprintln!("QUIRK: Display '{}' before quirk: bounds=({:.0},{:.0},{:.0},{:.0})",
-                    display_name, vf.min_x, vf.min_y, vf.width, vf.height);
-                vf.height -= inset as f64;
-                eprintln!("QUIRK: Display '{}' after {}px bottom inset: bounds=({:.0},{:.0},{:.0},{:.0})",
-                    display_name, inset, vf.min_x, vf.min_y, vf.width, vf.height);
-            }
+// Fetches DisplayInfo from Form and uses its live_viewport method
+unsafe fn visible_frame_with_quirks_for_index(screen: &objc2_app_kit::NSScreen, display_index: usize) -> Option<VisibleFrame> {
+    if let Ok(form) = FORM.lock() {
+        if let Some(display_info) = form.get_display_info(display_index) {
+            return display_info.live_viewport(screen);
         }
     }
-
-    Some(vf)
+    // Fallback: return raw visible frame if Form lookup fails
+    visible_frame_for_screen(screen)
 }
 
 // Frontmost app info captured at chord time
@@ -189,7 +172,7 @@ pub fn execute_display_move_for_key(key: &str, pid: u32, bundle_id: &str) -> boo
         }
 
         // Get target visible frame
-        let target_vf = match visible_frame_with_quirks(&screens[target_display_index]) {
+        let target_vf = match visible_frame_with_quirks_for_index(&screens[target_display_index], target_display_index) {
             Some(vf) => vf,
             None => {
                 eprintln!("DISPLAYMOVE: key={} | FAILED reason=no_visible_frame", key);
@@ -198,7 +181,7 @@ pub fn execute_display_move_for_key(key: &str, pid: u32, bundle_id: &str) -> boo
         };
 
         // Get current visible frame for offset calculation
-        let current_vf = visible_frame_with_quirks(&screens[current_display_index]).unwrap();
+        let current_vf = visible_frame_with_quirks_for_index(&screens[current_display_index], current_display_index).unwrap();
 
         // Calculate offset within current screen
         let offset_x = current_rect.x - current_vf.min_x;
@@ -706,7 +689,7 @@ pub extern "C" fn ax_observer_callback(
             let disp_idx = get_display_index_for_window(rect);
             let screens = get_all_screens();
             let visible = if disp_idx < screens.len() {
-                visible_frame_with_quirks(&screens[disp_idx]).unwrap_or_else(|| {
+                visible_frame_with_quirks_for_index(&screens[disp_idx], disp_idx).unwrap_or_else(|| {
                     visible_frame_main_display().expect("Main display should exist")
                 })
             } else {
@@ -716,7 +699,7 @@ pub extern "C" fn ax_observer_callback(
         } else {
             let screens = get_all_screens();
             let visible = if !screens.is_empty() {
-                visible_frame_with_quirks(&screens[0]).expect("Main display should exist")
+                visible_frame_with_quirks_for_index(&screens[0], 0).expect("Main display should exist")
             } else {
                 visible_frame_main_display().expect("Main display should exist")
             };
@@ -789,23 +772,14 @@ pub fn tile_window_quadrant(job: TilingJob) {
                     eprintln!("NOTE: visibleFrame correction applied (menu bar height: {:.0}px)", delta_y);
                 }
 
-                // Apply quirks
+                // Apply quirks via DisplayInfo
                 let screens = get_all_screens();
                 if disp_idx < screens.len() {
-                    use objc2::msg_send;
-                    use objc2_foundation::NSString;
-                    let name_ptr: *const NSString = msg_send![&screens[disp_idx], localizedName];
-                    if !name_ptr.is_null() {
-                        let name_str = &*name_ptr;
-                        let display_name = name_str.to_string();
-                        if let Ok(form) = FORM.lock() {
-                            let inset = form.get_min_bottom_inset(&display_name);
-                            if inset > 0 {
-                                eprintln!("QUIRK: Display '{}' before quirk: bounds=({:.0},{:.0},{:.0},{:.0})",
-                                    display_name, visible.min_x, visible.min_y, visible.width, visible.height);
-                                visible.height -= inset as f64;
-                                eprintln!("QUIRK: Display '{}' after {}px bottom inset: bounds=({:.0},{:.0},{:.0},{:.0})",
-                                    display_name, inset, visible.min_x, visible.min_y, visible.width, visible.height);
+                    if let Ok(form) = FORM.lock() {
+                        if let Some(display_info) = form.get_display_info(disp_idx) {
+                            // Replace visible frame with quirk-adjusted version from DisplayInfo
+                            if let Some(quirked_vf) = display_info.live_viewport(&screens[disp_idx]) {
+                                visible = quirked_vf;
                             }
                         }
                     }
@@ -815,7 +789,7 @@ pub fn tile_window_quadrant(job: TilingJob) {
             } else {
                 let screens = get_all_screens();
                 let visible = if !screens.is_empty() {
-                    visible_frame_with_quirks(&screens[0]).unwrap_or_else(|| {
+                    visible_frame_with_quirks_for_index(&screens[0], 0).unwrap_or_else(|| {
                         visible_frame_main_display().expect("Main display should exist")
                     })
                 } else {
@@ -826,7 +800,7 @@ pub fn tile_window_quadrant(job: TilingJob) {
         } else {
             let screens = get_all_screens();
             let visible = if !screens.is_empty() {
-                visible_frame_with_quirks(&screens[0]).unwrap_or_else(|| {
+                visible_frame_with_quirks_for_index(&screens[0], 0).unwrap_or_else(|| {
                     visible_frame_main_display().expect("Main display should exist")
                 })
             } else {

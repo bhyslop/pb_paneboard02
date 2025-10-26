@@ -390,9 +390,9 @@ Multiple quirks can match the same display. The final bottom inset is the **maxi
 - OS bugs where visibleFrame doesn't account for reserved UI space
 - Platform-specific rendering issues requiring safe margins
 
-**Processing:** Quirks are applied at both parse-time and runtime:
-- **Parse-time:** Filtered by platform, applied to DisplayInfo dimensions for pane list precomputation and Space matching
-- **Runtime:** Stored in Form, accessible via `get_min_bottom_inset(display_name)` for window positioning
+**Processing:** Quirks are embedded in DisplayInfo objects during Form parsing:
+- **Parse-time:** Filtered by platform and embedded into each DisplayInfo. Design dimensions (design_width/design_height) are adjusted for pane list precomputation and Space matching
+- **Runtime:** Each DisplayInfo provides a `live_viewport()` method that fetches current NSScreen geometry and applies the embedded quirks consistently
 
 **Design note:** This is intentionally a "patch" mechanism, not integrated with Space/Measure. Future extensions may add `minTopInset`, `minLeftInset`, `minRightInset`.
 
