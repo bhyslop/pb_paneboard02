@@ -67,8 +67,8 @@ lazy_static! {
 pub unsafe fn print_expected_pane_sequences() {
     eprintln!("\n========== EXPECTED PANE SEQUENCES ==========\n");
 
-    let form = FORM.lock().unwrap();
-
+    // Iterate ADJUSTED_DISPLAYS first (triggers lazy_static initialization)
+    // Then lock FORM only when needed (avoids deadlock)
     for display_info in ADJUSTED_DISPLAYS.iter() {
         eprintln!("Display: {} ({}x{})",
             display_info.name,
@@ -79,7 +79,12 @@ pub unsafe fn print_expected_pane_sequences() {
         let keys = vec!["home", "end", "pageup", "pagedown"];
 
         for key in keys {
-            if let Some(panes) = form.panes_for_action(key, &display_props) {
+            // Lock FORM for each lookup (don't hold lock during I/O)
+            let form = FORM.lock().unwrap();
+            let panes_opt = form.panes_for_action(key, &display_props);
+            drop(form);
+
+            if let Some(panes) = panes_opt {
                 eprintln!("  key='{}' → {} panes:", key, panes.len());
                 for (idx, pane) in panes.iter().take(10).enumerate() {
                     let pixel_x = (pane.x * display_info.design_width) as u32;

@@ -419,6 +419,12 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
     }
 }
 
+// Timer callback for auto-exit timeout (testing/automation)
+extern "C" fn timeout_exit_callback(_timer: *mut c_void, _info: *mut c_void) {
+    eprintln!("\nAuto-exit: timeout reached, terminating gracefully");
+    std::process::exit(0);
+}
+
 // Timer callback to check event tap health and switcher state
 extern "C" fn tap_health_check_timer(_timer: *mut c_void, _info: *mut c_void) {
     unsafe {
@@ -466,6 +472,18 @@ pub unsafe fn run_quadrant_poc() -> ! {
     // Check AX permissions first
     ax_trusted_or_die();
 
+    // Parse command-line arguments for --timeout flag
+    let args: Vec<String> = std::env::args().collect();
+    let timeout_seconds = if let Some(pos) = args.iter().position(|arg| arg == "--timeout") {
+        if pos + 1 < args.len() {
+            args[pos + 1].parse::<f64>().ok()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     // Check for key logging toggle (environment variable)
     // Set PANEBOARD_LOG_KEYS=1 to enable diagnostic key logging
     let logging_enabled = if let Ok(val) = std::env::var("PANEBOARD_LOG_KEYS") {
@@ -484,6 +502,10 @@ pub unsafe fn run_quadrant_poc() -> ! {
     eprintln!("Ctrl+Shift+Option + configured keys for window tiling (see ~/.config/paneboard/form.xml)");
     eprintln!("Command+Tab to show MRU window list");
     eprintln!("Ctrl+C/X/V for copy/cut/paste, Ctrl+Shift+V for clipboard history");
+
+    if let Some(timeout) = timeout_seconds {
+        eprintln!("Auto-exit enabled: will terminate after {:.1} seconds", timeout);
+    }
 
     // Print comprehensive display information
     print_all_display_info();
@@ -567,6 +589,30 @@ pub unsafe fn run_quadrant_poc() -> ! {
         eprintln!("DEBUG: Event tap health monitoring enabled (500ms interval)");
     } else {
         eprintln!("WARNING: Failed to create health check timer - tap auto-recovery disabled");
+    }
+
+    // Create auto-exit timeout timer if requested
+    if let Some(timeout) = timeout_seconds {
+        let timeout_timer = CFRunLoopTimerCreate(
+            kCFAllocatorDefault,
+            now + timeout,                // Fire after timeout seconds
+            0.0,                          // No repeat (one-shot)
+            0,                            // flags
+            0,                            // order
+            timeout_exit_callback,        // callback
+            &timer_context as *const _,
+        );
+
+        if !timeout_timer.is_null() {
+            CFRunLoopAddTimer(
+                CFRunLoopGetCurrent(),
+                timeout_timer,
+                kCFRunLoopDefaultMode as *mut c_void,
+            );
+            eprintln!("DEBUG: Auto-exit timer scheduled for {:.1}s", timeout);
+        } else {
+            eprintln!("WARNING: Failed to create timeout timer");
+        }
     }
 
     eprintln!("DEBUG: Using CFRunLoopPerformBlock for deferred AX operations (Chrome compatibility)");
