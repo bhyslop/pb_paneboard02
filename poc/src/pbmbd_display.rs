@@ -225,26 +225,28 @@ impl DisplayInfo {
     }
 
     /// Convert fractional panes to screen pixels (unit conversion only)
+    /// Uses quirk-adjusted design dimensions (no double-quirk application)
     #[cfg(target_os = "macos")]
     pub unsafe fn realize_panes(&self, fracs: &[crate::pbgf_form::PaneFrac]) -> Vec<crate::pbgf_form::PixelRect> {
-        // Get live viewport from current NSScreen
+        // Get current screen position for offset calculation
         let screens = get_all_screens();
         if self.index >= screens.len() {
             return Vec::new();
         }
 
-        let vf = match self.live_viewport(&screens[self.index]) {
+        let screen_frame = match visible_frame_for_screen(&screens[self.index]) {
             Some(v) => v,
             None => return Vec::new(),
         };
 
-        // Map fractions to pixels using viewport
+        // Use design dimensions (already quirk-adjusted) for size calculations
+        // This prevents double-application of quirks
         fracs.iter()
             .map(|f| crate::pbgf_form::PixelRect {
-                x: vf.min_x + f.x * vf.width,
-                y: vf.min_y + f.y * vf.height,
-                width: f.width * vf.width,
-                height: f.height * vf.height,
+                x: screen_frame.min_x + f.x * self.design_width,
+                y: screen_frame.min_y + f.y * self.design_height,
+                width: f.width * self.design_width,
+                height: f.height * self.design_height,
             })
             .collect()
     }

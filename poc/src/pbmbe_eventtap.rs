@@ -511,6 +511,9 @@ pub unsafe fn run_quadrant_poc() -> ! {
 
     eprintln!("Ctrl-C to quit...");
 
+    // Print expected pane sequences for debugging
+    crate::pbmp_pane::print_expected_pane_sequences();
+
     // Create event tap with tighter unsafe scopes (includes keyboard + mouse events)
     let tap = CGEventTapCreate(
         K_CG_SESSION_EVENT_TAP,

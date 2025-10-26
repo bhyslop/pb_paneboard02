@@ -63,6 +63,42 @@ lazy_static! {
     };
 }
 
+/// Print expected pane sequence for all layout actions at startup
+pub unsafe fn print_expected_pane_sequences() {
+    eprintln!("\n========== EXPECTED PANE SEQUENCES ==========\n");
+
+    let form = FORM.lock().unwrap();
+
+    for display_info in ADJUSTED_DISPLAYS.iter() {
+        eprintln!("Display: {} ({}x{})",
+            display_info.name,
+            display_info.design_width as u32,
+            display_info.design_height as u32);
+
+        let display_props = display_info.as_props();
+        let keys = vec!["home", "end", "pageup", "pagedown"];
+
+        for key in keys {
+            if let Some(panes) = form.panes_for_action(key, &display_props) {
+                eprintln!("  key='{}' → {} panes:", key, panes.len());
+                for (idx, pane) in panes.iter().take(10).enumerate() {
+                    let pixel_x = (pane.x * display_info.design_width) as u32;
+                    let pixel_y = (pane.y * display_info.design_height) as u32;
+                    let pixel_w = (pane.width * display_info.design_width) as u32;
+                    let pixel_h = (pane.height * display_info.design_height) as u32;
+                    eprintln!("    [{}] ({},{}) {}x{}", idx, pixel_x, pixel_y, pixel_w, pixel_h);
+                }
+                if panes.len() > 10 {
+                    eprintln!("    ... {} more panes", panes.len() - 10);
+                }
+            }
+        }
+        eprintln!();
+    }
+
+    eprintln!("=============================================\n");
+}
+
 // Helper function to get visible frame with quirks applied
 // Gets DisplayInfo directly and uses its live_viewport method
 unsafe fn visible_frame_with_quirks_for_index(screen: &objc2_app_kit::NSScreen, display_index: usize) -> Option<VisibleFrame> {
