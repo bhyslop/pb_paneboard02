@@ -20,6 +20,7 @@ You are helping prepare a PR branch for upstream contribution following the work
      - `git ls-files` verification commands
      - `git log --stat`, `git diff main..HEAD --stat`
    - Get approval before proceeding with any operations
+   - Note: Commits that only touch internal files (.claude/, CLAUDE.md, etc.) are excluded from analysis
 
 1. **Verify develop is clean and pushed:**
    - Check `git status` on develop branch
@@ -64,6 +65,7 @@ You are helping prepare a PR branch for upstream contribution following the work
 
 7. **Generate and create feature rollup commit:**
    - Analyze all commits from `git log main..develop --format="%s%n%b"`
+   - Filter out commits that only touch internal files (.claude/, CLAUDE.md, paneboard-poc.md, REFACTORING_ROADMAP.md)
    - Analyze staged changes with `git diff --cached --stat`
    - Draft a consolidated commit message that:
      - Summarizes the key features/fixes added since last merge
@@ -71,12 +73,8 @@ You are helping prepare a PR branch for upstream contribution following the work
      - Explains the "why" at a higher level than individual commits
      - Uses conventional commit format if appropriate
    - **Show the proposed commit message to user**
-   - Create commit locally with: `git commit -m "message"` including standard footer:
-     ```
-     🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-     Co-Authored-By: Claude <noreply@anthropic.com>
-     ```
+   - Create commit locally with: `git commit -m "message"`
+   - **Do NOT include any attribution footer or mention of AI/Claude Code**
 
 8. **Final review and amendment instructions:**
    - Show `git log -1 --stat` (the commit just created)
