@@ -146,3 +146,61 @@ Configured agents in `.claude/agents/`:
 - **Sequential**: Planner → review → workers (when conflicts possible)
 
 **Key constraint**: Agents cannot spawn subagents. Claude orchestrates all dispatch and integration.
+
+---
+
+### Contributing to Upstream (Prep PR Workflow)
+
+**Branch Strategy:**
+- **develop** - Default branch for daily work; contains all internal files (CLAUDE.md, paneboard-poc.md, etc.)
+- **main** - Clean mirror of `OPEN_SOURCE_UPSTREAM/main`; never commit directly
+- **pr/<feature-name>** - Ephemeral PR branches; created from main, exclude internal files
+
+**Remotes:**
+- **origin** - Your fork (github.com/bhyslop/pb_paneboard02)
+- **OPEN_SOURCE_UPSTREAM** - Original repo (github.com/scaleinv/paneboard)
+
+**Prep PR Procedure:**
+
+1. Ensure develop is clean and pushed
+2. Sync main with upstream
+3. Create PR branch from main
+4. Cherry-pick or apply selected changes
+5. Verify internal files are excluded
+6. Manual review and push
+
+**Commands:**
+```bash
+# 1. Verify develop is clean
+git checkout develop
+git status
+git push origin develop
+
+# 2. Sync main with upstream
+git fetch OPEN_SOURCE_UPSTREAM
+git branch -f main OPEN_SOURCE_UPSTREAM/main
+git push origin main --force
+
+# 3. Create PR branch
+git checkout -b pr/<feature-name> main
+
+# 4. Cherry-pick commits (identify SHAs from develop)
+git log develop --oneline -20
+git cherry-pick <SHA1> <SHA2> ...
+
+# 5. Verify no internal files present
+git ls-files | grep -E '(CLAUDE\.md|paneboard-poc\.md|REFACTORING_ROADMAP\.md|\.claude/)'
+
+# 6. Review changes, then push
+git log --stat
+# Manual: git push -u origin pr/<feature-name>
+```
+
+**Files to exclude from PRs (all markdown except README.md):**
+- CLAUDE.md
+- .claude/ directory (including coda.md, sema.md)
+- poc/paneboard-poc.md
+- poc/REFACTORING_ROADMAP.md
+- Any other internal notes/documentation
+
+**Note:** README.md is the ONLY markdown file that should be included in upstream PRs.
