@@ -193,21 +193,24 @@ impl DisplayInfo {
         }
     }
 
-    /// Get design rectangle for parse-time pane precomputation
-    /// This uses design dimensions which already have quirks baked in
-    pub fn design_rect(&self) -> VisibleFrame {
-        VisibleFrame {
-            min_x: 0.0,
-            min_y: 0.0,
-            width: self.design_width,
-            height: self.design_height,
-        }
-    }
-
     /// Get live viewport for runtime window positioning
-    /// Fetches current visible frame from NSScreen and applies quirks
+    /// Fetches current visible frame from NSScreen and applies quirks and menu bar correction
     pub unsafe fn live_viewport(&self, screen: &NSScreen) -> Option<VisibleFrame> {
         let mut vf = visible_frame_for_screen(screen)?;
+
+        // Apply menu bar correction if NSScreen hasn't already done so
+        // Check: if visibleFrame.height == frame.height, menu bar not accounted for
+        if let Some(ff) = full_frame_for_screen(screen) {
+            if vf.height == ff.height {
+                // NSScreen didn't subtract menu bar, we need to
+                let menu_bar_height = get_menu_bar_height();
+                vf.min_y += menu_bar_height;
+                vf.height -= menu_bar_height;
+            }
+            // else: NSScreen already subtracted it, don't double-subtract
+        }
+
+        // Apply quirk-based bottom inset
         let inset = self.get_min_bottom_inset();
         if inset > 0 {
             vf.height -= inset as f64;
@@ -234,13 +237,13 @@ impl DisplayInfo {
             return Vec::new();
         }
 
-        let screen_frame = match visible_frame_for_screen(&screens[self.index]) {
+        let screen_frame = match self.live_viewport(&screens[self.index]) {
             Some(v) => v,
             None => return Vec::new(),
         };
 
-        // Use design dimensions (already quirk-adjusted) for size calculations
-        // This prevents double-application of quirks
+        // Scale fractional coords by DESIGN dimensions (which match viewport dimensions)
+        // Both design_height and viewport height have menu bar + quirks applied
         fracs.iter()
             .map(|f| crate::pbgf_form::PixelRect {
                 x: screen_frame.min_x + f.x * self.design_width,

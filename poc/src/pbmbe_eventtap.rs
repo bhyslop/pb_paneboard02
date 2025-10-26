@@ -8,6 +8,7 @@ use core_foundation::runloop::kCFRunLoopDefaultMode;
 use core_foundation_sys::base::CFTypeRef;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
+use single_instance::SingleInstance;
 
 use crate::pbmbk_keymap::*;
 use crate::pbgk_keylog::{KEY_LOGGING_ENABLED, update_key_state};
@@ -471,6 +472,34 @@ extern "C" fn tap_health_check_timer(_timer: *mut c_void, _info: *mut c_void) {
 pub unsafe fn run_quadrant_poc() -> ! {
     // Check AX permissions first
     ax_trusted_or_die();
+
+    // Single-instance enforcement - only one PaneBoard can run at a time
+    let instance_guard = match SingleInstance::new("paneboard") {
+        Ok(guard) => {
+            if !guard.is_single() {
+                eprintln!();
+                eprintln!("ERROR: Another instance of PaneBoard is already running.");
+                eprintln!("Only one instance can run at a time.");
+                eprintln!();
+                eprintln!("If you believe this is incorrect, check for a stale lock file at:");
+                eprintln!("  ~/.local/share/paneboard.lock");
+                eprintln!();
+                eprintln!("The lock is automatically released when the process exits.");
+                std::process::exit(1);
+            }
+            guard
+        }
+        Err(e) => {
+            eprintln!();
+            eprintln!("ERROR: Failed to initialize single-instance check: {}", e);
+            eprintln!("PaneBoard cannot start safely.");
+            std::process::exit(1);
+        }
+    };
+
+    // CRITICAL: Keep guard alive for entire program lifetime
+    // This function never returns (runs CFRunLoop), so leak is intentional
+    std::mem::forget(instance_guard);
 
     // Parse command-line arguments for --timeout flag
     let args: Vec<String> = std::env::args().collect();

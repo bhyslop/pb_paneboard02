@@ -269,6 +269,58 @@ or:
 **Outcome:**
 PaneBoard now automatically recovers from CGEventTap disablement, maintaining hotkey functionality and preventing permanent overlay lock-ups. Console warnings alert the developer/user to abnormal system behavior.
 
+#### Single-Instance Enforcement (macOS)
+
+**Problem:**
+Running multiple PaneBoard instances simultaneously causes severe conflicts:
+* Multiple CGEventTaps compete for the same keyboard events
+* MRU window tracking becomes inconsistent (duplicate entries, race conditions)
+* Clipboard monitoring duplicates pasteboard change events
+* Keyboard shortcuts fire multiple times per press
+* System resources are unnecessarily consumed
+
+**Solution implemented:**
+PaneBoard now enforces a **single-instance constraint** using file-based advisory locking via the `single-instance` crate (wraps `flock(2)` on macOS).
+
+**Mechanism:**
+1. On startup (immediately after AX permission check), PaneBoard attempts to create an exclusive lock
+2. Lock file location: `~/.local/share/paneboard.lock` (user-specific)
+3. If lock succeeds: PaneBoard proceeds normally and holds the lock for entire lifetime
+4. If lock fails: Another instance is already running → print error and exit immediately
+5. Lock is **automatically released** when process terminates (crash-safe, no stale locks)
+
+**Why flock is safe:**
+* Locks are tied to **file descriptors**, not files or PIDs
+* Kernel automatically releases locks when process exits (including crashes and force-kills)
+* No manual cleanup needed
+* No stale lock detection required
+* Works reliably across command-line launches (`cargo run`)
+
+**User-facing error message:**
+```
+ERROR: Another instance of PaneBoard is already running.
+Only one instance can run at a time.
+
+If you believe this is incorrect, check for a stale lock file at:
+  ~/.local/share/paneboard.lock
+
+The lock is automatically released when the process exits.
+```
+
+**Implementation notes:**
+* Lock guard is intentionally leaked via `std::mem::forget()` to ensure lifetime = process lifetime
+* Lock file path uses XDG Base Directory specification (`~/.local/share/`)
+* User-specific location allows different users to run separate PaneBoard instances
+* Location is logged in error message for transparency
+
+**Testing scenarios verified:**
+* First instance starts successfully
+* Second instance exits with clear error message
+* Lock released after clean exit (Ctrl+C)
+* Lock released after force-kill (`kill -9`)
+* Third instance starts after first is terminated
+* Works identically whether launched via `cargo run` or binary directly
+
 #### Outcome
 * PaneBoard PoC successfully demonstrates *simultaneous capture + selective blocking*.
 * Tested across Mac and PC keyboards (with Option/Command remap).

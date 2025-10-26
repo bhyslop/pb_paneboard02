@@ -115,14 +115,6 @@ impl Fraction {
             den: self.den * other.den,
         }.reduce()
     }
-
-    /// Scale and translate: parent_offset + (pane_offset * parent_size)
-    /// Used for relative coordinate transformation
-    fn scale_translate(pane_offset: &Fraction, parent_offset: &Fraction, parent_size: &Fraction) -> Fraction {
-        // result = parent_offset + (pane_offset * parent_size)
-        let scaled = pane_offset.mul(parent_size);
-        parent_offset.add(&scaled)
-    }
 }
 
 // ============================================================================
@@ -1280,208 +1272,6 @@ impl ParsedForm {
             display_move_session: None,
         }
     }
-
-    fn space_matches_display(&self, space: &ParsedSpace, display: &DisplayProps) -> bool {
-        // Multiple Match elements are OR'd
-        let any_match = space.matches.is_empty() || space.matches.iter().any(|rule| {
-            self.rule_matches_display(rule, display, &self.measures)
-        });
-
-        if !any_match {
-            return false;
-        }
-
-        // Multiple Exclude elements are OR'd (any exclude vetoes)
-        let any_exclude = space.excludes.iter().any(|rule| {
-            self.rule_matches_display(rule, display, &self.measures)
-        });
-
-        !any_exclude
-    }
-
-    fn rule_matches_display(&self, rule: &SpaceRule, display: &DisplayProps, measures: &HashMap<String, u32>) -> bool {
-        // All attributes within a rule are AND'd
-
-        if let Some(ref name_contains) = rule.name_contains {
-            if !display.name.contains(name_contains) {
-                return false;
-            }
-        }
-
-        if let Some(orientation) = &rule.when_orientation {
-            let actual = if display.width >= display.height {
-                Orientation::Landscape
-            } else {
-                Orientation::Portrait
-            };
-            if *orientation != actual {
-                return false;
-            }
-        }
-
-        if let Some(ref min_width) = rule.min_width {
-            let threshold = self.resolve_measure_ref(min_width, measures);
-            if display.width < threshold as f64 {
-                return false;
-            }
-        }
-
-        if let Some(ref min_height) = rule.min_height {
-            let threshold = self.resolve_measure_ref(min_height, measures);
-            if display.height < threshold as f64 {
-                return false;
-            }
-        }
-
-        if let Some(ref under_width) = rule.under_width {
-            let threshold = self.resolve_measure_ref(under_width, measures);
-            if display.width >= threshold as f64 {
-                return false;
-            }
-        }
-
-        if let Some(ref under_height) = rule.under_height {
-            let threshold = self.resolve_measure_ref(under_height, measures);
-            if display.height >= threshold as f64 {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    fn resolve_measure_ref(&self, mref: &MeasureRef, measures: &HashMap<String, u32>) -> u32 {
-        match mref {
-            MeasureRef::Literal(n) => *n,
-            MeasureRef::Name(name) => *measures.get(name).unwrap_or(&0),
-        }
-    }
-
-    // Recursively flatten shape tree to leaf panes using pure rational arithmetic
-    // Parent context is defined by fractions (all in range 0..1 relative to display)
-
-
-    fn sort_pane_list(&self, rects: &mut Vec<PixelRect>, traverse: TraverseOrder) {
-        // Decode traverse order
-        let (primary_axis, primary_dir, secondary_axis, secondary_dir) = match traverse {
-            TraverseOrder::XfYf => ('x', 1, 'y', 1),
-            TraverseOrder::XfYr => ('x', 1, 'y', -1),
-            TraverseOrder::XrYf => ('x', -1, 'y', 1),
-            TraverseOrder::XrYr => ('x', -1, 'y', -1),
-            TraverseOrder::YfXf => ('y', 1, 'x', 1),
-            TraverseOrder::YfXr => ('y', 1, 'x', -1),
-            TraverseOrder::YrXf => ('y', -1, 'x', 1),
-            TraverseOrder::YrXr => ('y', -1, 'x', -1),
-        };
-
-        // Combined two-level sort:
-        // 1. Primary: descending by area (largest first = zoom-out progression)
-        // 2. Secondary: traverse order using pane centers (for panes of same area)
-        rects.sort_by(|a, b| {
-            let area_a = a.width * a.height;
-            let area_b = b.width * b.height;
-
-            // Primary key: area descending (larger areas first)
-            let area_cmp = area_b.partial_cmp(&area_a).unwrap();
-            if area_cmp != std::cmp::Ordering::Equal {
-                return area_cmp;
-            }
-
-            // Secondary key: spatial traverse order (for panes of same area)
-            let a_center_x = a.x + a.width / 2.0;
-            let a_center_y = a.y + a.height / 2.0;
-            let b_center_x = b.x + b.width / 2.0;
-            let b_center_y = b.y + b.height / 2.0;
-
-            let (a_primary, b_primary) = if primary_axis == 'x' {
-                (a_center_x, b_center_x)
-            } else {
-                (a_center_y, b_center_y)
-            };
-
-            let (a_secondary, b_secondary) = if secondary_axis == 'x' {
-                (a_center_x, b_center_x)
-            } else {
-                (a_center_y, b_center_y)
-            };
-
-            let primary_cmp = if primary_dir == 1 {
-                a_primary.partial_cmp(&b_primary).unwrap()
-            } else {
-                b_primary.partial_cmp(&a_primary).unwrap()
-            };
-
-            if primary_cmp != std::cmp::Ordering::Equal {
-                return primary_cmp;
-            }
-
-            if secondary_dir == 1 {
-                a_secondary.partial_cmp(&b_secondary).unwrap()
-            } else {
-                b_secondary.partial_cmp(&a_secondary).unwrap()
-            }
-        });
-    }
-
-    fn sort_pane_list_fracs(&self, panes: &mut Vec<PaneFrac>, traverse: TraverseOrder) {
-        // Decode traverse order
-        let (primary_axis, primary_dir, secondary_axis, secondary_dir) = match traverse {
-            TraverseOrder::XfYf => ('x', 1, 'y', 1),
-            TraverseOrder::XfYr => ('x', 1, 'y', -1),
-            TraverseOrder::XrYf => ('x', -1, 'y', 1),
-            TraverseOrder::XrYr => ('x', -1, 'y', -1),
-            TraverseOrder::YfXf => ('y', 1, 'x', 1),
-            TraverseOrder::YfXr => ('y', 1, 'x', -1),
-            TraverseOrder::YrXf => ('y', -1, 'x', 1),
-            TraverseOrder::YrXr => ('y', -1, 'x', -1),
-        };
-
-        // Sort by area descending, then by traverse order
-        panes.sort_by(|a, b| {
-            let area_a = a.width * a.height;
-            let area_b = b.width * b.height;
-
-            // Primary key: area descending (larger areas first)
-            let area_cmp = area_b.partial_cmp(&area_a).unwrap();
-            if area_cmp != std::cmp::Ordering::Equal {
-                return area_cmp;
-            }
-
-            // Secondary key: spatial traverse order (for panes of same area)
-            let a_center_x = a.x + a.width / 2.0;
-            let a_center_y = a.y + a.height / 2.0;
-            let b_center_x = b.x + b.width / 2.0;
-            let b_center_y = b.y + b.height / 2.0;
-
-            let (a_primary, b_primary) = if primary_axis == 'x' {
-                (a_center_x, b_center_x)
-            } else {
-                (a_center_y, b_center_y)
-            };
-
-            let (a_secondary, b_secondary) = if secondary_axis == 'x' {
-                (a_center_x, b_center_x)
-            } else {
-                (a_center_y, b_center_y)
-            };
-
-            let primary_cmp = if primary_dir == 1 {
-                a_primary.partial_cmp(&b_primary).unwrap()
-            } else {
-                b_primary.partial_cmp(&a_primary).unwrap()
-            };
-
-            if primary_cmp != std::cmp::Ordering::Equal {
-                return primary_cmp;
-            }
-
-            if secondary_dir == 1 {
-                a_secondary.partial_cmp(&b_secondary).unwrap()
-            } else {
-                b_secondary.partial_cmp(&a_secondary).unwrap()
-            }
-        });
-    }
 }
 
 // ============================================================================
@@ -1846,32 +1636,55 @@ impl Form {
         });
     }
 
-    /// Adjust raw displays using parsed quirks (for caller caching)
-    /// Caller should invoke this once at startup and cache the result
+    /// Apply menu bar + quirk corrections to design dimensions
+    /// Design dimensions = fully corrected viewport (menu bar + quirks applied)
+    /// This ensures fractional coords scale correctly to match live_viewport()
     #[cfg(target_os = "macos")]
     pub fn adjust_displays(&self, displays: &[DisplayInfo]) -> Vec<DisplayInfo> {
-        displays.iter().map(|display| {
-            // Find MAX bottom inset from matching quirks
-            let max_bottom_inset = self.quirks.iter()
-                .filter(|q| display.name.contains(&q.name_contains))
-                .map(|q| q.min_bottom_inset)
-                .max()
-                .unwrap_or(0);
+        use crate::pbmbd_display::{get_all_screens, visible_frame_for_screen, full_frame_for_screen, get_menu_bar_height};
 
-            if max_bottom_inset > 0 {
-                eprintln!("LAYOUT: DisplayQuirk matched '{}' → applying {}px bottom inset",
-                    display.name, max_bottom_inset);
-            }
+        unsafe {
+            let screens = get_all_screens();
+            let menu_bar_height = get_menu_bar_height();
 
-            // Create new DisplayInfo with adjusted dimensions and embedded quirks
-            DisplayInfo::new(
-                display.index,
-                display.design_width,
-                display.design_height - max_bottom_inset as f64,
-                display.name.clone(),
-                self.quirks.clone(),
-            )
-        }).collect()
+            displays.iter().map(|display| {
+                // Start from CURRENT visible frame, not cached gather value
+                // (NSScreen may have changed between gather and adjust calls)
+                let mut adjusted_height = if display.index < screens.len() {
+                    let screen = &screens[display.index];
+                    if let (Some(vf), Some(ff)) = (visible_frame_for_screen(screen), full_frame_for_screen(screen)) {
+                        // Apply menu bar correction if NSScreen hasn't already done so
+                        if vf.height == ff.height {
+                            vf.height - menu_bar_height
+                        } else {
+                            // NSScreen already subtracted menu bar
+                            vf.height
+                        }
+                    } else {
+                        display.design_height
+                    }
+                } else {
+                    display.design_height
+                };
+
+                // Apply quirks to design dimensions (must match live_viewport dimensions)
+                let max_bottom_inset = self.quirks.iter()
+                    .filter(|q| display.name.contains(&q.name_contains))
+                    .map(|q| q.min_bottom_inset)
+                    .max()
+                    .unwrap_or(0);
+                adjusted_height -= max_bottom_inset as f64;
+
+                // Create new DisplayInfo with fully corrected dimensions
+                DisplayInfo::new(
+                    display.index,
+                    display.design_width,
+                    adjusted_height,
+                    display.name.clone(),
+                    self.quirks.clone(),
+                )
+            }).collect()
+        }
     }
 
     /// Compute fractional panes for a given action and display
