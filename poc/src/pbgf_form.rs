@@ -1659,9 +1659,6 @@ impl Form {
     ) -> Vec<ParsedPane> {
         let mut leaves = Vec::new();
 
-        eprintln!("DEBUG: Form::flatten_shape_tree ENTRY frame='{}' children={} whenOrientation={:?}",
-            shape.frame, shape.children.len(), shape.when_orientation);
-
         // Check conditional pruning (orientation)
         if let Some(orientation) = &shape.when_orientation {
             let actual = if display.width >= display.height {
@@ -1669,16 +1666,13 @@ impl Form {
             } else {
                 Orientation::Portrait
             };
-            eprintln!("DEBUG: Orientation check: required={:?} actual={:?}", orientation, actual);
             if *orientation != actual {
-                eprintln!("DEBUG: PRUNED by orientation");
                 return leaves; // Prune this subtree
             }
         }
 
         // Special case: synthetic "__multi__" frame for multiple top-level shapes
         if shape.frame == "__multi__" {
-            eprintln!("DEBUG: Processing __multi__ with {} children", shape.children.len());
             for child in &shape.children {
                 match child {
                     ShapeChild::Shape(ref child_shape) => {
@@ -1699,22 +1693,17 @@ impl Form {
                     }
                 }
             }
-            eprintln!("DEBUG: Form::flatten_shape_tree returning {} leaves from __multi__", leaves.len());
             return leaves;
         }
 
         // Get frame reference
-        eprintln!("DEBUG: Looking up frame='{}' (available: {:?})", shape.frame, self.frames.keys().collect::<Vec<_>>());
         let frame = match self.frames.get(&shape.frame) {
             Some(f) => f,
             None => {
-                eprintln!("DEBUG: Frame '{}' NOT FOUND", shape.frame);
+                eprintln!("LAYOUT: ERROR Frame '{}' not found", shape.frame);
                 return leaves;
             }
         };
-
-        eprintln!("DEBUG: Found frame='{}' with {} panes, {} children",
-            shape.frame, frame.panes.len(), shape.children.len());
 
         // Validate 1:1 pane-to-child mapping
         if frame.panes.len() != shape.children.len() {
@@ -1734,7 +1723,6 @@ impl Form {
             match child {
                 ShapeChild::Shape(ref child_shape) => {
                     // Recursively subdivide this pane
-                    eprintln!("DEBUG: Recursing into nested Shape in pane");
                     let child_leaves = self.flatten_shape_tree(
                         child_shape,
                         display,
@@ -1748,7 +1736,6 @@ impl Form {
                 ShapeChild::Include(ref include) => {
                     // Check if this Include references a layout for further subdivision
                     if let Some(ref layout_name) = include.layout {
-                        eprintln!("DEBUG: Include references layout '{}'", layout_name);
                         if let Some(layout) = self.layouts.get(layout_name) {
                             // Recurse into the referenced layout's structure
                             let layout_leaves = self.flatten_shape_tree(
@@ -1765,7 +1752,6 @@ impl Form {
                         }
                     } else {
                         // No layout reference → this is a terminal pane
-                        eprintln!("DEBUG: Terminal pane (Include with no layout)");
                         leaves.push(ParsedPane {
                             x: abs_x,
                             y: abs_y,
@@ -1777,7 +1763,6 @@ impl Form {
             }
         }
 
-        eprintln!("DEBUG: Form::flatten_shape_tree returning {} leaves", leaves.len());
         leaves
     }
 
@@ -1886,34 +1871,15 @@ impl Form {
     /// Compute fractional panes for a given action and display
     /// Returns None if key not found or no panes after conditional pruning
     pub fn panes_for_action(&self, key: &str, display: &DisplayProps) -> Option<Vec<PaneFrac>> {
-        eprintln!("DEBUG: panes_for_action key='{}' display='{}' {}x{}",
-            key, display.name, display.width, display.height);
-
-        let layout = match self.layouts.get(key) {
-            Some(l) => l,
-            None => {
-                eprintln!("DEBUG: Layout not found for key='{}'", key);
-                eprintln!("DEBUG: Available keys: {:?}", self.layouts.keys().collect::<Vec<_>>());
-                return None;
-            }
-        };
-
-        eprintln!("DEBUG: Found layout for key='{}'", key);
+        let layout = self.layouts.get(key)?;
 
         // Check if Layout's Space matches this display
         if let Some(ref space_name) = layout.space {
-            eprintln!("DEBUG: Layout requires Space='{}'", space_name);
             if let Some(space) = self.spaces.get(space_name) {
                 if !self.space_matches_display(space, display) {
-                    eprintln!("DEBUG: Space '{}' DOES NOT MATCH display", space_name);
                     return None; // Space doesn't match
                 }
-                eprintln!("DEBUG: Space '{}' MATCHES display", space_name);
-            } else {
-                eprintln!("DEBUG: Space '{}' NOT FOUND in config", space_name);
             }
-        } else {
-            eprintln!("DEBUG: Layout has no Space requirement (matches all displays)");
         }
 
         // Flatten shape tree to leaf panes using pure rational arithmetic
@@ -1928,12 +1894,11 @@ impl Form {
             &full,    // parent height = 1
         );
 
-        eprintln!("DEBUG: flatten_shape_tree returned {} leaf panes", leaf_panes.len());
-
         if leaf_panes.is_empty() {
-            eprintln!("DEBUG: No panes after flattening - returning None");
             return None;
         }
+
+        eprintln!("LAYOUT: key='{}' → {} panes on display '{}'", key, leaf_panes.len(), display.name);
 
         // Convert ParsedPane (fractions) to PaneFrac
         let mut frac_panes: Vec<PaneFrac> = leaf_panes.iter()

@@ -774,15 +774,7 @@ pub fn tile_window_quadrant(job: TilingJob) {
             let disp_idx = get_display_index_for_window(rect);
 
             // Use validation version to get both visible and full frames
-            if let Some((mut visible, full, delta_y)) = get_display_for_window_with_validation(rect) {
-                // Log validation info per spec
-                eprintln!(
-                    "DEBUG: visible=({:.0},{:.0},{:.0},{:.0}) screen=({:.0},{:.0},{:.0},{:.0}) delta_y={:.0}",
-                    visible.min_x, visible.min_y, visible.width, visible.height,
-                    full.min_x, full.min_y, full.width, full.height,
-                    delta_y
-                );
-
+            if let Some((mut visible, _full, delta_y)) = get_display_for_window_with_validation(rect) {
                 // One-time warning if delta_y != 0
                 if delta_y != 0.0 && !VISIBLE_FRAME_WARNING_SHOWN.swap(true, Ordering::Relaxed) {
                     eprintln!("NOTE: visibleFrame correction applied (menu bar height: {:.0}px)", delta_y);

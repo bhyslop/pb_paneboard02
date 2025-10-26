@@ -210,11 +210,7 @@ impl DisplayInfo {
         let mut vf = visible_frame_for_screen(screen)?;
         let inset = self.get_min_bottom_inset();
         if inset > 0 {
-            eprintln!("QUIRK: Display '{}' before quirk: bounds=({:.0},{:.0},{:.0},{:.0})",
-                self.name, vf.min_x, vf.min_y, vf.width, vf.height);
             vf.height -= inset as f64;
-            eprintln!("QUIRK: Display '{}' after {}px bottom inset: bounds=({:.0},{:.0},{:.0},{:.0})",
-                self.name, inset, vf.min_x, vf.min_y, vf.width, vf.height);
         }
         Some(vf)
     }
