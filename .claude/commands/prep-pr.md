@@ -37,12 +37,13 @@ You are helping prepare a PR branch for upstream contribution following the work
 3. **Auto-detect next candidate branch:**
    - Find max batch number from upstream: `git ls-remote --heads OPEN_SOURCE_UPSTREAM | grep 'candidate-'`
    - Find max batch number from local: `git branch -a | grep 'candidate-'`
-   - **If local max > upstream max:**
-     - Find highest revision for that batch (e.g., `candidate-002-3`)
-     - Create `candidate-XXX-{N+1}` (same batch, increment revision)
-   - **Else:**
-     - Create `candidate-{MAX+1}-1` (new batch, revision 1)
-   - Tell user which branch will be created
+   - Find the maximum batch number from local branches
+   - **If that batch exists at upstream** → previous PR was merged, create new batch:
+     - Create `candidate-{LOCAL_MAX+1}-1`
+   - **If that batch does NOT exist at upstream** → previous PR is pending or damaged, redo:
+     - Find highest revision for that batch (e.g., if `candidate-002-1` exists, next is `candidate-002-2`)
+     - Create `candidate-{LOCAL_MAX}-{REV+1}`
+   - Tell user which branch will be created and why (new delivery vs redo)
 
 4. **Create and checkout the branch:**
    - `git checkout -b candidate-NNN-R main`
@@ -54,11 +55,12 @@ You are helping prepare a PR branch for upstream contribution following the work
    - This stages all changes from develop as a single commit
 
 6. **Remove internal files before committing:**
-   - Remove internal documentation and config files:
-     - `git rm --cached --ignore-unmatch .claude/` (entire directory)
-     - `git rm --cached --ignore-unmatch CLAUDE.md`
-     - `git rm --cached --ignore-unmatch poc/paneboard-poc.md`
-     - `git rm --cached --ignore-unmatch poc/REFACTORING_ROADMAP.md`
+   - Remove internal documentation and config files (from index AND disk):
+     - `git rm -rf --ignore-unmatch .claude/` (entire directory)
+     - `git rm -f --ignore-unmatch CLAUDE.md`
+     - `git rm -f --ignore-unmatch poc/paneboard-poc.md`
+     - `git rm -f --ignore-unmatch poc/REFACTORING_ROADMAP.md`
+   - Note: Files are deleted from disk but will be restored when switching back to develop
    - **Verify removal**: `git ls-files | grep -E '(CLAUDE\.md|paneboard-poc\.md|REFACTORING_ROADMAP\.md|\.claude/)'`
    - **This should return nothing** - if files found, ERROR and stop
    - List all .md files to confirm only README.md present
