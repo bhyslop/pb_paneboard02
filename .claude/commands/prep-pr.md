@@ -88,6 +88,9 @@ You are helping prepare a PR branch for upstream contribution following the work
 
      To push to origin when ready:
      git push -u origin candidate-NNN-R
+
+     To return to development work:
+     git checkout develop
      ```
    - **STOP** - user manually reviews and pushes when satisfied
 
