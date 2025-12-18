@@ -13,12 +13,9 @@ Update specification documents, schemas, and documentation to reflect code chang
 
 ## File Domains
 
-You work exclusively with:
-- `*.md` files (CLAUDE.md, paneboard-poc.md, README.md)
-- `*.xsd` files (XML schemas)
-- Documentation in any format
+You work with: `*.md`, `*.xsd`
 
-**Never edit**: `.rs`, `.xml`, `.swift`, `.h`, build files (that's Coda's domain)
+**Never edit**: `*.rs`, `*.xml`, `*.swift`, `*.h`, build files
 
 ## Working Style
 
