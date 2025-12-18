@@ -356,17 +356,17 @@ This section defines how PaneBoard translates platform-reported display geometry
 
 This separation ensures platform-specific coordinate quirks do not leak into layout logic.
 
-#### Symmetric Viewport Principle
+#### Symmetric Viewport
 
 When the platform detects N pixels of unavailable space at the **top** of a display, PaneBoard reserves an equal N pixels at the **bottom**. This ensures:
 
 - Vertical layouts are centered within the truly usable area
 - A "top 50% / bottom 50%" split divides at the true visual midpoint
-- Consistent behavior regardless of menu bar height, notch presence, or OS version
+- Consistent behavior regardless of menu bar height, notch presence, or OS version (raw screen geometry is only used at startup; all runtime operations use symmetric viewport)
 
 **Deriving top_inset (macOS):**
 
-The `top_inset` is queried directly from the system, **not** derived from `visibleFrame` (which is unreliable):
+The `top_inset` is queried directly from the system, **not** derived from `visibleFrame` (which does not reliably reflect unavailable pixels):
 
 ```swift
 // Primary source: system menu bar height (accounts for notch on MacBooks)
@@ -384,17 +384,6 @@ viewport_height = screen.visibleFrame.height - top_inset
 ```
 
 **Note:** `visibleFrame.height` already has `top_inset` excluded (macOS subtracts menu bar height from the reported visible height). We only subtract one additional `top_inset` for the symmetric bottom exclusion. The total reserved space is `2 × top_inset` (top + bottom), but only one subtraction is needed in the formula because the top is already accounted for.
-
-#### NSScreen.visibleFrame Unreliability (macOS)
-
-**Observed behavior:** `NSScreen.visibleFrame` does not reliably reflect unavailable pixels. On both primary and secondary displays, macOS may reserve space for the menu bar (or potential menu bar) that `visibleFrame` fails to account for.
-
-**Example (dual-display setup):**
-- `visibleFrame` claims to start at y=0
-- macOS actually forces windows to y=31 (menu bar reservation)
-- Result: windows positioned at y=0 are silently moved to y=31
-
-This unreliability is why PaneBoard uses the Display Characterization diagnostic (see below) to verify coordinate system health, rather than trusting `visibleFrame` directly.
 
 #### Display Characterization (Startup Diagnostic)
 
@@ -421,6 +410,49 @@ CHAR: display=1 "External Monitor"
 ```
 
 **Visual verification:** If the green border is clipped on any edge, the coordinate system assumptions are incorrect and require investigation. All four edges of the border should be fully visible on each display.
+
+#### Display Detection
+
+**Window-to-display mapping** determines which display "owns" a window using symmetric viewport bounds.
+
+**Algorithm:**
+1. Compute the window's **center point**: `(window.x + window.width/2, window.y + window.height/2)`
+2. For each display, test whether the center point lies within the display's symmetric viewport:
+   ```
+   center_x >= viewport.min_x && center_x < viewport.min_x + viewport.width
+   center_y >= viewport.min_y && center_y < viewport.min_y + viewport.height
+   ```
+3. The first display whose symmetric viewport contains the center point is the owning display
+
+#### Display Move Operations
+
+**Display moves** preserve relative position when moving windows between displays.
+
+**Algorithm:**
+1. Detect source display using window center point and symmetric viewport bounds
+2. Calculate relative offset from source symmetric viewport origin:
+   ```
+   offset_x = window.x - source_viewport.origin_x
+   offset_y = window.y - source_viewport.origin_y
+   ```
+3. Compute new position using target symmetric viewport origin:
+   ```
+   new_x = target_viewport.origin_x + offset_x
+   new_y = target_viewport.origin_y + offset_y
+   ```
+4. Apply position using AX `Position → Size` sequencing
+
+If the window exceeds target viewport dimensions, resize to fit (see Size Preservation for DisplayMove in Layout Configuration System).
+
+**Logging contract:**
+```
+DISPLAYMOVE: key=h app="Zed" from=0 to=1
+  window_center=(1920, 815)
+  source_viewport=(0, 31, 2560, 3138)
+  target_viewport=(-1920, 31, 1920, 1018)
+  offset=(1280, 784)
+  new_position=(-640, 815)
+```
 
 ---
 
