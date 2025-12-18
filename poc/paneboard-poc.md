@@ -329,44 +329,96 @@ The lock is automatically released when the process exits.
 * **Command+Tab takeover works identically** regardless of System Settings → Keyboard → Modifier Keys remapping.
 * **Chrome window tiling now works reliably** with proper Position → Size sequencing! 🎉
 
-#### NSScreen.visibleFrame Unreliability (macOS Bug)
+---
 
-**Problem discovered:**
-`NSScreen.visibleFrame` reports incorrect `origin.y` values on macOS, causing quadrant overlap.
+### Coordinate System Abstraction
 
-**Observed behavior (tested on dual-display setup):**
-* **Primary display (x=0):**
-  - `visibleFrame = (0, 0, 2560, 3169)` — claims to start at y=0
-  - `frame = (0, 0, 2560, 3200)` — full screen starts at y=0
-  - **BUT:** macOS forces windows to y=31 (reserves menu bar space)
-  - Result: UL quadrant target `(0, 0, w, h)` → actual `(0, 31, w, h)` ❌
+This section defines how PaneBoard translates platform-reported display geometry into a reliable, symmetric viewport for window tiling.
 
-* **Secondary display (x=2560):**
-  - `visibleFrame = (2560, 0, 2560, 3200)` — claims to start at y=0
-  - `frame = (2560, 0, 2560, 3200)` — identical to visible frame
-  - **BUT:** macOS still forces windows to y=31 (reserved space for menu bar when mouse moves to top)
-  - Result: UL quadrant target `(2560, 0, w, h)` → actual `(2560, 31, w, h)` ❌
+#### Unavailable Pixels
 
-**Root cause:**
-macOS **universally reserves ~31 pixels** at the top of every display for the menu bar (primary) or potential menu bar (secondary), but `NSScreen.visibleFrame` does **not** reflect this reservation on either display type.
+*Unavailable pixels* refers to screen regions reserved by the operating system where windows cannot be placed. This includes menu bars, notch safe areas, or similar platform-specific chrome. PaneBoard treats all such regions uniformly without distinguishing their cause.
 
-**Impact on quadrant tiling:**
-* UL quadrant: forced down by 31px → starts at y=31 instead of y=0
-* LL quadrant: calculated using wrong `midY` (based on visibleFrame height that includes reserved space)
-* Result: **31-pixel overlap** between UL and LL quadrants
+**Dock exclusion:** PaneBoard assumes the dock is set to auto-hide. The dock is not treated as an occlusion; no pixels are reserved for it.
 
-**Fix strategy:**
-1. Query actual menu bar height from system (via `NSApplication.shared.mainMenu?.menuBarHeight` or similar)
-2. When `visibleFrame.minY == frame.minY` (no offset detected), apply correction:
-   - `corrected_minY = vf.minY + menuBarHeight`
-   - `corrected_height = vf.height - menuBarHeight`
-3. Recalculate `midY` using corrected values
-4. Log corrected geometry for validation
+#### Platform Layer vs Logical Layer
 
-**Expected outcome:**
-* All displays: quadrants start at y=31 (or y + menuBarHeight)
-* UL/LL boundary aligns exactly at corrected `midY`
-* No overlap or dead space across any display configuration
+**Platform layer (macOS-specific):**
+- Enumerates displays via `NSScreen`
+- Detects unavailable pixels at screen edges
+- Computes a **symmetric viewport** (see below)
+- Exposes the corrected viewport rect to the logical layer
+
+**Logical layer (cross-platform):**
+- Receives opaque viewport rects per display
+- Works exclusively in fractional coordinates (0.0–1.0)
+- Never sees raw `NSScreen` values, quirks, or platform corrections
+
+This separation ensures platform-specific coordinate quirks do not leak into layout logic.
+
+#### Symmetric Viewport Principle
+
+When the platform detects N pixels of unavailable space at the **top** of a display, PaneBoard reserves an equal N pixels at the **bottom**. This ensures:
+
+- Vertical layouts are centered within the truly usable area
+- A "top 50% / bottom 50%" split divides at the true visual midpoint
+- Consistent behavior regardless of menu bar height, notch presence, or OS version
+
+**Deriving top_inset (macOS):**
+
+The `top_inset` is queried directly from the system, **not** derived from `visibleFrame` (which is unreliable):
+
+```swift
+// Primary source: system menu bar height (accounts for notch on MacBooks)
+let top_inset = NSApp.mainMenu?.menuBarHeight
+    ?? (screen.frame.maxY - screen.visibleFrame.maxY)  // fallback
+```
+
+This API returns the actual menu bar height including any notch accommodation. The fallback uses `frame` vs `visibleFrame` difference only if the primary query fails.
+
+**Symmetric viewport calculation:**
+```
+symmetric_bottom_inset = top_inset
+viewport_origin_y = screen.visibleFrame.origin.y + top_inset
+viewport_height = screen.visibleFrame.height - (2 × top_inset)
+```
+
+#### NSScreen.visibleFrame Unreliability (macOS)
+
+**Observed behavior:** `NSScreen.visibleFrame` does not reliably reflect unavailable pixels. On both primary and secondary displays, macOS may reserve space for the menu bar (or potential menu bar) that `visibleFrame` fails to account for.
+
+**Example (dual-display setup):**
+- `visibleFrame` claims to start at y=0
+- macOS actually forces windows to y=31 (menu bar reservation)
+- Result: windows positioned at y=0 are silently moved to y=31
+
+This unreliability is why PaneBoard uses the Display Characterization diagnostic (see below) to verify coordinate system health, rather than trusting `visibleFrame` directly.
+
+#### Display Characterization (Startup Diagnostic)
+
+At startup, PaneBoard performs a visual diagnostic on each connected display to verify that the coordinate system abstraction is functioning correctly.
+
+**Procedure:**
+1. For each display, create a borderless, transparent window with a **4px green border**
+2. Position the window at the calculated symmetric viewport bounds
+3. Display all characterization windows simultaneously for **3 seconds**, then close
+4. Log characterization data for each display
+
+**Logging contract:**
+```
+CHAR: display=0 "Built-in Retina"
+  frame=(0, 0, 2560, 1600)
+  visibleFrame=(0, 0, 2560, 1575)
+  top_inset=25
+  symmetric_viewport=(0, 25, 2560, 1525)
+CHAR: display=1 "External Monitor"
+  frame=(2560, 0, 1920, 1080)
+  visibleFrame=(2560, 0, 1920, 1080)
+  top_inset=25
+  symmetric_viewport=(2560, 25, 1920, 1030)
+```
+
+**Visual verification:** If the green border is clipped on any edge, the coordinate system assumptions are incorrect and require investigation. All four edges of the border should be fully visible on each display.
 
 ---
 
@@ -401,7 +453,7 @@ Parse errors or semantic errors (e.g., undefined references) cause PaneBoard to 
 The root element `<Form>` contains eight types of child elements, each serving a distinct purpose:
 
 - **`<Measure>`** - Named pixel constants for dimension constraints
-- **`<DisplayQuirk>`** - Platform-specific display geometry corrections (workarounds for hardware/OS quirks)
+- **`<DisplayQuirk>`** *(ignored)* - Retained for schema compatibility; see Coordinate System Abstraction
 - **`<Space>`** - Display matching rules based on resolution, orientation, name
 - **`<Frame>`** - Reusable geometric patterns (collections of Panes)
 - **`<Layout>`** - Compositions of Frames with conditional logic
@@ -422,32 +474,18 @@ Defines reusable pixel values referenced by name in dimension constraints:
 
 Measures can be referenced in `<Space>` and `<Shape>` dimension attributes (`minWidth`, `minHeight`, `underWidth`, `underHeight`). References accept either a Measure name or a literal integer.
 
-##### DisplayQuirk
+##### DisplayQuirk *(ignored)*
 
-Platform-specific workarounds for displays where the OS-reported visible frame doesn't match the actual usable tiling area. Applied before all Space matching and layout calculations.
+Retained for schema compatibility. All `<DisplayQuirk>` elements are parsed but have no effect.
+
+Previously, DisplayQuirk provided manual geometry corrections for displays where the OS-reported visible frame didn't match actual usable space. This approach was fragile—requiring per-display configuration that broke across OS updates and hardware changes.
+
+DisplayQuirk is superseded by the **Coordinate System Abstraction** (see below), which derives correct viewport geometry automatically using the symmetric viewport principle.
 
 ```xml
+<!-- Parsed but ignored -->
 <DisplayQuirk nameContains="FlipGo-A" platform="macos" minBottomInset="31"/>
 ```
-
-**Attributes:**
-- `nameContains`: Substring match against display name (minimum 3 alphanumeric characters)
-- `platform`: Target OS (`macos`, `windows`, or `linux`)
-- `minBottomInset`: Pixels to reserve at bottom of display (positive integer)
-
-**Merging behavior:**
-Multiple quirks can match the same display. The final bottom inset is the **maximum** of all matching `minBottomInset` values, ensuring all constraints are satisfied.
-
-**Common use cases:**
-- External monitors with physical obstructions (bezels, built-in control panels)
-- OS bugs where visibleFrame doesn't account for reserved UI space
-- Platform-specific rendering issues requiring safe margins
-
-**Processing:** Quirks are embedded in DisplayInfo objects during Form parsing:
-- **Parse-time:** Filtered by platform and embedded into each DisplayInfo. Design dimensions (design_width/design_height) are adjusted for pane list precomputation and Space matching
-- **Runtime:** Each DisplayInfo provides a `live_viewport()` method that fetches current NSScreen geometry and applies the embedded quirks consistently
-
-**Design note:** This is intentionally a "patch" mechanism, not integrated with Space/Measure. Future extensions may add `minTopInset`, `minLeftInset`, `minRightInset`.
 
 ##### Space
 
@@ -482,7 +520,7 @@ Defines a collection of Pane geometries that can be referenced by Layouts. Each 
 **Pane coordinates:**
 - Format: `"numerator/denominator"` or whole number shorthand (`"1"` = `"1/1"`, `"0"` = `"0/1"`)
 - Values are proportions of parent context (0 to 1 in practice, though schema allows >1)
-- For top-level Panes: relative to display's `visibleFrame`
+- For top-level Panes: relative to display's symmetric viewport (see Coordinate System Abstraction)
 - For nested Panes: relative to parent Pane's geometry
 
 **Nesting:** Frames can be composed hierarchically via Shapes (see Layout below). A Frame defines only the immediate subdivision of its parent context; deeper subdivisions are achieved by referencing additional Frames in child Shapes.
@@ -550,7 +588,7 @@ Maps a keyboard shortcut to move the focused window between displays:
 Display indices are platform-specific (OS enumeration order). Uses the same global modifier chord as LayoutActions.
 
 **Size preservation across moves:**
-When moving a window between displays, PaneBoard attempts to preserve the window's size and position. If the window is too large for the target display or partially off-screen, it is resized to fill the target's `visibleFrame` (100% width/height).
+When moving a window between displays, PaneBoard attempts to preserve the window's size and position. If the window is too large for the target display or partially off-screen, it is resized to fill the target's symmetric viewport (100% width/height).
 
 **Consecutive moves:** If a user performs multiple DisplayMove actions within a single held chord (e.g., Ctrl+Shift held, pressing PageUp → PageDown → PageUp), PaneBoard remembers the **original size** from before the first move and reinstates it when returning to a display large enough to accommodate it. This prevents jarring size changes when moving a large window through a small display to another large display.
 
@@ -588,7 +626,7 @@ For each `<LayoutAction>` and each connected display at startup:
 5. **Apply mirroring** - Transform each Pane's fractional coordinates using:
    - `mirrorX="flip"`: `x' = 1 - x - width`
    - `mirrorY="flip"`: `y' = 1 - y - height`
-6. **Convert to pixels** - Multiply fractional coordinates by display's `visibleFrame` dimensions to get pixel rects
+6. **Convert to pixels** - Multiply fractional coordinates by display's symmetric viewport dimensions to get pixel rects
 7. **Cull undersized Panes** - Remove any Pane smaller than 100×100 pixels (minimum size threshold; may be configurable in future)
 8. **Sort by area, then traversal** - Primary sort: descending by area (width × height, largest first); secondary sort: apply `traverse` rule using Pane **center points** `(x + width/2, y + height/2)`
 9. **Cache sorted list** - Store for runtime use, indexed by `(LayoutAction, Display)`
@@ -630,7 +668,7 @@ For each `<LayoutAction>` and each connected display at startup:
 When `<DisplayMove>` moves a window to another display:
 
 1. **Window fits:** Preserve size and position (translated to target display's coordinate space).
-2. **Window too large or partially off-screen:** Resize to target's `visibleFrame` (100% width, 100% height).
+2. **Window too large or partially off-screen:** Resize to target's symmetric viewport (100% width, 100% height).
 3. **Consecutive moves in one chord:** Track original size from before first move; reinstate when moving to a display large enough to accommodate it.
 
 **Logging:**
@@ -729,7 +767,7 @@ DEBUG: [LAYOUT] action=h display=0 | cached 6 panes
    * Observers are torn down as soon as a usable window is received or the timeout expires.
 
 7. **Geometry Contract**
-   * Compute from `NSScreen.main.visibleFrame`. Window geometries are defined in `form.xml` as fractional coordinates; **Position → Size** sequencing; abort on any AX failure to keep idempotence.
+   * Compute from display's symmetric viewport (see Coordinate System Abstraction). Window geometries are defined in `form.xml` as fractional coordinates; **Position → Size** sequencing; abort on any AX failure to keep idempotence.
 
 8. **Chord Policy (XML-Driven Architecture)**
    * **Modifier chord**: **Ctrl+Shift+Option (macOS) / Ctrl+Shift+Alt (Windows/Linux)** - hardcoded, not configurable in current cycle.
