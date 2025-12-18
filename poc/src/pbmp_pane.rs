@@ -238,8 +238,27 @@ pub fn execute_display_move_for_key(key: &str, pid: u32, bundle_id: &str) -> boo
         let offset_y = current_rect.y - current_vf.min_y;
 
         // Apply same offset to target screen to preserve relative position
-        let new_x = target_vf.min_x + offset_x;
-        let new_y = target_vf.min_y + offset_y;
+        let mut new_x = target_vf.min_x + offset_x;
+        let mut new_y = target_vf.min_y + offset_y;
+
+        // Clamp position to ensure window stays within target viewport bounds
+        // Per spec: "If the window exceeds target viewport dimensions, resize to fit"
+        let max_x = target_vf.min_x + target_vf.width - current_rect.w;
+        let max_y = target_vf.min_y + target_vf.height - current_rect.h;
+
+        // Clamp x: ensure window fits horizontally
+        if new_x < target_vf.min_x {
+            new_x = target_vf.min_x;
+        } else if new_x > max_x {
+            new_x = max_x.max(target_vf.min_x); // Don't go below min_x even if window is wider than viewport
+        }
+
+        // Clamp y: ensure window fits vertically
+        if new_y < target_vf.min_y {
+            new_y = target_vf.min_y;
+        } else if new_y > max_y {
+            new_y = max_y.max(target_vf.min_y); // Don't go below min_y even if window is taller than viewport
+        }
 
         // Move window to new position (size unchanged)
         match win.set_position(new_x, new_y) {
@@ -563,13 +582,14 @@ fn pixel_rect_to_rect(pr: &PixelRect, _vf: &VisibleFrame) -> Rect {
 }
 
 /// Determine which display index contains the given window rect (by center point)
+/// Uses symmetric viewport bounds for consistency with display move operations
 unsafe fn get_display_index_for_window(window_rect: Rect) -> usize {
     let screens = get_all_screens();
     let win_center_x = window_rect.x + window_rect.w / 2.0;
     let win_center_y = window_rect.y + window_rect.h / 2.0;
 
     for (idx, screen) in screens.iter().enumerate() {
-        if let Some(vf) = visible_frame_for_screen(screen) {
+        if let Some(vf) = symmetric_viewport_for_index(screen, idx) {
             if win_center_x >= vf.min_x && win_center_x < vf.min_x + vf.width &&
                win_center_y >= vf.min_y && win_center_y < vf.min_y + vf.height {
                 return idx;

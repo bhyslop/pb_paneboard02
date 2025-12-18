@@ -134,6 +134,62 @@ pub unsafe fn get_menu_bar_height() -> f64 {
     25.0
 }
 
+// =============================================================================
+// Coordinate System Conversion: NSScreen → AX
+// =============================================================================
+//
+// macOS has two coordinate systems:
+// - NSScreen/Cocoa: Origin at BOTTOM-LEFT of primary display, Y increases UPWARD
+// - AX (Accessibility): Origin at TOP-LEFT of primary display, Y increases DOWNWARD
+//
+// All window positioning uses AX coordinates. The conversion is:
+//   ax_y = primary_screen_height - ns_y - rect_height
+//
+// The x-axis is unchanged between systems.
+// =============================================================================
+
+/// Get the height of the primary display (needed for coordinate conversion)
+/// Primary display is the one at origin (0,0) - the display with the menu bar
+/// Note: NSScreen::mainScreen returns the FOCUSED screen, not the primary screen
+#[allow(unexpected_cfgs)]
+pub unsafe fn get_primary_display_height() -> f64 {
+    let mtm = MainThreadMarker::new_unchecked();
+    let screens = NSScreen::screens(mtm);
+
+    // Find the screen at origin (0,0) - this is the primary display
+    for i in 0..screens.len() {
+        let screen = screens.objectAtIndex(i);
+        let frame: NSRect = msg_send![&screen, frame];
+        if frame.origin.x == 0.0 && frame.origin.y == 0.0 {
+            return frame.size.y;
+        }
+    }
+
+    // Fallback: use first screen if no screen at origin (shouldn't happen)
+    if screens.len() > 0 {
+        let screen = screens.objectAtIndex(0);
+        let frame: NSRect = msg_send![&screen, frame];
+        return frame.size.y;
+    }
+
+    // Last resort fallback
+    1080.0
+}
+
+/// Convert a VisibleFrame from NSScreen coordinates to AX coordinates
+/// NSScreen: origin at bottom-left, Y up
+/// AX: origin at top-left of primary, Y down
+#[allow(unexpected_cfgs)]
+pub unsafe fn ns_to_ax_visible_frame(ns_frame: VisibleFrame) -> VisibleFrame {
+    let primary_height = get_primary_display_height();
+    VisibleFrame {
+        min_x: ns_frame.min_x,
+        min_y: primary_height - ns_frame.min_y - ns_frame.height,
+        width: ns_frame.width,
+        height: ns_frame.height,
+    }
+}
+
 // Get all screens in NSScreen enumeration order
 #[allow(unexpected_cfgs)]
 pub unsafe fn get_all_screens() -> Vec<objc2::rc::Retained<objc2_app_kit::NSScreen>> {
@@ -148,9 +204,10 @@ pub unsafe fn get_all_screens() -> Vec<objc2::rc::Retained<objc2_app_kit::NSScre
     result
 }
 
-// Get visible frame for a specific screen
+// Get visible frame for a specific screen in NSScreen coordinates (internal use)
+// NSScreen coords: origin at bottom-left, Y increases upward
 #[allow(unexpected_cfgs)]
-pub unsafe fn visible_frame_for_screen(screen: &NSScreen) -> Option<VisibleFrame> {
+unsafe fn visible_frame_for_screen_ns(screen: &NSScreen) -> Option<VisibleFrame> {
     let rect: NSRect = msg_send![screen, visibleFrame];
 
     Some(VisibleFrame {
@@ -159,6 +216,14 @@ pub unsafe fn visible_frame_for_screen(screen: &NSScreen) -> Option<VisibleFrame
         width: rect.size.x,
         height: rect.size.y,
     })
+}
+
+// Get visible frame for a specific screen (returns AX coordinates)
+// AX coords: origin at top-left of primary display, Y increases downward
+#[allow(unexpected_cfgs)]
+pub unsafe fn visible_frame_for_screen(screen: &NSScreen) -> Option<VisibleFrame> {
+    let ns_frame = visible_frame_for_screen_ns(screen)?;
+    Some(ns_to_ax_visible_frame(ns_frame))
 }
 
 // DisplayInfo for layout configuration system
@@ -196,23 +261,27 @@ impl DisplayInfo {
     /// with a fallback to frame vs visibleFrame difference if needed.
     ///
     /// See also: Coordinate System Abstraction in paneboard-poc.md
+    ///
+    /// Returns AX coordinates (top-left origin, Y down) for use with window positioning.
     pub unsafe fn live_viewport(&self, screen: &NSScreen) -> Option<VisibleFrame> {
-        let vf = visible_frame_for_screen(screen)?;
+        // Get visible frame in NSScreen coords (bottom-left origin, Y up)
+        let vf = visible_frame_for_screen_ns(screen)?;
 
         // Get top_inset from system menu bar height (accounts for notch on MacBooks)
         let top_inset = get_menu_bar_height();
 
-        // Apply SYMMETRIC correction: reserve top_inset at BOTH top and bottom
-        // visibleFrame.height already has top_inset removed (menu bar exclusion)
-        // We only subtract one more top_inset for the symmetric bottom exclusion
-        // viewport_origin_y = visibleFrame.origin.y + top_inset
-        // viewport_height = visibleFrame.height - top_inset (not 2×)
-        Some(VisibleFrame {
+        // Apply SYMMETRIC correction in NSScreen coords:
+        // - Raise bottom by top_inset (min_y + top_inset)
+        // - Reduce height by top_inset (visibleFrame already excludes menu bar at top)
+        let symmetric_ns = VisibleFrame {
             min_x: vf.min_x,
             min_y: vf.min_y + top_inset,
             width: vf.width,
             height: vf.height - top_inset,
-        })
+        };
+
+        // Convert to AX coordinates before returning
+        Some(ns_to_ax_visible_frame(symmetric_ns))
     }
 
     /// Convert fractional panes to screen pixels (unit conversion only)
