@@ -716,7 +716,37 @@ impl Form {
 
     /// Reset display move session (called on chord release)
     pub fn reset_display_move_session(&mut self) {
+        if self.display_move_session.is_some() {
+            eprintln!("DISPLAYMOVE: Resetting display move session");
+        }
         self.display_move_session = None;
+    }
+
+    /// Store original size and position for display move session (called on first move in chord)
+    /// offset_x/offset_y are relative to the viewport origin
+    /// Returns true if this is a new session (first move), false if session already exists
+    pub fn start_display_move_session(&mut self, original_width: f64, original_height: f64, offset_x: f64, offset_y: f64) -> bool {
+        if self.display_move_session.is_none() {
+            eprintln!("DISPLAYMOVE: Starting session, storing original size ({:.0}x{:.0}) offset ({:.0},{:.0})",
+                original_width, original_height, offset_x, offset_y);
+            self.display_move_session = Some(DisplayMoveSession {
+                original_size: Some((original_width, original_height)),
+                original_offset: Some((offset_x, offset_y)),
+            });
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Get original size stored at start of display move session
+    pub fn get_original_size(&self) -> Option<(f64, f64)> {
+        self.display_move_session.as_ref().and_then(|s| s.original_size)
+    }
+
+    /// Get original offset stored at start of display move session
+    pub fn get_original_offset(&self) -> Option<(f64, f64)> {
+        self.display_move_session.as_ref().and_then(|s| s.original_offset)
     }
 
     /// Check if a key has a LayoutAction binding
@@ -731,11 +761,11 @@ impl Form {
     }
 
     /// Execute a DisplayMove for the given key and current display index
-    /// Returns the target display index, or None if key not bound or target out of range
-    pub fn execute_display_move(&self, key: &str, current_display_index: usize, total_displays: usize) -> Option<usize> {
+    /// Returns (target_display_index, target_spec) or None if key not bound or target out of range
+    pub fn execute_display_move(&self, key: &str, current_display_index: usize, total_displays: usize) -> Option<(usize, &DisplayMoveTarget)> {
         let target = self.display_moves.get(key)?;
 
-        match target {
+        let target_index = match target {
             DisplayMoveTarget::Next { wrap } => {
                 if current_display_index + 1 < total_displays {
                     Some(current_display_index + 1)
@@ -762,6 +792,8 @@ impl Form {
                     None
                 }
             }
-        }
+        };
+
+        target_index.map(|idx| (idx, target))
     }
 }

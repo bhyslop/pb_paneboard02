@@ -72,7 +72,7 @@ pub(crate) struct LayoutSession {
     pub(crate) pane_index: usize,
 }
 
-#[allow(dead_code)]
 pub(crate) struct DisplayMoveSession {
-    pub(crate) original_size: Option<(f64, f64)>, // (width, height) before first move
+    pub(crate) original_size: Option<(f64, f64)>,     // (width, height) before first move
+    pub(crate) original_offset: Option<(f64, f64)>,   // (offset_x, offset_y) relative to viewport origin
 }
