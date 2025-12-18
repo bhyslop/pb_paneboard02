@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Form>
-  <DisplayQuirk nameContains="FlipGo-A" platform="macos" minBottomInset="31"/>
-
   <!--
     QUADRANT MODEL (home/pgup/end/pgdn keys)
 

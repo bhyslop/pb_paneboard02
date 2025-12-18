@@ -10,7 +10,7 @@
 // Re-export platform display types for convenience
 #[cfg(target_os = "macos")]
 #[allow(unused_imports)] // Re-exported for module interface
-pub use crate::pbmbd_display::{DisplayInfo, RuntimeDisplayQuirk};
+pub use crate::pbmbd_display::DisplayInfo;
 
 // Stub types for non-macOS platforms (not used, but needed for compilation)
 #[cfg(not(target_os = "macos"))]
@@ -20,13 +20,6 @@ pub struct DisplayInfo {
     pub design_width: f64,
     pub design_height: f64,
     pub name: String,
-}
-
-#[cfg(not(target_os = "macos"))]
-#[derive(Clone)]
-pub struct RuntimeDisplayQuirk {
-    pub name_contains: String,
-    pub min_bottom_inset: u32,
 }
 
 // ============================================================================

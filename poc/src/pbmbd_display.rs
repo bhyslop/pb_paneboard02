@@ -161,13 +161,6 @@ pub unsafe fn visible_frame_for_screen(screen: &NSScreen) -> Option<VisibleFrame
     })
 }
 
-// Runtime display quirk (platform-filtered, embedded in DisplayInfo)
-#[derive(Clone, Debug)]
-pub struct RuntimeDisplayQuirk {
-    pub name_contains: String,
-    pub min_bottom_inset: u32,
-}
-
 // DisplayInfo for layout configuration system
 // Serves dual purpose:
 // - Design dimensions (design_width/height) for parse-time pane precomputation

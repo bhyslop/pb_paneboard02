@@ -15,17 +15,17 @@
 use std::collections::HashMap;
 
 #[cfg(target_os = "macos")]
-use crate::pbmbd_display::{DisplayInfo, RuntimeDisplayQuirk};
+use crate::pbmbd_display::DisplayInfo;
 
 // Import types from sibling modules
 use crate::pbgft_types::{DisplayProps, PaneFrac, DisplayMoveTarget, LayoutSession, DisplayMoveSession};
 use crate::pbgfp_parse::{ParsedForm, ParsedSpace, ParsedFrame, ParsedPane, ParsedShape,
-                          Platform, Orientation, MeasureRef, SpaceRule, ShapeChild,
+                          Orientation, MeasureRef, SpaceRule, ShapeChild,
                           IncludeCondition, TraverseOrder, MirrorMode, Fraction};
 
 // Use platform-specific or generic types depending on target
 #[cfg(not(target_os = "macos"))]
-use crate::pbgft_types::{DisplayInfo, RuntimeDisplayQuirk};
+use crate::pbgft_types::DisplayInfo;
 
 // ============================================================================
 // Module-specific runtime types
@@ -49,9 +49,6 @@ pub struct Form {
     spaces: HashMap<String, ParsedSpace>,
     frames: HashMap<String, ParsedFrame>,
     measures: HashMap<String, u32>,
-
-    // Runtime quirks for display adjustment
-    quirks: Vec<RuntimeDisplayQuirk>,
 
     // DisplayMove bindings: key_name → target spec
     display_moves: HashMap<String, DisplayMoveTarget>,
@@ -247,38 +244,9 @@ impl ParsedForm {
 // ============================================================================
 
 impl ParsedForm {
-    /// Apply DisplayQuirks to adjust display dimensions and embed quirks
-    /// NOTE: DisplayQuirk is deprecated. This function is now a no-op that returns
-    /// the input unchanged. Coordinate adjustments are handled by the Coordinate
-    /// System Abstraction (symmetric viewport) instead.
-    /// See: Coordinate System Abstraction in paneboard-poc.md
-    fn apply_display_quirks(&self, displays: &[DisplayInfo]) -> Vec<DisplayInfo> {
-        // DisplayQuirk is deprecated - return input unchanged
-        displays.to_vec()
-    }
-
-    fn build_runtime(&self, displays: &[DisplayInfo]) -> Form {
+    fn build_runtime(&self, _displays: &[DisplayInfo]) -> Form {
         let mut layouts = HashMap::new();
         let mut display_moves = HashMap::new();
-
-        // Determine current platform and filter quirks
-        #[cfg(target_os = "macos")]
-        let current_platform = Platform::MacOS;
-        #[cfg(target_os = "windows")]
-        let current_platform = Platform::Windows;
-        #[cfg(target_os = "linux")]
-        let current_platform = Platform::Linux;
-
-        let runtime_quirks: Vec<RuntimeDisplayQuirk> = self.display_quirks.iter()
-            .filter(|q| q.platform == current_platform)
-            .map(|q| RuntimeDisplayQuirk {
-                name_contains: q.name_contains.clone(),
-                min_bottom_inset: q.min_bottom_inset,
-            })
-            .collect();
-
-        // Apply DisplayQuirks to displays (for initial validation only)
-        let _adjusted_displays = self.apply_display_quirks(displays);
 
         // Build DisplayMove bindings
         for dm in &self.display_moves {
@@ -304,7 +272,6 @@ impl ParsedForm {
             spaces: self.spaces.clone(),
             frames: self.frames.clone(),
             measures: self.measures.clone(),
-            quirks: runtime_quirks,
             display_moves,
             layout_session: None,
             display_move_session: None,
@@ -323,7 +290,6 @@ impl Form {
             spaces: HashMap::new(),
             frames: HashMap::new(),
             measures: HashMap::new(),
-            quirks: Vec::new(),
             display_moves: HashMap::new(),
             layout_session: None,
             display_move_session: None,
@@ -362,9 +328,8 @@ impl Form {
             return Self::empty();
         }
 
-        // Apply quirks and build runtime
-        let adjusted_displays = parsed.apply_display_quirks(displays);
-        parsed.build_runtime(&adjusted_displays)
+        // Build runtime (DisplayQuirk is deprecated; symmetric viewport handles adjustments)
+        parsed.build_runtime(displays)
     }
 
     // Private helper methods (moved from ParsedForm)

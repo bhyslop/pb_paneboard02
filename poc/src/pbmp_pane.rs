@@ -105,9 +105,10 @@ pub unsafe fn print_expected_pane_sequences() {
     eprintln!("=============================================\n");
 }
 
-// Helper function to get design-based viewport
-// Gets DisplayInfo and uses its live_viewport method (returns design dimensions)
-unsafe fn visible_frame_with_quirks_for_index(screen: &objc2_app_kit::NSScreen, display_index: usize) -> Option<VisibleFrame> {
+/// Get symmetric viewport for display at given index.
+/// Uses DisplayInfo's live_viewport method which implements symmetric viewport logic.
+/// See: Coordinate System Abstraction in paneboard-poc.md
+unsafe fn symmetric_viewport_for_index(screen: &objc2_app_kit::NSScreen, display_index: usize) -> Option<VisibleFrame> {
     if let Some(display_info) = ADJUSTED_DISPLAYS.get(display_index) {
         return display_info.live_viewport(screen);
     }
@@ -221,7 +222,7 @@ pub fn execute_display_move_for_key(key: &str, pid: u32, bundle_id: &str) -> boo
         }
 
         // Get target visible frame
-        let target_vf = match visible_frame_with_quirks_for_index(&screens[target_display_index], target_display_index) {
+        let target_vf = match symmetric_viewport_for_index(&screens[target_display_index], target_display_index) {
             Some(vf) => vf,
             None => {
                 eprintln!("DISPLAYMOVE: key={} | FAILED reason=no_visible_frame", key);
@@ -230,7 +231,7 @@ pub fn execute_display_move_for_key(key: &str, pid: u32, bundle_id: &str) -> boo
         };
 
         // Get current visible frame for offset calculation
-        let current_vf = visible_frame_with_quirks_for_index(&screens[current_display_index], current_display_index).unwrap();
+        let current_vf = symmetric_viewport_for_index(&screens[current_display_index], current_display_index).unwrap();
 
         // Calculate offset within current screen
         let offset_x = current_rect.x - current_vf.min_x;
@@ -734,7 +735,7 @@ pub extern "C" fn ax_observer_callback(
             let disp_idx = get_display_index_for_window(rect);
             let screens = get_all_screens();
             let visible = if disp_idx < screens.len() {
-                visible_frame_with_quirks_for_index(&screens[disp_idx], disp_idx).unwrap_or_else(|| {
+                symmetric_viewport_for_index(&screens[disp_idx], disp_idx).unwrap_or_else(|| {
                     visible_frame_main_display().expect("Main display should exist")
                 })
             } else {
@@ -744,7 +745,7 @@ pub extern "C" fn ax_observer_callback(
         } else {
             let screens = get_all_screens();
             let visible = if !screens.is_empty() {
-                visible_frame_with_quirks_for_index(&screens[0], 0).expect("Main display should exist")
+                symmetric_viewport_for_index(&screens[0], 0).expect("Main display should exist")
             } else {
                 visible_frame_main_display().expect("Main display should exist")
             };
@@ -837,7 +838,7 @@ pub fn tile_window_quadrant(job: TilingJob) {
             } else {
                 let screens = get_all_screens();
                 let visible = if !screens.is_empty() {
-                    visible_frame_with_quirks_for_index(&screens[0], 0).unwrap_or_else(|| {
+                    symmetric_viewport_for_index(&screens[0], 0).unwrap_or_else(|| {
                         visible_frame_main_display().expect("Main display should exist")
                     })
                 } else {
@@ -848,7 +849,7 @@ pub fn tile_window_quadrant(job: TilingJob) {
         } else {
             let screens = get_all_screens();
             let visible = if !screens.is_empty() {
-                visible_frame_with_quirks_for_index(&screens[0], 0).unwrap_or_else(|| {
+                symmetric_viewport_for_index(&screens[0], 0).unwrap_or_else(|| {
                     visible_frame_main_display().expect("Main display should exist")
                 })
             } else {
