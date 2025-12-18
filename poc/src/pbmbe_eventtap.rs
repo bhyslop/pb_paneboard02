@@ -621,6 +621,9 @@ pub unsafe fn run_quadrant_poc() -> ! {
     // Print comprehensive display information
     print_all_display_info();
 
+    // Run display characterization diagnostic (shows green-bordered windows)
+    crate::pbmbd_display::run_display_characterization();
+
     // Deploy fresh default config at startup (before lazy Form initialization)
     crate::pbgfc_config::ensure_fresh_default_config();
 

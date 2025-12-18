@@ -248,60 +248,13 @@ impl ParsedForm {
 
 impl ParsedForm {
     /// Apply DisplayQuirks to adjust display dimensions and embed quirks
-    /// Returns a new Vec<DisplayInfo> with adjusted dimensions and quirks embedded
+    /// NOTE: DisplayQuirk is deprecated. This function is now a no-op that returns
+    /// the input unchanged. Coordinate adjustments are handled by the Coordinate
+    /// System Abstraction (symmetric viewport) instead.
+    /// See: Coordinate System Abstraction in paneboard-poc.md
     fn apply_display_quirks(&self, displays: &[DisplayInfo]) -> Vec<DisplayInfo> {
-        // Determine current platform
-        #[cfg(target_os = "macos")]
-        let current_platform = Platform::MacOS;
-        #[cfg(target_os = "windows")]
-        let current_platform = Platform::Windows;
-        #[cfg(target_os = "linux")]
-        let current_platform = Platform::Linux;
-
-        eprintln!("DEBUG: apply_display_quirks called with {} displays, {} quirks total",
-            displays.len(), self.display_quirks.len());
-        for quirk in &self.display_quirks {
-            let platform_str = match quirk.platform {
-                Platform::MacOS => "macos",
-                Platform::Windows => "windows",
-                Platform::Linux => "linux",
-            };
-            eprintln!("DEBUG: quirk: nameContains='{}' platform={} inset={}",
-                quirk.name_contains, platform_str, quirk.min_bottom_inset);
-        }
-
-        // Filter quirks to only those matching current platform
-        let runtime_quirks: Vec<RuntimeDisplayQuirk> = self.display_quirks.iter()
-            .filter(|q| q.platform == current_platform)
-            .map(|q| RuntimeDisplayQuirk {
-                name_contains: q.name_contains.clone(),
-                min_bottom_inset: q.min_bottom_inset,
-            })
-            .collect();
-
-        displays.iter().map(|display| {
-            eprintln!("DEBUG: checking display '{}' against quirks", display.name);
-
-            // Find MAX bottom inset from matching quirks
-            let max_bottom_inset = runtime_quirks.iter()
-                .filter(|q| display.name.contains(&q.name_contains))
-                .map(|q| q.min_bottom_inset)
-                .max()
-                .unwrap_or(0);
-
-            if max_bottom_inset > 0 {
-                eprintln!("LAYOUT: DisplayQuirk matched '{}' → applying {}px bottom inset",
-                    display.name, max_bottom_inset);
-            }
-
-            // Create new DisplayInfo with adjusted dimensions
-            DisplayInfo::new(
-                display.index,
-                display.design_width,
-                display.design_height - max_bottom_inset as f64,
-                display.name.clone(),
-            )
-        }).collect()
+        // DisplayQuirk is deprecated - return input unchanged
+        displays.to_vec()
     }
 
     fn build_runtime(&self, displays: &[DisplayInfo]) -> Form {
@@ -690,67 +643,16 @@ impl Form {
         });
     }
 
-    /// Apply menu bar + quirk corrections to design dimensions (ONCE, at design time)
-    /// Design dimensions = fully corrected viewport (menu bar + quirks applied)
-    /// live_viewport() returns these same design dimensions - no re-application
+    /// Adjust displays for runtime use
+    /// NOTE: DisplayQuirk corrections are deprecated. This function now returns
+    /// the input unchanged. All coordinate adjustments are handled by the
+    /// Coordinate System Abstraction (symmetric viewport in pbmbd_display.rs).
+    /// See: Coordinate System Abstraction in paneboard-poc.md
     #[cfg(target_os = "macos")]
     pub fn adjust_displays(&self, displays: &[DisplayInfo]) -> Vec<DisplayInfo> {
-        use crate::pbmbd_display::{get_all_screens, visible_frame_for_screen, full_frame_for_screen, get_menu_bar_height};
-
-        unsafe {
-            let screens = get_all_screens();
-            let menu_bar_height = get_menu_bar_height();
-
-            displays.iter().map(|display| {
-                // Find MAX bottom inset from matching quirks
-                let max_bottom_inset = self.quirks.iter()
-                    .filter(|q| display.name.contains(&q.name_contains))
-                    .map(|q| q.min_bottom_inset)
-                    .max()
-                    .unwrap_or(0);
-
-                if max_bottom_inset > 0 {
-                    eprintln!("LAYOUT: DisplayQuirk matched '{}' → applying {}px bottom inset",
-                        display.name, max_bottom_inset);
-                }
-
-                // Start from CURRENT visible frame, not cached gather value
-                // (NSScreen may have changed between gather and adjust calls)
-                let mut adjusted_height = if display.index < screens.len() {
-                    let screen = &screens[display.index];
-                    if let (Some(vf), Some(ff)) = (visible_frame_for_screen(screen), full_frame_for_screen(screen)) {
-                        // Apply menu bar correction if NSScreen hasn't already done so
-                        if vf.height == ff.height {
-                            vf.height - menu_bar_height
-                        } else {
-                            // NSScreen already subtracted menu bar
-                            vf.height
-                        }
-                    } else {
-                        display.design_height
-                    }
-                } else {
-                    display.design_height
-                };
-
-                // Apply quirks to design dimensions (physical seam compensation)
-                // --- BEGIN REQUIRED FIX ---
-                adjusted_height -= max_bottom_inset as f64;
-                eprintln!(
-                    "DEBUG: adjust_displays(): applied quirk bottom_inset={} → design_height={}",
-                    max_bottom_inset, adjusted_height
-                );
-                // --- END REQUIRED FIX ---
-
-                // Create new DisplayInfo with fully corrected dimensions
-                DisplayInfo::new(
-                    display.index,
-                    display.design_width,
-                    adjusted_height,
-                    display.name.clone(),
-                )
-            }).collect()
-        }
+        // DisplayQuirk is deprecated - return input unchanged
+        // Symmetric viewport logic in gather_all_display_info() handles all adjustments
+        displays.to_vec()
     }
 
     /// Compute fractional panes for a given action and display

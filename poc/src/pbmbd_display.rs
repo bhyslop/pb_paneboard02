@@ -191,35 +191,33 @@ impl DisplayInfo {
         }
     }
 
-    /// ### macOS Menu Bar Behavior
+    /// ### Symmetric Viewport Principle
     ///
-    /// macOS reports `visibleFrame` truthfully **only** for the primary display.
-    /// On secondary displays (with "Displays have separate Spaces" enabled),
-    /// `visibleFrame` deceptively equals the full frame height—even though the
-    /// system will automatically *push down* any window that overlaps the menu bar.
+    /// When the platform detects N pixels of unavailable space at the **top** of a display,
+    /// PaneBoard reserves an equal N pixels at the **bottom**. This ensures:
+    /// - Vertical layouts are centered within the truly usable area
+    /// - A "top 50% / bottom 50%" split divides at the true visual midpoint
+    /// - Consistent behavior regardless of menu bar height, notch presence, or OS version
     ///
-    /// Consequence:
-    /// - Primary display → `visibleFrame` already excludes ≈31 px at top.
-    /// - Secondary displays → macOS reports full height but still enforces
-    ///   a ~31 px top exclusion zone during window placement.
+    /// The `top_inset` is queried from the system menu bar height (which accounts for notch),
+    /// with a fallback to frame vs visibleFrame difference if needed.
     ///
-    /// ### Design Decision
-    /// We normalize this inconsistency by *always* reserving a 31 px
-    /// top inset in `live_viewport()` on **every** display.
-    /// That prevents macOS from silently shifting windows downward.
-    ///
-    /// If Apple changes this behavior, this constant should be revisited.
-    /// See also: <https://developer.apple.com/documentation/appkit/nsscreen/1388370-visibleframe>
+    /// See also: Coordinate System Abstraction in paneboard-poc.md
     pub unsafe fn live_viewport(&self, screen: &NSScreen) -> Option<VisibleFrame> {
-        let mut vf = visible_frame_for_screen(screen)?;
+        let vf = visible_frame_for_screen(screen)?;
 
-        // --- Normalize top inset across all displays ---
-        // This ensures consistent window placement on both primary and secondary displays
-        const MENU_BAR_HEIGHT: f64 = 31.0;
-        vf.min_y += MENU_BAR_HEIGHT;
-        vf.height -= MENU_BAR_HEIGHT;
+        // Get top_inset from system menu bar height (accounts for notch on MacBooks)
+        let top_inset = get_menu_bar_height();
 
-        Some(vf)
+        // Apply SYMMETRIC correction: reserve top_inset at BOTH top and bottom
+        // viewport_origin_y = visibleFrame.origin.y + top_inset
+        // viewport_height = visibleFrame.height - (2 × top_inset)
+        Some(VisibleFrame {
+            min_x: vf.min_x,
+            min_y: vf.min_y + top_inset,
+            width: vf.width,
+            height: vf.height - (2.0 * top_inset),
+        })
     }
 
     /// Convert fractional panes to screen pixels (unit conversion only)
@@ -269,10 +267,14 @@ impl DisplayInfo {
 }
 
 // Gather all display information for layout system initialization
+// Uses symmetric viewport dimensions (not raw visibleFrame) for design calculations
 #[allow(unexpected_cfgs)]
 pub unsafe fn gather_all_display_info() -> Vec<DisplayInfo> {
     let screens = get_all_screens();
     let mut displays = Vec::new();
+
+    // Get top_inset once (same for all displays per the symmetric viewport principle)
+    let top_inset = get_menu_bar_height();
 
     for (idx, screen) in screens.iter().enumerate() {
         if let Some(vf) = visible_frame_for_screen(screen) {
@@ -287,7 +289,10 @@ pub unsafe fn gather_all_display_info() -> Vec<DisplayInfo> {
                 format!("Display {}", idx)
             };
 
-            displays.push(DisplayInfo::new(idx, vf.width, vf.height, name));
+            // Apply symmetric viewport: height = visibleFrame.height - (2 × top_inset)
+            let symmetric_height = vf.height - (2.0 * top_inset);
+
+            displays.push(DisplayInfo::new(idx, vf.width, symmetric_height, name));
         }
     }
 
@@ -564,4 +569,95 @@ pub unsafe fn print_all_display_info() {
     }
 
     eprintln!("\n========================================\n");
+}
+
+// FFI declaration for Swift characterization window function
+// Uses flat arrays since Swift @_cdecl can't represent C structs
+extern "C" {
+    fn pbmbo_show_characterization_windows(
+        xs: *const f64,
+        ys: *const f64,
+        widths: *const f64,
+        heights: *const f64,
+        count: i32,
+        duration_seconds: f64,
+    );
+}
+
+/// Run display characterization diagnostic at startup
+/// Creates green-bordered transparent windows at symmetric viewport bounds on each display
+/// Displays for 3 seconds, then closes. Logs characterization data per spec format.
+#[allow(unexpected_cfgs)]
+pub unsafe fn run_display_characterization() {
+    let _mtm = MainThreadMarker::new_unchecked();
+    let screens = get_all_screens();
+
+    if screens.is_empty() {
+        eprintln!("CHAR: No displays detected");
+        return;
+    }
+
+    let top_inset = get_menu_bar_height();
+
+    // Use flat arrays for FFI compatibility
+    let mut xs: Vec<f64> = Vec::new();
+    let mut ys: Vec<f64> = Vec::new();
+    let mut widths: Vec<f64> = Vec::new();
+    let mut heights: Vec<f64> = Vec::new();
+
+    eprintln!("\n========== DISPLAY CHARACTERIZATION ==========");
+
+    for (idx, screen) in screens.iter().enumerate() {
+        // Get localized name
+        use objc2_foundation::NSString;
+        let name: *const NSString = msg_send![screen, localizedName];
+        let name_str = if !name.is_null() {
+            let ns = &*name;
+            ns.to_string()
+        } else {
+            format!("Display {}", idx)
+        };
+
+        // Get frame and visibleFrame
+        let frame: NSRect = msg_send![screen, frame];
+        let visible: NSRect = msg_send![screen, visibleFrame];
+
+        // Calculate symmetric viewport
+        // viewport_origin_y = visibleFrame.origin.y + top_inset
+        // viewport_height = visibleFrame.height - (2 × top_inset)
+        let sym_x = visible.origin.x;
+        let sym_y = visible.origin.y + top_inset;
+        let sym_w = visible.size.x;
+        let sym_h = visible.size.y - (2.0 * top_inset);
+
+        // Log characterization data per spec format
+        eprintln!("CHAR: display={} \"{}\"", idx, name_str);
+        eprintln!("  frame=({:.0}, {:.0}, {:.0}, {:.0})",
+            frame.origin.x, frame.origin.y, frame.size.x, frame.size.y);
+        eprintln!("  visibleFrame=({:.0}, {:.0}, {:.0}, {:.0})",
+            visible.origin.x, visible.origin.y, visible.size.x, visible.size.y);
+        eprintln!("  top_inset={:.0}", top_inset);
+        eprintln!("  symmetric_viewport=({:.0}, {:.0}, {:.0}, {:.0})",
+            sym_x, sym_y, sym_w, sym_h);
+
+        xs.push(sym_x);
+        ys.push(sym_y);
+        widths.push(sym_w);
+        heights.push(sym_h);
+    }
+
+    eprintln!("===============================================\n");
+
+    // Show characterization windows for 3 seconds
+    if !xs.is_empty() {
+        eprintln!("CHAR: Showing characterization windows for 3 seconds...");
+        pbmbo_show_characterization_windows(
+            xs.as_ptr(),
+            ys.as_ptr(),
+            widths.as_ptr(),
+            heights.as_ptr(),
+            xs.len() as i32,
+            3.0
+        );
+    }
 }
