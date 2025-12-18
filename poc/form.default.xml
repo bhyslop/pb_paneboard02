@@ -18,18 +18,30 @@
   -->
 
   <!--
-    FUTURE: TIC-TAC-TOE 3×3 GRID MODEL (u/i/o/j/k/l/m/,/. keys)
+    3x3 GRID MODEL (u/i/o/j/k/l/m/,/. keys)
 
-    Maps home-row adjacent keys to 3×3 grid positions:
-      u  i  o    (top row)
-      j  k  l    (middle row)
-      m  ,  .    (bottom row)
+    Maps keyboard layout to screen positions:
+      u  i  o    (top row)     ->  left   center  right  (top-biased subdivisions)
+      j  k  l    (middle row)  ->  left   center  right  (full-height focus)
+      m  ,  .    (bottom row)  ->  left   center  right  (bottom-biased subdivisions)
 
-    Behavior:
-    - 8 outer keys (u/i/o/j/l/m/,/.): single press → that grid cell
-    - Center key (k): 1st press = full screen, 2nd press = center cell only
+    Width options:
+    - Left column (u/j/m): 66% left, 33% left, 16% left gap (edge-hugging)
+    - Center column (i/k/,): 66% center, 33% center (centered with margins)
+    - Right column (o/l/.): mirrors left column to right side via mirrorX
 
-    Not yet implemented - deferred pending quadrant model debugging.
+    Height subdivisions:
+    - 50% height (top/bottom halves) are always available
+    - These respect the horizontal seam on flip-go monitors
+    - Full-height panes work on all displays
+
+    Key "k" (center) has additional options:
+    - Horizontal center strip (full width, 33% height in middle)
+    - Center cell (33% x 33% in the middle of the screen)
+
+    Mirroring strategy:
+    - Right column (o/l/.) uses mirrorX="flip" to mirror left layouts
+    - Bottom row (m/,/.) uses mirrorY="flip" to bias toward bottom subdivisions
   -->
 
   <!-- ========== REUSABLE BASE FRAMES (compositional building blocks) ========== -->
@@ -79,7 +91,52 @@
     <Pane x="1/2" y="1/2" width="1/2" height="1/2"/>  <!-- BR sub-quad -->
   </Frame>
 
-  <!-- ========== LAYOUTS ========== -->
+  <!-- ========== 3x3 GRID FRAMES ========== -->
+
+  <!-- Full-height width options (sixths-based for 66%/33%/16% splits) -->
+  <Frame name="grid-66-left">
+    <Pane x="0" y="0" width="2/3" height="1"/>
+  </Frame>
+
+  <Frame name="grid-66-center">
+    <Pane x="1/6" y="0" width="2/3" height="1"/>
+  </Frame>
+
+  <Frame name="grid-33-left">
+    <Pane x="0" y="0" width="1/3" height="1"/>
+  </Frame>
+
+  <Frame name="grid-33-center">
+    <Pane x="1/3" y="0" width="1/3" height="1"/>
+  </Frame>
+
+  <Frame name="grid-16-left">
+    <Pane x="0" y="0" width="1/6" height="1"/>
+  </Frame>
+
+  <!-- Height subdivision frame (top/bottom halves) -->
+  <Frame name="grid-halves">
+    <Pane x="0" y="0" width="1" height="1/2"/>
+    <Pane x="0" y="1/2" width="1" height="1/2"/>
+  </Frame>
+
+  <!-- Horizontal center strip for "k" key (full width, 33% height in middle) -->
+  <Frame name="grid-hstrip">
+    <Pane x="0" y="1/3" width="1" height="1/3"/>
+  </Frame>
+
+  <!-- Horizontal strip halves for "k" key -->
+  <Frame name="grid-hstrip-halves">
+    <Pane x="0" y="1/3" width="1/2" height="1/3"/>
+    <Pane x="1/2" y="1/3" width="1/2" height="1/3"/>
+  </Frame>
+
+  <!-- Center cell (1/3 x 1/3) for "k" key -->
+  <Frame name="grid-center-cell">
+    <Pane x="1/3" y="1/3" width="1/3" height="1/3"/>
+  </Frame>
+
+  <!-- ========== QUADRANT LAYOUT ========== -->
 
   <!-- Quadrant base layout: 11-pane compositional pattern
        Defines geometry for TL quadrant; other quadrants generated via mirroring.
@@ -159,6 +216,178 @@
     </Shape>
   </Layout>
 
+  <!-- ========== 3x3 GRID LAYOUTS ========== -->
+
+  <!--
+    grid-left: Left-biased layout for u/j/m keys
+    Mirrored via mirrorX="flip" for right-side keys (o/l/.)
+
+    Panes (sorted by area, largest first):
+    - Full screen
+    - 66% left, full height
+    - 33% left, full height
+    - 16% left gap, full height
+    - 66% left, top half (mirrorY flips to bottom for m/. keys)
+    - 33% left, top half
+    - 16% left gap, top half
+
+    Note: Only TOP-half subdivisions included. Bottom row keys (m/.) use
+    mirrorY="flip" to convert these to bottom-half positions.
+  -->
+  <Layout name="grid-left">
+    <!-- Full screen -->
+    <Shape frame="full">
+      <Include/>
+    </Shape>
+
+    <!-- 66% left, full height -->
+    <Shape frame="grid-66-left">
+      <Include/>
+    </Shape>
+
+    <!-- 33% left, full height -->
+    <Shape frame="grid-33-left">
+      <Include/>
+    </Shape>
+
+    <!-- 16% left gap, full height -->
+    <Shape frame="grid-16-left">
+      <Include/>
+    </Shape>
+
+    <!-- 66% left, top half only (bottom row keys use mirrorY to flip to bottom) -->
+    <Shape frame="grid-66-left">
+      <Shape frame="grid-halves">
+        <Include/>                         <!-- top half -->
+        <Include whenOrientation="never"/> <!-- bottom half (dropped) -->
+      </Shape>
+    </Shape>
+
+    <!-- 33% left, top half only -->
+    <Shape frame="grid-33-left">
+      <Shape frame="grid-halves">
+        <Include/>                         <!-- top half -->
+        <Include whenOrientation="never"/> <!-- bottom half (dropped) -->
+      </Shape>
+    </Shape>
+
+    <!-- 16% left gap, top half only -->
+    <Shape frame="grid-16-left">
+      <Shape frame="grid-halves">
+        <Include/>                         <!-- top half -->
+        <Include whenOrientation="never"/> <!-- bottom half (dropped) -->
+      </Shape>
+    </Shape>
+  </Layout>
+
+  <!--
+    grid-center: Center-biased layout for i/, keys
+
+    Panes (sorted by area, largest first):
+    - Full screen
+    - 66% center, full height
+    - 33% center, full height
+    - 66% center, top half (mirrorY flips to bottom for comma key)
+    - 33% center, top half
+
+    Note: Only TOP-half subdivisions included. Comma key uses
+    mirrorY="flip" to convert these to bottom-half positions.
+  -->
+  <Layout name="grid-center">
+    <!-- Full screen -->
+    <Shape frame="full">
+      <Include/>
+    </Shape>
+
+    <!-- 66% center, full height -->
+    <Shape frame="grid-66-center">
+      <Include/>
+    </Shape>
+
+    <!-- 33% center, full height -->
+    <Shape frame="grid-33-center">
+      <Include/>
+    </Shape>
+
+    <!-- 66% center, top half only (comma key uses mirrorY to flip to bottom) -->
+    <Shape frame="grid-66-center">
+      <Shape frame="grid-halves">
+        <Include/>                         <!-- top half -->
+        <Include whenOrientation="never"/> <!-- bottom half (dropped) -->
+      </Shape>
+    </Shape>
+
+    <!-- 33% center, top half only -->
+    <Shape frame="grid-33-center">
+      <Shape frame="grid-halves">
+        <Include/>                         <!-- top half -->
+        <Include whenOrientation="never"/> <!-- bottom half (dropped) -->
+      </Shape>
+    </Shape>
+  </Layout>
+
+  <!--
+    grid-k: Special center layout with horizontal strips for "k" key
+
+    Panes (sorted by area, largest first):
+    - Full screen
+    - 66% center, full height
+    - 33% center, full height (vertical strip)
+    - Full width, 33% center height (horizontal strip)
+    - Horizontal strip, left/right halves
+    - Center cell (33% x 33%)
+    - 66% center, top/bottom halves (k is middle row, both halves OK)
+    - 33% center, top/bottom halves
+  -->
+  <Layout name="grid-k">
+    <!-- Full screen -->
+    <Shape frame="full">
+      <Include/>
+    </Shape>
+
+    <!-- 66% center, full height -->
+    <Shape frame="grid-66-center">
+      <Include/>
+    </Shape>
+
+    <!-- 33% center, full height (vertical strip) -->
+    <Shape frame="grid-33-center">
+      <Include/>
+    </Shape>
+
+    <!-- Full width, 33% center height (horizontal strip) -->
+    <Shape frame="grid-hstrip">
+      <Include/>
+    </Shape>
+
+    <!-- Horizontal strip, left/right halves -->
+    <Shape frame="grid-hstrip-halves">
+      <Include/>
+      <Include/>
+    </Shape>
+
+    <!-- Center cell (1/3 x 1/3) -->
+    <Shape frame="grid-center-cell">
+      <Include/>
+    </Shape>
+
+    <!-- 66% center, both halves (k is middle row, no mirrorY needed) -->
+    <Shape frame="grid-66-center">
+      <Shape frame="grid-halves">
+        <Include/>  <!-- top half -->
+        <Include/>  <!-- bottom half -->
+      </Shape>
+    </Shape>
+
+    <!-- 33% center, both halves -->
+    <Shape frame="grid-33-center">
+      <Shape frame="grid-halves">
+        <Include/>  <!-- top half -->
+        <Include/>  <!-- bottom half -->
+      </Shape>
+    </Shape>
+  </Layout>
+
   <!-- ========== LAYOUT ACTIONS ========== -->
 
   <!-- Quadrant traversal: one base layout, mirrored for each quadrant
@@ -171,6 +400,33 @@
   <LayoutAction key="pageup"   layout="quadrant-base" traverse="xfyf" mirrorX="flip" mirrorY="keep"/>
   <LayoutAction key="end"      layout="quadrant-base" traverse="xfyf" mirrorX="keep" mirrorY="flip"/>
   <LayoutAction key="pagedown" layout="quadrant-base" traverse="xfyf" mirrorX="flip" mirrorY="flip"/>
+
+  <!-- 3x3 Grid: Top row (top-biased subdivisions)
+       u = left-biased, top-biased
+       i = center-biased, top-biased
+       o = right-biased (mirrored), top-biased
+  -->
+  <LayoutAction key="u" layout="grid-left"   traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="i" layout="grid-center" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="o" layout="grid-left"   traverse="xryf" mirrorX="flip" mirrorY="keep"/>
+
+  <!-- 3x3 Grid: Middle row (full-height focus)
+       j = left-biased, full height
+       k = center (special with horizontal strips)
+       l = right-biased (mirrored), full height
+  -->
+  <LayoutAction key="j" layout="grid-left"   traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="k" layout="grid-k"      traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="l" layout="grid-left"   traverse="xryf" mirrorX="flip" mirrorY="keep"/>
+
+  <!-- 3x3 Grid: Bottom row (bottom-biased subdivisions)
+       m = left-biased, bottom-biased (mirrored Y)
+       , = center-biased, bottom-biased (mirrored Y)
+       . = right-biased (mirrored X), bottom-biased (mirrored Y)
+  -->
+  <LayoutAction key="m"      layout="grid-left"   traverse="xfyr" mirrorX="keep" mirrorY="flip"/>
+  <LayoutAction key="comma"  layout="grid-center" traverse="xfyr" mirrorX="keep" mirrorY="flip"/>
+  <LayoutAction key="period" layout="grid-left"   traverse="xryr" mirrorX="flip" mirrorY="flip"/>
 
   <!-- Display movement -->
   <DisplayMove key="h" target="prev" wrap="true"/>
