@@ -380,8 +380,10 @@ This API returns the actual menu bar height including any notch accommodation. T
 ```
 symmetric_bottom_inset = top_inset
 viewport_origin_y = screen.visibleFrame.origin.y + top_inset
-viewport_height = screen.visibleFrame.height - (2 × top_inset)
+viewport_height = screen.visibleFrame.height - top_inset
 ```
+
+**Note:** `visibleFrame.height` already has `top_inset` excluded (macOS subtracts menu bar height from the reported visible height). We only subtract one additional `top_inset` for the symmetric bottom exclusion. The total reserved space is `2 × top_inset` (top + bottom), but only one subtraction is needed in the formula because the top is already accounted for.
 
 #### NSScreen.visibleFrame Unreliability (macOS)
 

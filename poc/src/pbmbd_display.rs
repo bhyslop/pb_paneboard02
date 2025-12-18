@@ -210,13 +210,15 @@ impl DisplayInfo {
         let top_inset = get_menu_bar_height();
 
         // Apply SYMMETRIC correction: reserve top_inset at BOTH top and bottom
+        // visibleFrame.height already has top_inset removed (menu bar exclusion)
+        // We only subtract one more top_inset for the symmetric bottom exclusion
         // viewport_origin_y = visibleFrame.origin.y + top_inset
-        // viewport_height = visibleFrame.height - (2 × top_inset)
+        // viewport_height = visibleFrame.height - top_inset (not 2×)
         Some(VisibleFrame {
             min_x: vf.min_x,
             min_y: vf.min_y + top_inset,
             width: vf.width,
-            height: vf.height - (2.0 * top_inset),
+            height: vf.height - top_inset,
         })
     }
 
@@ -289,8 +291,9 @@ pub unsafe fn gather_all_display_info() -> Vec<DisplayInfo> {
                 format!("Display {}", idx)
             };
 
-            // Apply symmetric viewport: height = visibleFrame.height - (2 × top_inset)
-            let symmetric_height = vf.height - (2.0 * top_inset);
+            // Apply symmetric viewport: visibleFrame.height already has top excluded,
+            // subtract one more top_inset for symmetric bottom exclusion
+            let symmetric_height = vf.height - top_inset;
 
             displays.push(DisplayInfo::new(idx, vf.width, symmetric_height, name));
         }
@@ -623,12 +626,12 @@ pub unsafe fn run_display_characterization() {
         let visible: NSRect = msg_send![screen, visibleFrame];
 
         // Calculate symmetric viewport
-        // viewport_origin_y = visibleFrame.origin.y + top_inset
-        // viewport_height = visibleFrame.height - (2 × top_inset)
+        // visibleFrame.height already has top_inset removed (menu bar exclusion)
+        // We only subtract one more top_inset for the symmetric bottom exclusion
         let sym_x = visible.origin.x;
         let sym_y = visible.origin.y + top_inset;
         let sym_w = visible.size.x;
-        let sym_h = visible.size.y - (2.0 * top_inset);
+        let sym_h = visible.size.y - top_inset;
 
         // Log characterization data per spec format
         eprintln!("CHAR: display={} \"{}\"", idx, name_str);
