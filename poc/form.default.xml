@@ -114,6 +114,10 @@
     <Pane x="0" y="0" width="1/6" height="1"/>
   </Frame>
 
+  <Frame name="grid-84-left">
+    <Pane x="0" y="0" width="5/6" height="1"/>
+  </Frame>
+
   <!-- Height subdivision frame (top/bottom halves) -->
   <Frame name="grid-halves">
     <Pane x="0" y="0" width="1" height="1/2"/>
@@ -224,10 +228,12 @@
 
     Panes (sorted by area, largest first):
     - Full screen
+    - 84% left (5/6 width, left-anchored), full height
     - 66% left, full height
     - 33% left, full height
     - 16% left gap, full height
-    - 66% left, top half (mirrorY flips to bottom for m/. keys)
+    - 84% left, top half (mirrorY flips to bottom for m/. keys)
+    - 66% left, top half
     - 33% left, top half
     - 16% left gap, top half
 
@@ -237,6 +243,11 @@
   <Layout name="grid-left">
     <!-- Full screen -->
     <Shape frame="full">
+      <Include/>
+    </Shape>
+
+    <!-- 84% left (5/6 width), full height -->
+    <Shape frame="grid-84-left">
       <Include/>
     </Shape>
 
@@ -253,6 +264,14 @@
     <!-- 16% left gap, full height -->
     <Shape frame="grid-16-left">
       <Include/>
+    </Shape>
+
+    <!-- 84% left, top half only (bottom row keys use mirrorY to flip to bottom) -->
+    <Shape frame="grid-84-left">
+      <Shape frame="grid-halves">
+        <Include/>                         <!-- top half -->
+        <Include whenOrientation="never"/> <!-- bottom half (dropped) -->
+      </Shape>
     </Shape>
 
     <!-- 66% left, top half only (bottom row keys use mirrorY to flip to bottom) -->
@@ -285,9 +304,10 @@
 
     Panes (sorted by area, largest first):
     - Full screen
+    - Full-width top half (mirrorY flips to bottom for comma key)
     - 66% center, full height
     - 33% center, full height
-    - 66% center, top half (mirrorY flips to bottom for comma key)
+    - 66% center, top half
     - 33% center, top half
 
     Note: Only TOP-half subdivisions included. Comma key uses
@@ -297,6 +317,12 @@
     <!-- Full screen -->
     <Shape frame="full">
       <Include/>
+    </Shape>
+
+    <!-- Full-width top half (comma gets bottom half via mirrorY) -->
+    <Shape frame="grid-halves">
+      <Include/>                         <!-- top half -->
+      <Include whenOrientation="never"/> <!-- bottom half (dropped) -->
     </Shape>
 
     <!-- 66% center, full height -->
