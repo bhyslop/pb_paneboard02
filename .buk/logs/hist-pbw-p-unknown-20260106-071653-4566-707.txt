@@ -1,4 +1,0 @@
-command: Tools/pbk/pbw_workbench.sh pbw-p --help
-Git context: bb5ee47
-[2026-01-06 07:16:54] Building and running PaneBoard PoC...
-Same log checksum: 6bbe7fb292c458cc72a7bd186ae4ec842c19ea1b30980d8e2f281dcd6357d624  .buk/logs/same-pbw-p-unknown.txt
