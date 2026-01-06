@@ -15,17 +15,17 @@
 use std::collections::HashMap;
 
 #[cfg(target_os = "macos")]
-use crate::pbmbd_display::{DisplayInfo, RuntimeDisplayQuirk};
+use crate::pbmbd_display::DisplayInfo;
 
 // Import types from sibling modules
 use crate::pbgft_types::{DisplayProps, PaneFrac, DisplayMoveTarget, LayoutSession, DisplayMoveSession};
 use crate::pbgfp_parse::{ParsedForm, ParsedSpace, ParsedFrame, ParsedPane, ParsedShape,
-                          Platform, Orientation, MeasureRef, SpaceRule, ShapeChild,
+                          Orientation, MeasureRef, SpaceRule, ShapeChild,
                           IncludeCondition, TraverseOrder, MirrorMode, Fraction};
 
 // Use platform-specific or generic types depending on target
 #[cfg(not(target_os = "macos"))]
-use crate::pbgft_types::{DisplayInfo, RuntimeDisplayQuirk};
+use crate::pbgft_types::DisplayInfo;
 
 // ============================================================================
 // Module-specific runtime types
@@ -49,9 +49,6 @@ pub struct Form {
     spaces: HashMap<String, ParsedSpace>,
     frames: HashMap<String, ParsedFrame>,
     measures: HashMap<String, u32>,
-
-    // Runtime quirks for display adjustment
-    quirks: Vec<RuntimeDisplayQuirk>,
 
     // DisplayMove bindings: key_name → target spec
     display_moves: HashMap<String, DisplayMoveTarget>,
@@ -247,85 +244,9 @@ impl ParsedForm {
 // ============================================================================
 
 impl ParsedForm {
-    /// Apply DisplayQuirks to adjust display dimensions and embed quirks
-    /// Returns a new Vec<DisplayInfo> with adjusted dimensions and quirks embedded
-    fn apply_display_quirks(&self, displays: &[DisplayInfo]) -> Vec<DisplayInfo> {
-        // Determine current platform
-        #[cfg(target_os = "macos")]
-        let current_platform = Platform::MacOS;
-        #[cfg(target_os = "windows")]
-        let current_platform = Platform::Windows;
-        #[cfg(target_os = "linux")]
-        let current_platform = Platform::Linux;
-
-        eprintln!("DEBUG: apply_display_quirks called with {} displays, {} quirks total",
-            displays.len(), self.display_quirks.len());
-        for quirk in &self.display_quirks {
-            let platform_str = match quirk.platform {
-                Platform::MacOS => "macos",
-                Platform::Windows => "windows",
-                Platform::Linux => "linux",
-            };
-            eprintln!("DEBUG: quirk: nameContains='{}' platform={} inset={}",
-                quirk.name_contains, platform_str, quirk.min_bottom_inset);
-        }
-
-        // Filter quirks to only those matching current platform
-        let runtime_quirks: Vec<RuntimeDisplayQuirk> = self.display_quirks.iter()
-            .filter(|q| q.platform == current_platform)
-            .map(|q| RuntimeDisplayQuirk {
-                name_contains: q.name_contains.clone(),
-                min_bottom_inset: q.min_bottom_inset,
-            })
-            .collect();
-
-        displays.iter().map(|display| {
-            eprintln!("DEBUG: checking display '{}' against quirks", display.name);
-
-            // Find MAX bottom inset from matching quirks
-            let max_bottom_inset = runtime_quirks.iter()
-                .filter(|q| display.name.contains(&q.name_contains))
-                .map(|q| q.min_bottom_inset)
-                .max()
-                .unwrap_or(0);
-
-            if max_bottom_inset > 0 {
-                eprintln!("LAYOUT: DisplayQuirk matched '{}' → applying {}px bottom inset",
-                    display.name, max_bottom_inset);
-            }
-
-            // Create new DisplayInfo with adjusted dimensions
-            DisplayInfo::new(
-                display.index,
-                display.design_width,
-                display.design_height - max_bottom_inset as f64,
-                display.name.clone(),
-            )
-        }).collect()
-    }
-
-    fn build_runtime(&self, displays: &[DisplayInfo]) -> Form {
+    fn build_runtime(&self, _displays: &[DisplayInfo]) -> Form {
         let mut layouts = HashMap::new();
         let mut display_moves = HashMap::new();
-
-        // Determine current platform and filter quirks
-        #[cfg(target_os = "macos")]
-        let current_platform = Platform::MacOS;
-        #[cfg(target_os = "windows")]
-        let current_platform = Platform::Windows;
-        #[cfg(target_os = "linux")]
-        let current_platform = Platform::Linux;
-
-        let runtime_quirks: Vec<RuntimeDisplayQuirk> = self.display_quirks.iter()
-            .filter(|q| q.platform == current_platform)
-            .map(|q| RuntimeDisplayQuirk {
-                name_contains: q.name_contains.clone(),
-                min_bottom_inset: q.min_bottom_inset,
-            })
-            .collect();
-
-        // Apply DisplayQuirks to displays (for initial validation only)
-        let _adjusted_displays = self.apply_display_quirks(displays);
 
         // Build DisplayMove bindings
         for dm in &self.display_moves {
@@ -351,7 +272,6 @@ impl ParsedForm {
             spaces: self.spaces.clone(),
             frames: self.frames.clone(),
             measures: self.measures.clone(),
-            quirks: runtime_quirks,
             display_moves,
             layout_session: None,
             display_move_session: None,
@@ -370,7 +290,6 @@ impl Form {
             spaces: HashMap::new(),
             frames: HashMap::new(),
             measures: HashMap::new(),
-            quirks: Vec::new(),
             display_moves: HashMap::new(),
             layout_session: None,
             display_move_session: None,
@@ -409,9 +328,8 @@ impl Form {
             return Self::empty();
         }
 
-        // Apply quirks and build runtime
-        let adjusted_displays = parsed.apply_display_quirks(displays);
-        parsed.build_runtime(&adjusted_displays)
+        // Build runtime (DisplayQuirk is deprecated; symmetric viewport handles adjustments)
+        parsed.build_runtime(displays)
     }
 
     // Private helper methods (moved from ParsedForm)
@@ -690,67 +608,16 @@ impl Form {
         });
     }
 
-    /// Apply menu bar + quirk corrections to design dimensions (ONCE, at design time)
-    /// Design dimensions = fully corrected viewport (menu bar + quirks applied)
-    /// live_viewport() returns these same design dimensions - no re-application
+    /// Adjust displays for runtime use
+    /// NOTE: DisplayQuirk corrections are deprecated. This function now returns
+    /// the input unchanged. All coordinate adjustments are handled by the
+    /// Coordinate System Abstraction (symmetric viewport in pbmbd_display.rs).
+    /// See: Coordinate System Abstraction in paneboard-poc.md
     #[cfg(target_os = "macos")]
     pub fn adjust_displays(&self, displays: &[DisplayInfo]) -> Vec<DisplayInfo> {
-        use crate::pbmbd_display::{get_all_screens, visible_frame_for_screen, full_frame_for_screen, get_menu_bar_height};
-
-        unsafe {
-            let screens = get_all_screens();
-            let menu_bar_height = get_menu_bar_height();
-
-            displays.iter().map(|display| {
-                // Find MAX bottom inset from matching quirks
-                let max_bottom_inset = self.quirks.iter()
-                    .filter(|q| display.name.contains(&q.name_contains))
-                    .map(|q| q.min_bottom_inset)
-                    .max()
-                    .unwrap_or(0);
-
-                if max_bottom_inset > 0 {
-                    eprintln!("LAYOUT: DisplayQuirk matched '{}' → applying {}px bottom inset",
-                        display.name, max_bottom_inset);
-                }
-
-                // Start from CURRENT visible frame, not cached gather value
-                // (NSScreen may have changed between gather and adjust calls)
-                let mut adjusted_height = if display.index < screens.len() {
-                    let screen = &screens[display.index];
-                    if let (Some(vf), Some(ff)) = (visible_frame_for_screen(screen), full_frame_for_screen(screen)) {
-                        // Apply menu bar correction if NSScreen hasn't already done so
-                        if vf.height == ff.height {
-                            vf.height - menu_bar_height
-                        } else {
-                            // NSScreen already subtracted menu bar
-                            vf.height
-                        }
-                    } else {
-                        display.design_height
-                    }
-                } else {
-                    display.design_height
-                };
-
-                // Apply quirks to design dimensions (physical seam compensation)
-                // --- BEGIN REQUIRED FIX ---
-                adjusted_height -= max_bottom_inset as f64;
-                eprintln!(
-                    "DEBUG: adjust_displays(): applied quirk bottom_inset={} → design_height={}",
-                    max_bottom_inset, adjusted_height
-                );
-                // --- END REQUIRED FIX ---
-
-                // Create new DisplayInfo with fully corrected dimensions
-                DisplayInfo::new(
-                    display.index,
-                    display.design_width,
-                    adjusted_height,
-                    display.name.clone(),
-                )
-            }).collect()
-        }
+        // DisplayQuirk is deprecated - return input unchanged
+        // Symmetric viewport logic in gather_all_display_info() handles all adjustments
+        displays.to_vec()
     }
 
     /// Compute fractional panes for a given action and display
@@ -849,7 +716,37 @@ impl Form {
 
     /// Reset display move session (called on chord release)
     pub fn reset_display_move_session(&mut self) {
+        if self.display_move_session.is_some() {
+            eprintln!("DISPLAYMOVE: Resetting display move session");
+        }
         self.display_move_session = None;
+    }
+
+    /// Store original size and position for display move session (called on first move in chord)
+    /// offset_x/offset_y are relative to the viewport origin
+    /// Returns true if this is a new session (first move), false if session already exists
+    pub fn start_display_move_session(&mut self, original_width: f64, original_height: f64, offset_x: f64, offset_y: f64) -> bool {
+        if self.display_move_session.is_none() {
+            eprintln!("DISPLAYMOVE: Starting session, storing original size ({:.0}x{:.0}) offset ({:.0},{:.0})",
+                original_width, original_height, offset_x, offset_y);
+            self.display_move_session = Some(DisplayMoveSession {
+                original_size: Some((original_width, original_height)),
+                original_offset: Some((offset_x, offset_y)),
+            });
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Get original size stored at start of display move session
+    pub fn get_original_size(&self) -> Option<(f64, f64)> {
+        self.display_move_session.as_ref().and_then(|s| s.original_size)
+    }
+
+    /// Get original offset stored at start of display move session
+    pub fn get_original_offset(&self) -> Option<(f64, f64)> {
+        self.display_move_session.as_ref().and_then(|s| s.original_offset)
     }
 
     /// Check if a key has a LayoutAction binding
@@ -864,11 +761,11 @@ impl Form {
     }
 
     /// Execute a DisplayMove for the given key and current display index
-    /// Returns the target display index, or None if key not bound or target out of range
-    pub fn execute_display_move(&self, key: &str, current_display_index: usize, total_displays: usize) -> Option<usize> {
+    /// Returns (target_display_index, target_spec) or None if key not bound or target out of range
+    pub fn execute_display_move(&self, key: &str, current_display_index: usize, total_displays: usize) -> Option<(usize, &DisplayMoveTarget)> {
         let target = self.display_moves.get(key)?;
 
-        match target {
+        let target_index = match target {
             DisplayMoveTarget::Next { wrap } => {
                 if current_display_index + 1 < total_displays {
                     Some(current_display_index + 1)
@@ -895,6 +792,8 @@ impl Form {
                     None
                 }
             }
-        }
+        };
+
+        target_index.map(|idx| (idx, target))
     }
 }

@@ -25,7 +25,6 @@
     <xs:complexType>
       <xs:sequence>
         <xs:element ref="Measure" minOccurs="0" maxOccurs="unbounded"/>
-        <xs:element ref="DisplayQuirk" minOccurs="0" maxOccurs="unbounded"/>
         <xs:element ref="Space" minOccurs="0" maxOccurs="unbounded"/>
         <xs:element ref="Frame" minOccurs="0" maxOccurs="unbounded"/>
         <xs:element ref="Layout" minOccurs="0" maxOccurs="unbounded"/>
@@ -79,78 +78,6 @@
       <xs:pattern value="[0-9]+|[a-zA-Z_][a-zA-Z0-9_]*"/>
     </xs:restriction>
   </xs:simpleType>
-
-  <!--
-    🟤 DISPLAY QUIRK: Platform-specific display geometry corrections
-
-    Defines workarounds for hardware or OS-specific display issues that prevent
-    windows from using the full reported visible frame. These are applied before
-    any layout calculations.
-
-    Common use cases:
-    - External monitors with physically obstructed regions (bezels, built-in controls)
-    - OS bugs where visibleFrame doesn't account for reserved UI space
-    - Platform-specific rendering issues requiring safe margins
-
-    Attributes:
-    - nameContains: Substring match against display name (e.g., "FlipGo-A")
-      Pattern enforces minimum 3 alphanumeric characters to avoid overly broad matches
-    - platform: Target OS (macos, windows, or linux)
-    - minBottomInset: Minimum pixels to reserve at bottom of display
-
-    Merging behavior:
-    When multiple quirks match the same display (by platform + nameContains),
-    the MAXIMUM minBottomInset is applied. This ensures all constraints are satisfied.
-
-    Example:
-      <DisplayQuirk nameContains="FlipGo-A" platform="macos" minBottomInset="31"/>
-
-    This reserves 31 pixels at the bottom of any display named "FlipGo-A" on macOS,
-    preventing window tiling into that region.
-
-    Processing:
-    Quirks are applied at both parse-time and runtime to ensure consistency:
-
-    Parse-time (pane list precomputation):
-    1. Filter quirks by current platform
-    2. For each DisplayInfo, find all quirks where nameContains matches display name
-    3. Take MAX of all matching minBottomInset values
-    4. Adjust DisplayInfo height: height -= inset
-    5. Use adjusted dimensions for Space matching and pane list precomputation
-
-    Runtime (window positioning):
-    1. Quirks are stored in runtime Form struct (platform-filtered)
-    2. When positioning windows, Form::get_min_bottom_inset(display_name) returns
-       the MAX minBottomInset for all matching quirks, or 0 if none match
-    3. VisibleFrame height is reduced by this inset before applying to windows
-
-    Non-holistic design note:
-    This is intentionally a "patch" mechanism for hardware/OS quirks, not integrated
-    with the Space/Measure system. Future versions may add topInset, leftInset,
-    rightInset if needed, or migrate to a more comprehensive inset model.
-  -->
-  <xs:element name="DisplayQuirk">
-    <xs:complexType>
-      <xs:attribute name="nameContains" use="required">
-        <xs:simpleType>
-          <xs:restriction base="xs:string">
-            <!-- Minimum 3 alphanumeric chars to avoid overly broad matches -->
-            <xs:pattern value="[A-Za-z0-9]{3,}"/>
-          </xs:restriction>
-        </xs:simpleType>
-      </xs:attribute>
-      <xs:attribute name="platform" use="required">
-        <xs:simpleType>
-          <xs:restriction base="xs:string">
-            <xs:enumeration value="macos"/>
-            <xs:enumeration value="windows"/>
-            <xs:enumeration value="linux"/>
-          </xs:restriction>
-        </xs:simpleType>
-      </xs:attribute>
-      <xs:attribute name="minBottomInset" type="xs:positiveInteger" use="required"/>
-    </xs:complexType>
-  </xs:element>
 
   <!--
     🟩 SPACE: Physical display environment definitions

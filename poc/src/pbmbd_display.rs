@@ -134,6 +134,62 @@ pub unsafe fn get_menu_bar_height() -> f64 {
     25.0
 }
 
+// =============================================================================
+// Coordinate System Conversion: NSScreen → AX
+// =============================================================================
+//
+// macOS has two coordinate systems:
+// - NSScreen/Cocoa: Origin at BOTTOM-LEFT of primary display, Y increases UPWARD
+// - AX (Accessibility): Origin at TOP-LEFT of primary display, Y increases DOWNWARD
+//
+// All window positioning uses AX coordinates. The conversion is:
+//   ax_y = primary_screen_height - ns_y - rect_height
+//
+// The x-axis is unchanged between systems.
+// =============================================================================
+
+/// Get the height of the primary display (needed for coordinate conversion)
+/// Primary display is the one at origin (0,0) - the display with the menu bar
+/// Note: NSScreen::mainScreen returns the FOCUSED screen, not the primary screen
+#[allow(unexpected_cfgs)]
+pub unsafe fn get_primary_display_height() -> f64 {
+    let mtm = MainThreadMarker::new_unchecked();
+    let screens = NSScreen::screens(mtm);
+
+    // Find the screen at origin (0,0) - this is the primary display
+    for i in 0..screens.len() {
+        let screen = screens.objectAtIndex(i);
+        let frame: NSRect = msg_send![&screen, frame];
+        if frame.origin.x == 0.0 && frame.origin.y == 0.0 {
+            return frame.size.y;
+        }
+    }
+
+    // Fallback: use first screen if no screen at origin (shouldn't happen)
+    if screens.len() > 0 {
+        let screen = screens.objectAtIndex(0);
+        let frame: NSRect = msg_send![&screen, frame];
+        return frame.size.y;
+    }
+
+    // Last resort fallback
+    1080.0
+}
+
+/// Convert a VisibleFrame from NSScreen coordinates to AX coordinates
+/// NSScreen: origin at bottom-left, Y up
+/// AX: origin at top-left of primary, Y down
+#[allow(unexpected_cfgs)]
+pub unsafe fn ns_to_ax_visible_frame(ns_frame: VisibleFrame) -> VisibleFrame {
+    let primary_height = get_primary_display_height();
+    VisibleFrame {
+        min_x: ns_frame.min_x,
+        min_y: primary_height - ns_frame.min_y - ns_frame.height,
+        width: ns_frame.width,
+        height: ns_frame.height,
+    }
+}
+
 // Get all screens in NSScreen enumeration order
 #[allow(unexpected_cfgs)]
 pub unsafe fn get_all_screens() -> Vec<objc2::rc::Retained<objc2_app_kit::NSScreen>> {
@@ -148,9 +204,10 @@ pub unsafe fn get_all_screens() -> Vec<objc2::rc::Retained<objc2_app_kit::NSScre
     result
 }
 
-// Get visible frame for a specific screen
+// Get visible frame for a specific screen in NSScreen coordinates (internal use)
+// NSScreen coords: origin at bottom-left, Y increases upward
 #[allow(unexpected_cfgs)]
-pub unsafe fn visible_frame_for_screen(screen: &NSScreen) -> Option<VisibleFrame> {
+unsafe fn visible_frame_for_screen_ns(screen: &NSScreen) -> Option<VisibleFrame> {
     let rect: NSRect = msg_send![screen, visibleFrame];
 
     Some(VisibleFrame {
@@ -161,11 +218,12 @@ pub unsafe fn visible_frame_for_screen(screen: &NSScreen) -> Option<VisibleFrame
     })
 }
 
-// Runtime display quirk (platform-filtered, embedded in DisplayInfo)
-#[derive(Clone, Debug)]
-pub struct RuntimeDisplayQuirk {
-    pub name_contains: String,
-    pub min_bottom_inset: u32,
+// Get visible frame for a specific screen (returns AX coordinates)
+// AX coords: origin at top-left of primary display, Y increases downward
+#[allow(unexpected_cfgs)]
+pub unsafe fn visible_frame_for_screen(screen: &NSScreen) -> Option<VisibleFrame> {
+    let ns_frame = visible_frame_for_screen_ns(screen)?;
+    Some(ns_to_ax_visible_frame(ns_frame))
 }
 
 // DisplayInfo for layout configuration system
@@ -191,35 +249,39 @@ impl DisplayInfo {
         }
     }
 
-    /// ### macOS Menu Bar Behavior
+    /// ### Symmetric Viewport Principle
     ///
-    /// macOS reports `visibleFrame` truthfully **only** for the primary display.
-    /// On secondary displays (with "Displays have separate Spaces" enabled),
-    /// `visibleFrame` deceptively equals the full frame height—even though the
-    /// system will automatically *push down* any window that overlaps the menu bar.
+    /// When the platform detects N pixels of unavailable space at the **top** of a display,
+    /// PaneBoard reserves an equal N pixels at the **bottom**. This ensures:
+    /// - Vertical layouts are centered within the truly usable area
+    /// - A "top 50% / bottom 50%" split divides at the true visual midpoint
+    /// - Consistent behavior regardless of menu bar height, notch presence, or OS version
     ///
-    /// Consequence:
-    /// - Primary display → `visibleFrame` already excludes ≈31 px at top.
-    /// - Secondary displays → macOS reports full height but still enforces
-    ///   a ~31 px top exclusion zone during window placement.
+    /// The `top_inset` is queried from the system menu bar height (which accounts for notch),
+    /// with a fallback to frame vs visibleFrame difference if needed.
     ///
-    /// ### Design Decision
-    /// We normalize this inconsistency by *always* reserving a 31 px
-    /// top inset in `live_viewport()` on **every** display.
-    /// That prevents macOS from silently shifting windows downward.
+    /// See also: Coordinate System Abstraction in paneboard-poc.md
     ///
-    /// If Apple changes this behavior, this constant should be revisited.
-    /// See also: <https://developer.apple.com/documentation/appkit/nsscreen/1388370-visibleframe>
+    /// Returns AX coordinates (top-left origin, Y down) for use with window positioning.
     pub unsafe fn live_viewport(&self, screen: &NSScreen) -> Option<VisibleFrame> {
-        let mut vf = visible_frame_for_screen(screen)?;
+        // Get visible frame in NSScreen coords (bottom-left origin, Y up)
+        let vf = visible_frame_for_screen_ns(screen)?;
 
-        // --- Normalize top inset across all displays ---
-        // This ensures consistent window placement on both primary and secondary displays
-        const MENU_BAR_HEIGHT: f64 = 31.0;
-        vf.min_y += MENU_BAR_HEIGHT;
-        vf.height -= MENU_BAR_HEIGHT;
+        // Get top_inset from system menu bar height (accounts for notch on MacBooks)
+        let top_inset = get_menu_bar_height();
 
-        Some(vf)
+        // Apply SYMMETRIC correction in NSScreen coords:
+        // - Raise bottom by top_inset (min_y + top_inset)
+        // - Reduce height by top_inset (visibleFrame already excludes menu bar at top)
+        let symmetric_ns = VisibleFrame {
+            min_x: vf.min_x,
+            min_y: vf.min_y + top_inset,
+            width: vf.width,
+            height: vf.height - top_inset,
+        };
+
+        // Convert to AX coordinates before returning
+        Some(ns_to_ax_visible_frame(symmetric_ns))
     }
 
     /// Convert fractional panes to screen pixels (unit conversion only)
@@ -269,10 +331,14 @@ impl DisplayInfo {
 }
 
 // Gather all display information for layout system initialization
+// Uses symmetric viewport dimensions (not raw visibleFrame) for design calculations
 #[allow(unexpected_cfgs)]
 pub unsafe fn gather_all_display_info() -> Vec<DisplayInfo> {
     let screens = get_all_screens();
     let mut displays = Vec::new();
+
+    // Get top_inset once (same for all displays per the symmetric viewport principle)
+    let top_inset = get_menu_bar_height();
 
     for (idx, screen) in screens.iter().enumerate() {
         if let Some(vf) = visible_frame_for_screen(screen) {
@@ -287,7 +353,11 @@ pub unsafe fn gather_all_display_info() -> Vec<DisplayInfo> {
                 format!("Display {}", idx)
             };
 
-            displays.push(DisplayInfo::new(idx, vf.width, vf.height, name));
+            // Apply symmetric viewport: visibleFrame.height already has top excluded,
+            // subtract one more top_inset for symmetric bottom exclusion
+            let symmetric_height = vf.height - top_inset;
+
+            displays.push(DisplayInfo::new(idx, vf.width, symmetric_height, name));
         }
     }
 
@@ -564,4 +634,95 @@ pub unsafe fn print_all_display_info() {
     }
 
     eprintln!("\n========================================\n");
+}
+
+// FFI declaration for Swift characterization window function
+// Uses flat arrays since Swift @_cdecl can't represent C structs
+extern "C" {
+    fn pbmbo_show_characterization_windows(
+        xs: *const f64,
+        ys: *const f64,
+        widths: *const f64,
+        heights: *const f64,
+        count: i32,
+        duration_seconds: f64,
+    );
+}
+
+/// Run display characterization diagnostic at startup
+/// Creates green-bordered transparent windows at symmetric viewport bounds on each display
+/// Displays for 3 seconds, then closes. Logs characterization data per spec format.
+#[allow(unexpected_cfgs)]
+pub unsafe fn run_display_characterization() {
+    let _mtm = MainThreadMarker::new_unchecked();
+    let screens = get_all_screens();
+
+    if screens.is_empty() {
+        eprintln!("CHAR: No displays detected");
+        return;
+    }
+
+    let top_inset = get_menu_bar_height();
+
+    // Use flat arrays for FFI compatibility
+    let mut xs: Vec<f64> = Vec::new();
+    let mut ys: Vec<f64> = Vec::new();
+    let mut widths: Vec<f64> = Vec::new();
+    let mut heights: Vec<f64> = Vec::new();
+
+    eprintln!("\n========== DISPLAY CHARACTERIZATION ==========");
+
+    for (idx, screen) in screens.iter().enumerate() {
+        // Get localized name
+        use objc2_foundation::NSString;
+        let name: *const NSString = msg_send![screen, localizedName];
+        let name_str = if !name.is_null() {
+            let ns = &*name;
+            ns.to_string()
+        } else {
+            format!("Display {}", idx)
+        };
+
+        // Get frame and visibleFrame
+        let frame: NSRect = msg_send![screen, frame];
+        let visible: NSRect = msg_send![screen, visibleFrame];
+
+        // Calculate symmetric viewport
+        // visibleFrame.height already has top_inset removed (menu bar exclusion)
+        // We only subtract one more top_inset for the symmetric bottom exclusion
+        let sym_x = visible.origin.x;
+        let sym_y = visible.origin.y + top_inset;
+        let sym_w = visible.size.x;
+        let sym_h = visible.size.y - top_inset;
+
+        // Log characterization data per spec format
+        eprintln!("CHAR: display={} \"{}\"", idx, name_str);
+        eprintln!("  frame=({:.0}, {:.0}, {:.0}, {:.0})",
+            frame.origin.x, frame.origin.y, frame.size.x, frame.size.y);
+        eprintln!("  visibleFrame=({:.0}, {:.0}, {:.0}, {:.0})",
+            visible.origin.x, visible.origin.y, visible.size.x, visible.size.y);
+        eprintln!("  top_inset={:.0}", top_inset);
+        eprintln!("  symmetric_viewport=({:.0}, {:.0}, {:.0}, {:.0})",
+            sym_x, sym_y, sym_w, sym_h);
+
+        xs.push(sym_x);
+        ys.push(sym_y);
+        widths.push(sym_w);
+        heights.push(sym_h);
+    }
+
+    eprintln!("===============================================\n");
+
+    // Show characterization windows for 3 seconds
+    if !xs.is_empty() {
+        eprintln!("CHAR: Showing characterization windows for 3 seconds...");
+        pbmbo_show_characterization_windows(
+            xs.as_ptr(),
+            ys.as_ptr(),
+            widths.as_ptr(),
+            heights.as_ptr(),
+            xs.len() as i32,
+            3.0
+        );
+    }
 }
