@@ -656,3 +656,126 @@ public func pbmbo_update_clipboard_highlight(
 public func pbmbo_hide_clipboard_overlay() {
     overlayManager?.hideOverlays()
 }
+
+// MARK: - Display Characterization Windows
+
+/// Characterization window with 4px green border and transparent interior
+class CharacterizationWindow: NSWindow {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
+/// Characterization content view - draws 4px green border only
+class CharacterizationContentView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        // Clear background (fully transparent)
+        NSColor.clear.setFill()
+        bounds.fill()
+
+        // Draw 4px green border
+        let borderWidth: CGFloat = 4.0
+        NSColor.green.setStroke()
+
+        let borderPath = NSBezierPath(rect: bounds.insetBy(dx: borderWidth / 2, dy: borderWidth / 2))
+        borderPath.lineWidth = borderWidth
+        borderPath.stroke()
+    }
+}
+
+/// Manager for characterization windows
+private var characterizationWindows: [CharacterizationWindow] = []
+private var characterizationTimer: Timer?
+
+/// Show characterization windows with green borders at specified viewport bounds
+/// Parameters are flat arrays: xs, ys, widths, heights (each of length count)
+@_cdecl("pbmbo_show_characterization_windows")
+public func pbmbo_show_characterization_windows(
+    xs: UnsafePointer<Double>,
+    ys: UnsafePointer<Double>,
+    widths: UnsafePointer<Double>,
+    heights: UnsafePointer<Double>,
+    count: Int32,
+    duration_seconds: Double
+) {
+    // Clean up any existing characterization windows
+    for window in characterizationWindows {
+        window.orderOut(nil)
+    }
+    characterizationWindows.removeAll()
+    characterizationTimer?.invalidate()
+
+    let screens = NSScreen.screens
+    guard !screens.isEmpty else {
+        print("CHAR: No screens available for characterization windows")
+        return
+    }
+
+    // Create a window for each rect
+    for i in 0..<Int(count) {
+        let rectX = xs[i]
+        let rectY = ys[i]
+        let rectW = widths[i]
+        let rectH = heights[i]
+
+        // Find which screen this rect belongs to
+        // (based on the x coordinate falling within screen bounds)
+        var targetScreen: NSScreen? = nil
+        for screen in screens {
+            let sf = screen.frame
+            if rectX >= sf.origin.x && rectX < sf.origin.x + sf.size.width {
+                targetScreen = screen
+                break
+            }
+        }
+
+        guard let screen = targetScreen else {
+            print("CHAR: No screen found for rect at x=\(rectX)")
+            continue
+        }
+
+        // Convert global coordinates to screen-local coordinates
+        let sf = screen.frame
+        let localX = rectX - sf.origin.x
+        let localY = rectY - sf.origin.y
+
+        let windowFrame = NSRect(
+            x: localX,
+            y: localY,
+            width: rectW,
+            height: rectH
+        )
+
+        let window = CharacterizationWindow(
+            contentRect: windowFrame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false,
+            screen: screen
+        )
+
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.level = .statusBar + 1  // Above normal overlays
+        window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        window.ignoresMouseEvents = true
+
+        let contentView = CharacterizationContentView(frame: windowFrame)
+        window.contentView = contentView
+
+        characterizationWindows.append(window)
+        window.orderFrontRegardless()
+
+        print("CHAR: Window \(i) shown at (\(rectX), \(rectY), \(rectW), \(rectH))")
+    }
+
+    // Schedule auto-dismiss after duration
+    characterizationTimer = Timer.scheduledTimer(withTimeInterval: duration_seconds, repeats: false) { _ in
+        for window in characterizationWindows {
+            window.orderOut(nil)
+        }
+        characterizationWindows.removeAll()
+        print("CHAR: Characterization windows dismissed")
+    }
+}

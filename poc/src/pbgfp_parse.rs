@@ -106,18 +106,11 @@ impl Fraction {
 
 pub(crate) struct ParsedForm {
     pub(crate) measures: HashMap<String, u32>,
-    pub(crate) display_quirks: Vec<ParsedDisplayQuirk>,
     pub(crate) spaces: HashMap<String, ParsedSpace>,
     pub(crate) frames: HashMap<String, ParsedFrame>,
     pub(crate) layouts: HashMap<String, ParsedLayout>,
     pub(crate) layout_actions: Vec<ParsedLayoutAction>,
     pub(crate) display_moves: Vec<ParsedDisplayMove>,
-}
-
-pub(crate) struct ParsedDisplayQuirk {
-    pub(crate) name_contains: String,
-    pub(crate) platform: Platform,
-    pub(crate) min_bottom_inset: u32,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -252,7 +245,6 @@ impl ParsedForm {
         reader.trim_text(true);
 
         let mut measures = HashMap::new();
-        let mut display_quirks = Vec::new();
         let mut spaces = HashMap::new();
         let mut frames = HashMap::new();
         let mut layouts = HashMap::new();
@@ -297,11 +289,6 @@ impl ParsedForm {
                                 .map_err(|e| format!("at byte {}: {}", reader.buffer_position(), e))?;
                             measures.insert(m.0, m.1);
                         }
-                        b"DisplayQuirk" if in_form => {
-                            let quirk = Self::parse_display_quirk(e)
-                                .map_err(|e| format!("at byte {}: {}", reader.buffer_position(), e))?;
-                            display_quirks.push(quirk);
-                        }
                         b"LayoutAction" if in_form => {
                             let action = Self::parse_layout_action(e)
                                 .map_err(|e| format!("at byte {}: {}", reader.buffer_position(), e))?;
@@ -312,6 +299,7 @@ impl ParsedForm {
                                 .map_err(|e| format!("at byte {}: {}", reader.buffer_position(), e))?;
                             display_moves.push(dm);
                         }
+                        // Note: DisplayQuirk elements are silently ignored (deprecated)
                         _ => {}
                     }
                 }
@@ -327,7 +315,6 @@ impl ParsedForm {
 
         Ok(ParsedForm {
             measures,
-            display_quirks,
             spaces,
             frames,
             layouts,
@@ -356,45 +343,6 @@ impl ParsedForm {
         match (name, value) {
             (Some(n), Some(v)) => Ok((n, v)),
             _ => Err("Measure missing required attributes".to_string()),
-        }
-    }
-
-    fn parse_display_quirk(e: &quick_xml::events::BytesStart) -> Result<ParsedDisplayQuirk, String> {
-        let mut name_contains = None;
-        let mut platform = None;
-        let mut min_bottom_inset = None;
-
-        for attr in e.attributes() {
-            let attr = attr.map_err(|e| format!("attribute error: {}", e))?;
-            match attr.key.as_ref() {
-                b"nameContains" => {
-                    name_contains = Some(String::from_utf8_lossy(&attr.value).to_string());
-                }
-                b"platform" => {
-                    let p_str = String::from_utf8_lossy(&attr.value);
-                    platform = Some(match p_str.as_ref() {
-                        "macos" => Platform::MacOS,
-                        "windows" => Platform::Windows,
-                        "linux" => Platform::Linux,
-                        _ => return Err(format!("invalid platform: {}", p_str)),
-                    });
-                }
-                b"minBottomInset" => {
-                    let v_str = String::from_utf8_lossy(&attr.value);
-                    min_bottom_inset = Some(v_str.parse::<u32>()
-                        .map_err(|_| format!("invalid minBottomInset value: {}", v_str))?);
-                }
-                _ => {}
-            }
-        }
-
-        match (name_contains, platform, min_bottom_inset) {
-            (Some(nc), Some(p), Some(mbi)) => Ok(ParsedDisplayQuirk {
-                name_contains: nc,
-                platform: p,
-                min_bottom_inset: mbi,
-            }),
-            _ => Err("DisplayQuirk missing required attributes".to_string()),
         }
     }
 

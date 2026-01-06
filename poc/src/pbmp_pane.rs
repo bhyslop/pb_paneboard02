@@ -105,9 +105,10 @@ pub unsafe fn print_expected_pane_sequences() {
     eprintln!("=============================================\n");
 }
 
-// Helper function to get design-based viewport
-// Gets DisplayInfo and uses its live_viewport method (returns design dimensions)
-unsafe fn visible_frame_with_quirks_for_index(screen: &objc2_app_kit::NSScreen, display_index: usize) -> Option<VisibleFrame> {
+/// Get symmetric viewport for display at given index.
+/// Uses DisplayInfo's live_viewport method which implements symmetric viewport logic.
+/// See: Coordinate System Abstraction in paneboard-poc.md
+unsafe fn symmetric_viewport_for_index(screen: &objc2_app_kit::NSScreen, display_index: usize) -> Option<VisibleFrame> {
     if let Some(display_info) = ADJUSTED_DISPLAYS.get(display_index) {
         return display_info.live_viewport(screen);
     }
@@ -174,6 +175,13 @@ pub fn handle_configured_key(key: &str, frontmost: FrontmostInfo) -> bool {
 
 /// Execute a DisplayMove for the given key (checks Form configuration)
 /// Returns true if move was executed, false if no binding or out of range
+///
+/// Size preservation behavior per spec:
+/// 1. First move in chord: store original size
+/// 2. If window fits in target: preserve size ("preserved size")
+/// 3. If window too large:
+///    a. If original size would fit: restore original ("restored original size")
+///    b. Otherwise: resize to full target viewport ("resized to full screen (too large)")
 pub fn execute_display_move_for_key(key: &str, pid: u32, bundle_id: &str) -> bool {
     unsafe {
         let screens = get_all_screens();
@@ -203,16 +211,23 @@ pub fn execute_display_move_for_key(key: &str, pid: u32, bundle_id: &str) -> boo
         // Determine current display index
         let current_display_index = get_display_index_for_window(current_rect);
 
-        // Look up target display from Form
-        let form = FORM.lock().unwrap();
-        let target_display_index = match form.execute_display_move(key, current_display_index, screens.len()) {
-            Some(idx) => idx,
+        // Look up target display from Form (returns both index and target spec)
+        let mut form = FORM.lock().unwrap();
+        let (target_display_index, target_spec) = match form.execute_display_move(key, current_display_index, screens.len()) {
+            Some(result) => result,
             None => {
                 // No binding or out of range (already logged)
                 return false;
             }
         };
-        drop(form); // Release lock before AX operations
+
+        // Format target for logging from the enum (spec format: "next", "prev", or index number)
+        use crate::pbgft_types::DisplayMoveTarget;
+        let target_string: String = match target_spec {
+            DisplayMoveTarget::Next { .. } => "next".to_string(),
+            DisplayMoveTarget::Prev { .. } => "prev".to_string(),
+            DisplayMoveTarget::Index(idx) => idx.to_string(),
+        };
 
         // If already on target display, no-op
         if target_display_index == current_display_index {
@@ -220,8 +235,21 @@ pub fn execute_display_move_for_key(key: &str, pid: u32, bundle_id: &str) -> boo
             return false;
         }
 
+        // Get current visible frame for offset calculation (need this before storing session)
+        let current_vf = symmetric_viewport_for_index(&screens[current_display_index], current_display_index).unwrap();
+
+        // Calculate current offset within screen (relative position)
+        let current_offset_x = current_rect.x - current_vf.min_x;
+        let current_offset_y = current_rect.y - current_vf.min_y;
+
+        // Store original size AND offset on first move in chord
+        form.start_display_move_session(current_rect.w, current_rect.h, current_offset_x, current_offset_y);
+        let original_size = form.get_original_size();
+        let original_offset = form.get_original_offset();
+        drop(form); // Release lock before AX operations
+
         // Get target visible frame
-        let target_vf = match visible_frame_with_quirks_for_index(&screens[target_display_index], target_display_index) {
+        let target_vf = match symmetric_viewport_for_index(&screens[target_display_index], target_display_index) {
             Some(vf) => vf,
             None => {
                 eprintln!("DISPLAYMOVE: key={} | FAILED reason=no_visible_frame", key);
@@ -229,39 +257,104 @@ pub fn execute_display_move_for_key(key: &str, pid: u32, bundle_id: &str) -> boo
             }
         };
 
-        // Get current visible frame for offset calculation
-        let current_vf = visible_frame_with_quirks_for_index(&screens[current_display_index], current_display_index).unwrap();
+        // Determine final size and position, tracking which case applies
+        // Per spec: restore original when "returning to a display large enough to accommodate it"
+        let (final_w, final_h, offset_x, offset_y, size_action): (f64, f64, f64, f64, &str);
 
-        // Calculate offset within current screen
-        let offset_x = current_rect.x - current_vf.min_x;
-        let offset_y = current_rect.y - current_vf.min_y;
+        // Check if original size would fit (prioritize restoring original per spec)
+        let original_fits = original_size.map_or(false, |(ow, oh)| {
+            ow <= target_vf.width && oh <= target_vf.height
+        });
 
-        // Apply same offset to target screen to preserve relative position
-        let new_x = target_vf.min_x + offset_x;
-        let new_y = target_vf.min_y + offset_y;
+        // Check if current size fits in target viewport
+        let current_fits = current_rect.w <= target_vf.width && current_rect.h <= target_vf.height;
 
-        // Move window to new position (size unchanged)
-        match win.set_position(new_x, new_y) {
-            Ok(()) => {
-                println!(
-                    "DISPLAYMOVE: SUCCESS key={} | app=\"{}\" from_display={} to_display={} frame=({:.0},{:.0},{:.0},{:.0})",
-                    key, bundle_id, current_display_index, target_display_index, new_x, new_y, current_rect.w, current_rect.h
-                );
-                true
-            }
-            Err(e) => {
+        if original_fits {
+            // Case 1: Original size fits - restore it with original offset
+            let (ow, oh) = original_size.unwrap();
+            let (ox, oy) = original_offset.unwrap_or((current_offset_x, current_offset_y));
+            final_w = ow;
+            final_h = oh;
+            offset_x = ox;
+            offset_y = oy;
+            size_action = "restored original size";
+        } else if current_fits {
+            // Case 2: Current size fits (but original too large) - preserve current with current offset
+            final_w = current_rect.w;
+            final_h = current_rect.h;
+            offset_x = current_offset_x;
+            offset_y = current_offset_y;
+            size_action = "preserved size";
+        } else {
+            // Case 3: Neither fits - resize to full target viewport, position at origin
+            final_w = target_vf.width;
+            final_h = target_vf.height;
+            offset_x = 0.0;
+            offset_y = 0.0;
+            size_action = "resized to full screen (too large)";
+        }
+
+        // Calculate position - apply offset, then clamp to target bounds
+        let mut new_x = target_vf.min_x + offset_x;
+        let mut new_y = target_vf.min_y + offset_y;
+
+        // Clamp position to ensure window stays within target viewport bounds
+        let max_x = target_vf.min_x + target_vf.width - final_w;
+        let max_y = target_vf.min_y + target_vf.height - final_h;
+
+        if new_x < target_vf.min_x {
+            new_x = target_vf.min_x;
+        } else if new_x > max_x {
+            new_x = max_x.max(target_vf.min_x);
+        }
+
+        if new_y < target_vf.min_y {
+            new_y = target_vf.min_y;
+        } else if new_y > max_y {
+            new_y = max_y.max(target_vf.min_y);
+        }
+
+        // Apply position first (Position → Size policy)
+        if let Err(e) = win.set_position(new_x, new_y) {
+            let reason = match e {
+                AxError::Permission => "ax_permission_missing_or_revoked",
+                AxError::Platform(code) => {
+                    eprintln!("DEBUG: set_position failed with code {}", code);
+                    "ax_error(op=AXSetPosition)"
+                }
+                _ => "ax_error(op=AXSetPosition)",
+            };
+            eprintln!("DISPLAYMOVE: FAILED target={} | reason={}", target_string, reason);
+            return false;
+        }
+
+        // Apply size if it changed
+        let size_changed = (final_w - current_rect.w).abs() > 1.0 || (final_h - current_rect.h).abs() > 1.0;
+        if size_changed {
+            if let Err(e) = win.set_size(final_w, final_h) {
                 let reason = match e {
                     AxError::Permission => "ax_permission_missing_or_revoked",
+                    AxError::Constrained => "size_constrained_or_fullscreen",
                     AxError::Platform(code) => {
-                        eprintln!("DEBUG: set_position failed with code {}", code);
-                        "ax_error"
+                        eprintln!("DEBUG: set_size failed with code {}", code);
+                        "ax_error(op=AXSetSize)"
                     }
-                    _ => "ax_error",
                 };
-                eprintln!("DISPLAYMOVE: key={} | FAILED reason={}", key, reason);
-                false
+                eprintln!("DISPLAYMOVE: FAILED target={} | reason={}", target_string, reason);
+                return false;
             }
         }
+
+        // Success - log per spec format
+        println!(
+            "DISPLAYMOVE: SUCCESS target={} | {}",
+            target_string, size_action
+        );
+        eprintln!(
+            "DEBUG: DISPLAYMOVE app=\"{}\" from_display={} to_display={} frame=({:.0},{:.0},{:.0},{:.0})",
+            bundle_id, current_display_index, target_display_index, new_x, new_y, final_w, final_h
+        );
+        true
     }
 }
 
@@ -562,13 +655,14 @@ fn pixel_rect_to_rect(pr: &PixelRect, _vf: &VisibleFrame) -> Rect {
 }
 
 /// Determine which display index contains the given window rect (by center point)
+/// Uses symmetric viewport bounds for consistency with display move operations
 unsafe fn get_display_index_for_window(window_rect: Rect) -> usize {
     let screens = get_all_screens();
     let win_center_x = window_rect.x + window_rect.w / 2.0;
     let win_center_y = window_rect.y + window_rect.h / 2.0;
 
     for (idx, screen) in screens.iter().enumerate() {
-        if let Some(vf) = visible_frame_for_screen(screen) {
+        if let Some(vf) = symmetric_viewport_for_index(screen, idx) {
             if win_center_x >= vf.min_x && win_center_x < vf.min_x + vf.width &&
                win_center_y >= vf.min_y && win_center_y < vf.min_y + vf.height {
                 return idx;
@@ -734,7 +828,7 @@ pub extern "C" fn ax_observer_callback(
             let disp_idx = get_display_index_for_window(rect);
             let screens = get_all_screens();
             let visible = if disp_idx < screens.len() {
-                visible_frame_with_quirks_for_index(&screens[disp_idx], disp_idx).unwrap_or_else(|| {
+                symmetric_viewport_for_index(&screens[disp_idx], disp_idx).unwrap_or_else(|| {
                     visible_frame_main_display().expect("Main display should exist")
                 })
             } else {
@@ -744,7 +838,7 @@ pub extern "C" fn ax_observer_callback(
         } else {
             let screens = get_all_screens();
             let visible = if !screens.is_empty() {
-                visible_frame_with_quirks_for_index(&screens[0], 0).expect("Main display should exist")
+                symmetric_viewport_for_index(&screens[0], 0).expect("Main display should exist")
             } else {
                 visible_frame_main_display().expect("Main display should exist")
             };
@@ -837,7 +931,7 @@ pub fn tile_window_quadrant(job: TilingJob) {
             } else {
                 let screens = get_all_screens();
                 let visible = if !screens.is_empty() {
-                    visible_frame_with_quirks_for_index(&screens[0], 0).unwrap_or_else(|| {
+                    symmetric_viewport_for_index(&screens[0], 0).unwrap_or_else(|| {
                         visible_frame_main_display().expect("Main display should exist")
                     })
                 } else {
@@ -848,7 +942,7 @@ pub fn tile_window_quadrant(job: TilingJob) {
         } else {
             let screens = get_all_screens();
             let visible = if !screens.is_empty() {
-                visible_frame_with_quirks_for_index(&screens[0], 0).unwrap_or_else(|| {
+                symmetric_viewport_for_index(&screens[0], 0).unwrap_or_else(|| {
                     visible_frame_main_display().expect("Main display should exist")
                 })
             } else {
