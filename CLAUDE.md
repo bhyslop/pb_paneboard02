@@ -149,6 +149,14 @@ Configured agents in `.claude/agents/`:
 
 ---
 
+### BUK Bash Patterns
+
+BCG (Bash Console Guide) is the authoritative reference for enterprise bash patterns used by BUK utilities.
+
+- **BCG** → `Tools/buk/lenses/bpu-BCG-BashConsoleGuide.md`
+
+---
+
 ### Contributing to Upstream (Prep PR Workflow)
 
 **Branch Strategy:**

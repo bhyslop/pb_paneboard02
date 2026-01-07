@@ -239,7 +239,7 @@ Make `.buk/buk_launch_*.sh` files reference the standardized names:
 These documents informed the understanding of the Config Regime pattern and enterprise bash standards:
 
 #### **PRIMARY REFERENCE: BCG - Bash Console Guide**
-**Path**: `/Users/bhyslop/projects/cnmp_CellNodeMessagePrototype/lenses/bpu-BCG-BashConsoleGuide.md`
+**Path**: `Tools/buk/lenses/bpu-BCG-BashConsoleGuide.md`
 
 **Critical for BUK implementation** - Authoritative guide for enterprise bash patterns. While written for multi-user command scripts, patterns directly apply to BUK utilities.
 
