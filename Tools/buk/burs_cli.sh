@@ -17,6 +17,9 @@
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
 # BURS CLI - Command line interface for BURS regime operations
+#
+# Requires BUD_STATION_FILE environment variable (path to burs.env).
+# This CLI sources the file and validates/renders/displays BURS configuration.
 
 set -euo pipefail
 
@@ -32,6 +35,9 @@ source "${ZBURS_CLI_SCRIPT_DIR}/burs_regime.sh"
 zburs_cli_kindle() {
   test -z "${ZBURS_CLI_KINDLED:-}" || buc_die "BURS CLI already kindled"
 
+  # Verify environment
+  test -n "${BUD_STATION_FILE:-}" || buc_die "BUD_STATION_FILE not set - must be called via launcher"
+
   ZBURS_SPEC_FILE="${ZBURS_CLI_SCRIPT_DIR}/burs_specification.md"
 
   ZBURS_CLI_KINDLED=1
@@ -39,31 +45,19 @@ zburs_cli_kindle() {
 
 # Command: validate - source file and validate
 burs_validate() {
-  local z_file="${1:-}"
-  test -n "${z_file}" || buc_die "burs_validate: file argument required"
-  test -f "${z_file}" || buc_die "burs_validate: file not found: ${z_file}"
+  buc_step "Validating BURS: ${BUD_STATION_FILE}"
 
-  buc_step "Validating BURS assignment file: ${z_file}"
-
-  # Source the assignment file
-  source "${z_file}" || buc_die "burs_validate: failed to source ${z_file}"
-
-  # Validate via kindle
+  source "${BUD_STATION_FILE}" || buc_die "Failed to source BURS"
   zburs_kindle
 
-  buc_step "BURS configuration valid"
+  buc_success "BURS configuration valid"
 }
 
 # Command: render - display configuration values
 burs_render() {
-  local z_file="${1:-}"
-  test -n "${z_file}" || buc_die "burs_render: file argument required"
-  test -f "${z_file}" || buc_die "burs_render: file not found: ${z_file}"
+  buc_step "BURS Configuration: ${BUD_STATION_FILE}"
 
-  buc_step "BURS Configuration: ${z_file}"
-
-  # Source the assignment file
-  source "${z_file}" || buc_die "burs_render: failed to source ${z_file}"
+  source "${BUD_STATION_FILE}" || buc_die "Failed to source BURS"
 
   # Render with aligned columns
   printf "%-25s %s\n" "BURS_LOG_DIR" "${BURS_LOG_DIR:-<not set>}"
@@ -102,18 +96,16 @@ z_command="${1:-}"
 
 case "${z_command}" in
   validate)
-    shift
-    burs_validate "${@}"
+    burs_validate
     ;;
   render)
-    shift
-    burs_render "${@}"
+    burs_render
     ;;
   info)
     burs_info
     ;;
   *)
-    buc_die "Unknown command: ${z_command}. Usage: burs_cli.sh {validate|render|info} [args]"
+    buc_die "Unknown command: ${z_command}. Usage: burs_cli.sh {validate|render|info}"
     ;;
 esac
 
