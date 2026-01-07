@@ -17,6 +17,9 @@
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
 # BURC CLI - Command line interface for BURC regime operations
+#
+# Requires BUD_REGIME_FILE environment variable (path to burc.env).
+# This CLI sources the file and validates/renders/displays BURC configuration.
 
 set -euo pipefail
 
@@ -32,6 +35,9 @@ source "${ZBURC_CLI_SCRIPT_DIR}/burc_regime.sh"
 zburc_cli_kindle() {
   test -z "${ZBURC_CLI_KINDLED:-}" || buc_die "BURC CLI already kindled"
 
+  # Verify environment
+  test -n "${BUD_REGIME_FILE:-}" || buc_die "BUD_REGIME_FILE not set - must be called via launcher"
+
   ZBURC_SPEC_FILE="${ZBURC_CLI_SCRIPT_DIR}/burc_specification.md"
   ZBURC_SPEC_FILE_ABSOLUTE="$(cd "${ZBURC_CLI_SCRIPT_DIR}" && pwd)/burc_specification.md"
 
@@ -40,31 +46,19 @@ zburc_cli_kindle() {
 
 # Command: validate - source file and validate
 burc_validate() {
-  local z_file="${1:-}"
-  test -n "${z_file}" || buc_die "burc_validate: file argument required"
-  test -f "${z_file}" || buc_die "burc_validate: file not found: ${z_file}"
+  buc_step "Validating BURC: ${BUD_REGIME_FILE}"
 
-  buc_step "Validating BURC assignment file: ${z_file}"
-
-  # Source the assignment file
-  source "${z_file}" || buc_die "burc_validate: failed to source ${z_file}"
-
-  # Validate via kindle
+  source "${BUD_REGIME_FILE}" || buc_die "Failed to source BURC"
   zburc_kindle
 
-  buc_step "BURC configuration valid"
+  buc_success "BURC configuration valid"
 }
 
 # Command: render - display configuration values
 burc_render() {
-  local z_file="${1:-}"
-  test -n "${z_file}" || buc_die "burc_render: file argument required"
-  test -f "${z_file}" || buc_die "burc_render: file not found: ${z_file}"
+  buc_step "BURC Configuration: ${BUD_REGIME_FILE}"
 
-  buc_step "BURC Configuration: ${z_file}"
-
-  # Source the assignment file
-  source "${z_file}" || buc_die "burc_render: failed to source ${z_file}"
+  source "${BUD_REGIME_FILE}" || buc_die "Failed to source BURC"
 
   # Render with aligned columns
   printf "%-25s %s\n" "BURC_STATION_FILE" "${BURC_STATION_FILE:-<not set>}"
@@ -145,18 +139,16 @@ z_command="${1:-}"
 
 case "${z_command}" in
   validate)
-    shift
-    burc_validate "${@}"
+    burc_validate
     ;;
   render)
-    shift
-    burc_render "${@}"
+    burc_render
     ;;
   info)
     burc_info
     ;;
   *)
-    buc_die "Unknown command: ${z_command}. Usage: burc_cli.sh {validate|render|info} [args]"
+    buc_die "Unknown command: ${z_command}. Usage: burc_cli.sh {validate|render|info}"
     ;;
 esac
 
