@@ -567,20 +567,23 @@ jjw_install() {
   zjjw_emit_claudemd_section > "${BUD_TEMP_DIR}/jjw_claudemd_section.md"
   zjjw_patch_claudemd
 
-  buc_step "Adding JJM edit permission to settings.local.json"
+  buc_step "Adding JJM edit permissions to settings.local.json"
   local z_settings_file=".claude/settings.local.json"
-  local z_permission='Edit(.claude/jjm/**)'
   local z_temp_file="${BUD_TEMP_DIR}/jjw_settings_temp.json"
+  # Install both permission variants - one should work regardless of Claude Code's expectations
+  local z_perm_old='Edit(.claude/jjm/**)'
+  local z_perm_new='Edit(/.claude/jjm/**)'
 
   if ! test -f "${z_settings_file}"; then
-    echo '{"permissions":{"allow":["'"${z_permission}"'"]}}' > "${z_settings_file}"
+    echo '{"permissions":{"allow":["'"${z_perm_old}"'","'"${z_perm_new}"'"]}}' > "${z_settings_file}"
   else
-    local z_exists
-    z_exists=$(jq --arg p "${z_permission}" '.permissions.allow // [] | index($p)' "${z_settings_file}") || buc_die "Failed to read settings"
-    if test "${z_exists}" = "null"; then
-      jq --arg p "${z_permission}" '.permissions.allow = ((.permissions.allow // []) + [$p])' "${z_settings_file}" > "${z_temp_file}" || buc_die "Failed to add permission"
-      mv "${z_temp_file}" "${z_settings_file}" || buc_die "Failed to update settings file"
-    fi
+    # Add both permissions if not already present
+    jq --arg p1 "${z_perm_old}" --arg p2 "${z_perm_new}" '
+      .permissions.allow = ((.permissions.allow // []) |
+        (if index($p1) then . else . + [$p1] end) |
+        (if index($p2) then . else . + [$p2] end))
+    ' "${z_settings_file}" > "${z_temp_file}" || buc_die "Failed to add permissions"
+    mv "${z_temp_file}" "${z_settings_file}" || buc_die "Failed to update settings file"
   fi
 
   buc_success "Job Jockey installed"
@@ -590,7 +593,7 @@ jjw_install() {
 
 jjw_uninstall() {
   buc_step "Removing command files"
-  rm -f .claude/commands/jja-*.md
+  rm -f .claude/commands/jj*.md
 
   buc_step "Removing agent files"
   rm -f .claude/agents/jjsa-*.md
@@ -600,11 +603,11 @@ jjw_uninstall() {
 
   buc_step "Removing JJM edit permission from settings.local.json"
   local z_settings_file=".claude/settings.local.json"
-  local z_permission='Edit(.claude/jjm/**)'
   local z_temp_file="${BUD_TEMP_DIR}/jjw_settings_temp.json"
 
   if test -f "${z_settings_file}"; then
-    jq --arg p "${z_permission}" '.permissions.allow = ((.permissions.allow // []) | map(select(. != $p)))' "${z_settings_file}" > "${z_temp_file}" || buc_die "Failed to remove permission"
+    # Remove both old and new permission variants for cross-version compatibility
+    jq '.permissions.allow = ((.permissions.allow // []) | map(select(. != "Edit(.claude/jjm/**)" and . != "Edit(/.claude/jjm/**)")))' "${z_settings_file}" > "${z_temp_file}" || buc_die "Failed to remove permission"
     mv "${z_temp_file}" "${z_settings_file}" || buc_die "Failed to update settings file"
   fi
 
