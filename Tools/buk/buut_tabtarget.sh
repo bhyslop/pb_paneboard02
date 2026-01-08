@@ -90,8 +90,8 @@ zbuut_create_tabtargets() {
   local z_launcher_path="${1:-}"
   shift || true
 
-  test -n "${z_launcher_path}" || buc_die "usage: <launcher-path> <tabtarget-name> [<tabtarget-name>...]\n  Example: .buk/launcher.rbw_workbench.sh rbw-ri.RegimeInfo"
-  test "$#" -gt 0 || buc_die "usage: <launcher-path> <tabtarget-name> [<tabtarget-name>...]\n  At least one tabtarget name required"
+  test -n "${z_launcher_path}" || buc_die "launcher_path required"
+  test "$#" -gt 0 || buc_die "at least one tabtarget_name required"
 
   # Validate launcher exists
   local z_launcher_file="${PWD}/${z_launcher_path}"
@@ -116,59 +116,97 @@ zbuut_create_tabtargets() {
 # List launchers in .buk/ directory
 # Note: Does not require kindling - uses fixed path pattern
 buut_list_launchers() {
+  buc_doc_brief "List all launchers in .buk/ directory"
+  buc_doc_shown || return 0
+
   zbuut_show "Listing launchers in .buk/"
   buc_step "Launchers in ${PWD}/.buk/"
   ls -1 "${PWD}/.buk/launcher."*.sh 2>/dev/null || echo "  (none found)"
 }
 
 # Create batch+logging tabtargets (default)
-# Usage: buut_tabtarget_batch_logging <launcher_path> <tabtarget_name>...
 buut_tabtarget_batch_logging() {
+  local z_launcher_path="${1:-}"
+  shift || true
+
+  buc_doc_brief "Create batch+logging tabtarget(s) (default mode)"
+  buc_doc_param "launcher_path" "Path to launcher (e.g., .buk/launcher.rbw_workbench.sh)"
+  buc_doc_param "tabtarget_name" "One or more tabtarget names (e.g., rbw-ri.RegimeInfo)"
+  buc_doc_shown || return 0
+
   zbuut_sentinel
+  test -n "${z_launcher_path}" || buc_usage_die
 
   buc_step "Creating batch+logging tabtarget(s)"
-  zbuut_create_tabtargets "" "$@"
+  zbuut_create_tabtargets "" "${z_launcher_path}" "$@"
 }
 
 # Create batch+nolog tabtargets (BUD_NO_LOG=1)
-# Usage: buut_tabtarget_batch_nolog <launcher_path> <tabtarget_name>...
 buut_tabtarget_batch_nolog() {
+  local z_launcher_path="${1:-}"
+  shift || true
+
+  buc_doc_brief "Create batch+nolog tabtarget(s) (BUD_NO_LOG=1)"
+  buc_doc_param "launcher_path" "Path to launcher (e.g., .buk/launcher.rbw_workbench.sh)"
+  buc_doc_param "tabtarget_name" "One or more tabtarget names (e.g., rbw-ri.RegimeInfo)"
+  buc_doc_shown || return 0
+
   zbuut_sentinel
+  test -n "${z_launcher_path}" || buc_usage_die
 
   buc_step "Creating batch+nolog tabtarget(s)"
-  zbuut_create_tabtargets 'export BUD_NO_LOG=1' "$@"
+  zbuut_create_tabtargets 'export BUD_NO_LOG=1' "${z_launcher_path}" "$@"
 }
 
 # Create interactive+logging tabtargets (BUD_INTERACTIVE=1)
-# Usage: buut_tabtarget_interactive_logging <launcher_path> <tabtarget_name>...
 buut_tabtarget_interactive_logging() {
+  local z_launcher_path="${1:-}"
+  shift || true
+
+  buc_doc_brief "Create interactive+logging tabtarget(s) (BUD_INTERACTIVE=1)"
+  buc_doc_param "launcher_path" "Path to launcher (e.g., .buk/launcher.cccw_workbench.sh)"
+  buc_doc_param "tabtarget_name" "One or more tabtarget names (e.g., ccck-s.ConnectShell)"
+  buc_doc_shown || return 0
+
   zbuut_sentinel
+  test -n "${z_launcher_path}" || buc_usage_die
 
   buc_step "Creating interactive+logging tabtarget(s)"
-  zbuut_create_tabtargets 'export BUD_INTERACTIVE=1' "$@"
+  zbuut_create_tabtargets 'export BUD_INTERACTIVE=1' "${z_launcher_path}" "$@"
 }
 
 # Create interactive+nolog tabtargets (both flags)
-# Usage: buut_tabtarget_interactive_nolog <launcher_path> <tabtarget_name>...
 buut_tabtarget_interactive_nolog() {
+  local z_launcher_path="${1:-}"
+  shift || true
+
+  buc_doc_brief "Create interactive+nolog tabtarget(s) (BUD_INTERACTIVE=1, BUD_NO_LOG=1)"
+  buc_doc_param "launcher_path" "Path to launcher (e.g., .buk/launcher.rbk_Coordinator.sh)"
+  buc_doc_param "tabtarget_name" "One or more tabtarget names (e.g., rbw-PI.PayorInstall)"
+  buc_doc_shown || return 0
+
   zbuut_sentinel
+  test -n "${z_launcher_path}" || buc_usage_die
 
   buc_step "Creating interactive+nolog tabtarget(s)"
   local z_flags='export BUD_NO_LOG=1
 export BUD_INTERACTIVE=1'
-  zbuut_create_tabtargets "${z_flags}" "$@"
+  zbuut_create_tabtargets "${z_flags}" "${z_launcher_path}" "$@"
 }
 
 # Create a launcher
-# Usage: buut_launcher <workbench_path> <launcher_name>
 buut_launcher() {
-  zbuut_sentinel
-
   local z_workbench_path="${1:-}"
   local z_launcher_name="${2:-}"
 
-  test -n "${z_workbench_path}" || buc_die "usage: buut_launcher <workbench-path> <launcher-name>\n  Example: buut_launcher Tools/myw/myw_workbench.sh myw_workbench"
-  test -n "${z_launcher_name}" || buc_die "usage: buut_launcher <workbench-path> <launcher-name>\n  launcher-name required"
+  buc_doc_brief "Create a launcher stub in .buk/"
+  buc_doc_param "workbench_path" "Path to workbench script (e.g., Tools/myw/myw_workbench.sh)"
+  buc_doc_param "launcher_name" "Launcher name without prefix/suffix (e.g., myw_workbench)"
+  buc_doc_shown || return 0
+
+  zbuut_sentinel
+  test -n "${z_workbench_path}" || buc_usage_die
+  test -n "${z_launcher_name}" || buc_usage_die
 
   # Validate workbench exists
   local z_workbench_file="${PWD}/${z_workbench_path}"
