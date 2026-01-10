@@ -114,6 +114,7 @@ pub(crate) struct ParsedForm {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(crate) enum Platform {
     MacOS,
     Windows,
