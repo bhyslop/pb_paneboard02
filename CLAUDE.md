@@ -116,6 +116,7 @@ Window layouts are defined in XML using the schema in `pbxs_schema.xsd`.
 | `poc/src/pbmbo_observer.h` | C-ABI header for NSWorkspace observers |
 | `poc/src/pbmbo_observer.rs` | App activation/termination observers for switcher |
 | `poc/src/pbmbo_observer.swift` | Swift NSWorkspace observers and overlay |
+| `poc/src/pbmbs_sandbox.rs` | macOS Seatbelt sandbox to permanently block network access |
 | `poc/src/pbmcl_clipboard.rs` | Clipboard history management and monitoring |
 | `poc/src/pbmp_pane.rs` | Window tiling and geometry |
 | `poc/src/pbmsa_alttab.rs` | Alt-Tab session state and overlay UI coordination |

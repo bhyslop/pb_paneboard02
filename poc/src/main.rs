@@ -29,6 +29,9 @@ mod pbgfc_config;
 // macOS pane modules
 #[cfg(target_os = "macos")] mod pbmp_pane;
 
+// macOS sandbox module
+#[cfg(target_os = "macos")] mod pbmbs_sandbox;
+
 #[cfg(not(target_os = "macos"))]
 fn main() {
     eprintln!("This PoC currently only supports macOS");
@@ -37,5 +40,9 @@ fn main() {
 
 #[cfg(target_os = "macos")]
 fn main() {
+    // Initialize network sandbox FIRST - before any other code runs
+    // This permanently blocks all network access for this process
+    pbmbs_sandbox::drop_network_access();
+
     unsafe { pbmbe_eventtap::run_quadrant_poc(); }
 }
