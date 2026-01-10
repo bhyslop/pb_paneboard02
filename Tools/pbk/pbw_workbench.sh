@@ -58,6 +58,14 @@ pbw_route() {
       cargo build "$@" && cargo run "$@"
       ;;
 
+    # Proof of Concept - timed run (BUD_TOKEN_3 = seconds)
+    pbw-t)
+      local z_timeout="${BUD_TOKEN_3:-10}"
+      echo "Building and running PaneBoard PoC (timeout=${z_timeout}s)..."
+      cd poc
+      cargo build "$@" && cargo run "$@" -- --timeout "${z_timeout}"
+      ;;
+
     *)
       buc_die "Unknown command: ${z_command}"
       ;;
