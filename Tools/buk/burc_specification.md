@@ -92,6 +92,24 @@ BURC (Bash Utility Regime Configuration) defines project-level configuration for
 
 ---
 
+### BURC_MANAGED_KITS
+
+**Type**: String (comma-separated list)
+
+**Required**: Yes (for VVK release and install operations)
+
+**Purpose**: Comma-separated list of kits included in vvx. At release time, determines which kits are built into the binary and included in the parcel. At install time, must exactly match the parcel's kit list (prevents binary capability leakage).
+
+**Constraints**:
+- Must be a non-empty string
+- No spaces around commas
+- At release: each kit must exist in the kit forge
+- At install: must exactly match parcel's kit list (order independent)
+
+**Example**: `buk,jjk,vvk`
+
+---
+
 ### BURC_TEMP_ROOT_DIR
 
 **Type**: String (directory path)

@@ -27,43 +27,7 @@ ZVVB_SOURCED=1
 ######################################################################
 # Internal Functions (zvvb_*)
 
-zvvb_kindle() {
-  test -z "${ZVVB_KINDLED:-}" || buc_die "Module vvb already kindled"
-
-  # Locate VVK directory (parent of this script)
-  ZVVB_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
-
-  # Public export - binary directory (may not exist until first build)
-  VVB_BIN_DIR="${ZVVB_SCRIPT_DIR}/bin"
-
-  # Public export - platform identifier (inline detection to avoid sentinel dependency)
-  local z_os
-  local z_arch
-  z_os=$(uname -s) || buc_die "Failed to detect OS"
-  z_arch=$(uname -m) || buc_die "Failed to detect architecture"
-
-  case "${z_os}-${z_arch}" in
-    Darwin-arm64)                      VVB_PLATFORM="darwin-arm64" ;;
-    Darwin-x86_64)                     VVB_PLATFORM="darwin-x86_64" ;;
-    Linux-x86_64)                      VVB_PLATFORM="linux-x86_64" ;;
-    Linux-aarch64)                     VVB_PLATFORM="linux-aarch64" ;;
-    MINGW*-x86_64|MSYS*-x86_64)        VVB_PLATFORM="windows-x86_64" ;;
-    *)                                 buc_die "Unsupported platform: ${z_os}-${z_arch}" ;;
-  esac
-
-  # Public export - full path to platform-specific VVX binary
-  VVB_VVX_BINARY="${VVB_BIN_DIR}/vvx-${VVB_PLATFORM}"
-
-  ZVVB_KINDLED=1
-}
-
-zvvb_sentinel() {
-  test "${ZVVB_KINDLED:-}" = "1" || buc_die "Module vvb not kindled - call zvvb_kindle first"
-}
-
 zvvb_platform_capture() {
-  zvvb_sentinel
-
   local z_os
   local z_arch
   local z_platform
@@ -81,6 +45,29 @@ zvvb_platform_capture() {
   esac
 
   echo "${z_platform}"
+}
+
+zvvb_kindle() {
+  test -z "${ZVVB_KINDLED:-}" || buc_die "Module vvb already kindled"
+
+  # Locate VVK directory (parent of this script)
+  ZVVB_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
+
+  # Public export - binary directory (may not exist until first build)
+  VVB_BIN_DIR="${ZVVB_SCRIPT_DIR}/bin"
+
+  # Public export - platform identifier (use capture function)
+  VVB_PLATFORM=""
+  VVB_PLATFORM=$(zvvb_platform_capture) || buc_die "Failed to detect platform"
+
+  # Public export - full path to platform-specific VVX binary
+  VVB_VVX_BINARY="${VVB_BIN_DIR}/vvx-${VVB_PLATFORM}"
+
+  ZVVB_KINDLED=1
+}
+
+zvvb_sentinel() {
+  test "${ZVVB_KINDLED:-}" = "1" || buc_die "Module vvb not kindled - call zvvb_kindle first"
 }
 
 zvvb_binary_path_capture() {
@@ -104,7 +91,7 @@ vvb_run() {
 
   buc_step "Locating VVX binary"
 
-  local z_binary
+  local z_binary=""
   z_binary=$(zvvb_binary_path_capture) || buc_die "VVX binary not found for platform $(uname -s)-$(uname -m)"
 
   buc_log_args "Binary: ${z_binary}"
@@ -119,7 +106,7 @@ vvb_platform() {
   buc_doc_brief "Display detected platform identifier"
   buc_doc_shown || return 0
 
-  local z_platform
+  local z_platform=""
   z_platform=$(zvvb_platform_capture) || buc_die "Unsupported platform: $(uname -s)-$(uname -m)"
 
   echo "${z_platform}"
