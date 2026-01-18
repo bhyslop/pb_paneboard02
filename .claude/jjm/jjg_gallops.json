@@ -1,0 +1,14 @@
+{
+  "next_heat_seed": "AB",
+  "heats": {
+    "₣AA": {
+      "silks": "birthing-job-jockey",
+      "creation_time": "260118",
+      "status": "current",
+      "order": [],
+      "next_pace_seed": "AAA",
+      "paddock_file": ".claude/jjm/jjp_AA.md",
+      "paces": {}
+    }
+  }
+}
