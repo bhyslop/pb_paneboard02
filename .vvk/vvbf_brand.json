@@ -1,0 +1,12 @@
+{
+  "vvbc_commit": "109d1efddfedc631cbb9b3dae0355110fedf6907",
+  "vvbd_date": "260118-1236",
+  "vvbh_hallmark": 1004,
+  "vvbk_kits": [
+    "buk",
+    "cmk",
+    "jjk",
+    "vvk"
+  ],
+  "vvbs_sha": "a5e95db6cc14ba479e5452fbce972cf45edb2e7895b821399e7fcd901f8394e1"
+}

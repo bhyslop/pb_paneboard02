@@ -42,9 +42,8 @@ buw_show() {
 buw_route() {
   local z_command="$1"
   shift
-  local z_args="$*"
 
-  buw_show "Routing command: ${z_command} with args: ${z_args}"
+  buw_show "Routing command: ${z_command} with args: $*"
 
   # Verify BDU environment variables are present
   test -n "${BUD_TEMP_DIR:-}" || buc_die "BUD_TEMP_DIR not set - must be called from BUD"
@@ -60,12 +59,12 @@ buw_route() {
   case "${z_command}" in
 
     # TabTarget subsystem (buw-tt-*)
-    buw-tt-ll)  exec "${z_buut_cli}" buut_list_launchers                 $z_args ;;
-    buw-tt-cbl) exec "${z_buut_cli}" buut_tabtarget_batch_logging        $z_args ;;
-    buw-tt-cbn) exec "${z_buut_cli}" buut_tabtarget_batch_nolog          $z_args ;;
-    buw-tt-cil) exec "${z_buut_cli}" buut_tabtarget_interactive_logging  $z_args ;;
-    buw-tt-cin) exec "${z_buut_cli}" buut_tabtarget_interactive_nolog    $z_args ;;
-    buw-tt-cl)  exec "${z_buut_cli}" buut_launcher                       $z_args ;;
+    buw-tt-ll)  exec "${z_buut_cli}" buut_list_launchers                 "$@" ;;
+    buw-tt-cbl) exec "${z_buut_cli}" buut_tabtarget_batch_logging        "$@" ;;
+    buw-tt-cbn) exec "${z_buut_cli}" buut_tabtarget_batch_nolog          "$@" ;;
+    buw-tt-cil) exec "${z_buut_cli}" buut_tabtarget_interactive_logging  "$@" ;;
+    buw-tt-cin) exec "${z_buut_cli}" buut_tabtarget_interactive_nolog    "$@" ;;
+    buw-tt-cl)  exec "${z_buut_cli}" buut_launcher                       "$@" ;;
 
     # Regime subsystem
     buw-rgv-burc) exec "${z_burc_cli}" validate ;;

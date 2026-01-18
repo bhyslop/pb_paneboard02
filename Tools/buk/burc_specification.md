@@ -75,6 +75,23 @@ BURC (Bash Utility Regime Configuration) defines project-level configuration for
 
 ---
 
+### BURC_PROJECT_ROOT
+
+**Type**: String (directory path)
+
+**Required**: Yes (for VVK install/uninstall operations)
+
+**Purpose**: Path from burc.env's location to the project root directory.
+
+**Constraints**:
+- Must be a non-empty string
+- Path is resolved relative to the directory containing burc.env
+- Must resolve to a valid directory
+
+**Example**: `..` (when burc.env is at `{project_root}/.buk/burc.env`)
+
+---
+
 ### BURC_TEMP_ROOT_DIR
 
 **Type**: String (directory path)

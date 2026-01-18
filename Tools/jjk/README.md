@@ -64,11 +64,11 @@ The kebab-case identifier that names heats, paces, itches, and scars. Examples: 
 You work on a heat by talking with Claude Code. As you make progress:
 - At session start, use `/jja-heat-saddle` to establish context and see proposed approach
 - Work on the pace together
-- Use `/jja-pace-wrap` to mark complete - Claude automatically analyzes next pace and proposes approach
-- Use `/jja-notch` to commit/push - Claude then proposes approach for current pace
+- Use `/jja-pace-wrap` to mark complete - auto-notches, then analyzes next pace and proposes approach
+- Use `/jja-notch` mid-pace when you want to commit progress without wrapping
 - New paces emerge and get added with `/jja-pace-new`
 
-Note: After pace-wrap or notch, you do NOT need heat-saddle - those commands flow directly into the next pace.
+Note: After pace-wrap, you do NOT need heat-saddle - the command flows directly into the next pace.
 
 When new ideas come up that don't belong in current heat, use `/jja-itch-add` to file them away.
 
@@ -233,9 +233,9 @@ When starting a session or the user calls `/jja-heat-saddle`, Claude checks `.cl
 ### Working on a Heat
 1. Use `/jja-heat-saddle` at session start - Claude shows context and proposes approach
 2. Approve approach or adjust, then work on the pace
-3. Use `/jja-pace-wrap` when complete - Claude analyzes next pace and proposes approach
+3. Use `/jja-pace-wrap` when complete - auto-notches, then analyzes next pace and proposes approach
 4. Approve and continue (no need for heat-saddle between paces)
-5. Use `/jja-notch` periodically - commits, pushes, and proposes approach for current pace
+5. Use `/jja-notch` mid-pace if you want to checkpoint progress
 6. Repeat until heat is complete
 
 ### Completing a Heat
@@ -308,23 +308,40 @@ Heat files contain these sections:
 10. **Do No Harm**: If paths are misconfigured or files missing, announce issue and stop — don't guess or auto-fix
 11. **Branch workflow**: Work happens on branches that get squashed on merge. Notch commits form the steeplechase — execution history lives in branch history until squash.
 
+## Tabtarget Stems
+
+Tabtargets in `tt/` use a two-tier naming scheme:
+
+| Stem | Purpose | Example |
+|------|---------|---------|
+| `jja-` | Arcanum (installation management) | `jja-i.Install.sh` |
+| `jjw-` | Workflow commands (all user operations) | `jjw-hs.HeatSaddle.sh` |
+
+Additionally, `jjt-` is used for test suites (`jjt-f.TestFavor.sh`).
+
+**Rationale**: Arcanum commands modify the `.claude/` installation itself. Workflow commands are day-to-day operations on heats, paces, and studbook.
+
 ## Installation
 
-Job Jockey is installed via the workbench script:
+Job Jockey is installed via tabtargets:
 
 ```bash
 # Install
-./Tools/jjk/jjw_workbench.sh jjk-i
+tt/jja-i.Install.sh
+
+# Check installation
+tt/jja-c.Check.sh
 
 # Uninstall (preserves .claude/jjm/ state)
-./Tools/jjk/jjw_workbench.sh jjk-u
+tt/jja-u.Uninstall.sh
 ```
 
 The workbench:
 - Creates `.claude/commands/jja-*.md` command files
 - Creates `.claude/jjm/` directory structure
 - Patches CLAUDE.md with configuration section
-- Adds `Edit(.claude/jjm/**)` permission to `.claude/settings.local.json` for frictionless JJ state updates
+- Adds `Edit(/.claude/jjm/**)` permission to `.claude/settings.local.json` for frictionless JJ state updates
+  - Note: Single leading slash makes path relative to project root per [Claude Code IAM docs](https://code.claude.com/docs/en/iam)
 
 Configuration is via environment variables:
 - `ZJJW_TARGET_DIR` - Target repo directory (default: `.`)
@@ -339,7 +356,7 @@ Configuration is via environment variables:
 - `/jja-pace-new` - Add a new pace
 - `/jja-pace-arm` - Validate pace spec and arm for autonomous execution
 - `/jja-pace-fly` - Execute an armed pace autonomously
-- `/jja-pace-wrap` - Mark pace complete, analyze next pace, propose approach
+- `/jja-pace-wrap` - Mark pace complete, auto-notch, analyze next pace, propose approach
 - `/jja-itch-add` - Add a new itch to the backlog
 - `/jja-notch` - JJ-aware git commit, push, and re-engage with current pace
 
@@ -359,11 +376,11 @@ Usage: "Add that insight to the Paddock" / "Check the Paddock for guidelines"
 In heat documents, the Paddock is the `## Paddock` section and its subsections.
 
 ### Notch
-A JJ-aware git commit. Use `/jja-notch` to commit with heat/pace/brand context.
+A JJ-aware git commit. Notches happen automatically on `/jja-pace-wrap`, or use `/jja-notch` mid-pace to checkpoint progress.
 
 Fire-and-forget design:
 1. Dispatcher validates heat context from conversation (no filesystem fallback)
-2. Checks for untracked files (fails if any - stage manually first)
+2. Checks for untracked files (warns if any - stage manually first)
 3. Spawns background haiku agent that does: git add -u, commit, push
 4. Returns immediately - user continues working
 
@@ -403,57 +420,16 @@ Benefits:
 
 ## Future Directions
 
-### Specialized Agents
-Create purpose-built agents for delegation, not just model hints:
-- **Model-tier agents**: haiku-worker, sonnet-worker, opus-worker with appropriate context budgets
-- **Pace-type agents**: mechanical-edit, codebase-explore, test-runner, doc-writer
-- **Delegation router**: analyzes pace spec, selects optimal agent, handles handoff
-- Success criteria: right agent for right task, minimal token waste, clear failure escalation
+> **Note**: Items marked ~~strikethrough~~ are addressed by the Studbook Redesign heat (b260101).
+> See `.claude/jjm/current/jjh_b260101-jj-studbook-redesign.md` for the replacement architecture.
 
-### Skill Articulation
-Before delegation can succeed, skills must be identified and well-described:
-- **Skill inventory**: catalog of capabilities available for delegation (edit, search, test, generate, validate, etc.)
-- **Skill cards**: each skill has preconditions, inputs, outputs, failure modes, model requirements
-- **Heat planning**: match heat goals to available skills, identify gaps early
-- **Pace analysis**: when proposing approach, suggest "this pace needs skills X, Y" and verify they exist
-- **Skill gaps**: surface when a pace requires a skill not yet articulated → triggers skill development
+### ~~Heat Creation Skill~~ → `jj-nominate`
+~~Create a dedicated skill for forming well-structured heats.~~
+Replaced by `jj-nominate` which allocates Favor, creates paddock stub, and registers in studbook.
 
-### Heat Creation Skill
-Create a dedicated skill for forming well-structured heats:
-- **Purpose**: Ensure new heats follow silks guidance, correct structure, and validated context from creation
-- **Invocation**: User describes heat intent; skill guides through:
-  - Silks workshop: generate 3-5 candidates, validate against guidance (2-4 words, catchy, <30 chars)
-  - Paddock gathering: stable background info, goals, constraints
-  - Initial paces: sketch first 3-5 paces as unnumbered Remaining list (no Current section)
-  - Validation: verify `.claude/jjm/current/` exists, file naming, structure
-- **Output**: Properly formed heat file in `.claude/jjm/current/jjh_bYYMMDD-silks.md`
-- **Benefit**: Prevents malformed heats from manual creation; ensures consistency across team/sessions
-- **Related**: Complements "Heat Scrub" (future direction) which fixes existing/legacy heats
-- **Invocation example**: `/jja-heat-create "cloud build follow-up"`
-
-### Delegation Intelligence
-Improve the analyze→delegate flow:
-- Learn from action logs which pace patterns succeed/fail per agent type
-- Auto-suggest agent selection based on pace characteristics
-- Detect scope creep or unbounded work before it spins
-- Graceful escalation: haiku fails → sonnet retry → opus rescue → human
-- Match pace requirements to skill inventory before attempting delegation
-
-### Heat Document Efficiency
-Reduce thrash in heat files during active work:
-- Current structure causes frequent moves between Done/Current/Remaining sections
-- Consider: more stable pace representation that reduces edits
-- Investigate: what's the minimum mutable surface for tracking progress?
-- Goal: cleaner diffs, less context churn, easier retrospectives
-
-### Formal Pace Numbering
-Remove pace numbers from human-visible artifacts:
-- Numbers appearing in heat files/code are brittle and go stale
-- Pace ordering is implicit in document position (first unnumbered item = current/next)
-- Recommendation: assign stable pace IDs on creation (e.g., `p001`, `p002`) for internal tracking only
-- **Heat template revision**: Remove all `1.`, `2.`, etc. prefixes from Remaining section; keep paces as unnumbered list
-- **Steeplechase entries**: Reference pace by ID+silks (e.g., `p001 - setup-config`) instead of numbers
-- Keep numbers internal to JJ machinery, never in prose or human-facing docs
+### ~~Heat Document Efficiency~~ → Studbook + Paddock
+~~Reduce thrash in heat files during active work.~~
+Replaced by Studbook (JSON registry) + Paddock (per-heat markdown) architecture. No more Done/Current/Remaining section churn.
 
 ### Silk Design Guidance
 Make silks short and memorable for human cognition:
@@ -472,55 +448,13 @@ Project-level control over automatic git commits:
 - Configuration in CLAUDE.md JJ section: `autocommit: per-pace | per-notch | never`
 - Default behavior should match current (commits on wrap/notch)
 
-### Steeplechase as Git Commit Discipline
-Experiment with moving steeplechase entries from heat files to git commits:
-- **Observation**: Steeplechase entries are valuable for retrospective analysis (models actually read them). Question: does the heat file need to carry them, or should git be the source of truth?
-- **Current model**: Steeplechase entries live in heat file, merge to heat on retirement. Accumulates in-memory context during heat work.
-- **Alternative model**: Store steeplechase-like metadata in "degenerate" commits (commits that contain only metadata/logs, no code changes)
-  - Approach: Each pace wrap, delegate, or approach logs a commit with structured metadata in message/trailers
-  - Format: `[jj:APPROACH|WRAP|DELEGATE] [heat:silks][pace:silks] <execution details in body>`
-  - Git becomes the execution log; heat files stay lean (no Steeplechase section needed)
-- **Benefits**:
-  - Execution history lives where it naturally belongs (git history)
-  - Heat files lighter, fewer section movements during work
-  - Full git tooling available for filtering/searching execution patterns
-  - Correlates execution patterns directly to code commit timeline
-  - Can use `git log --grep="jj:WRAP"` to reconstruct heat retrospective
-- **Challenges**:
-  - Requires discipline to remember to search git during retrospectives
-  - Need reliable patterns for identifying steeplechase commits
-  - Must explicitly gather git metadata when retiring heat (vs. auto-merge in file)
-  - Adds "degenerate commits" to repo (worth the tradeoff?)
-- **Experiment**: Try for one heat; evaluate whether git-based steeplechase is more useful than file-based
+### ~~Steeplechase as Git Commit Discipline~~ → `jj-chalk` / `jj-rein`
+~~Experiment with moving steeplechase entries from heat files to git commits.~~
+Implemented as core feature: `jj-chalk` writes structured git commits (empty commits with Favor + emblem), `jj-rein` queries git log for steeplechase entries. Trophy extraction gathers git history at retirement.
 
-### Git Control Exfiltration
-Delegate git operations to a dedicated Claude-aware git kit invoked via bash:
-- **Problem**: Git control from Claude Code has been unreliable. The Task tool's subagent dispatch doesn't inherit system context predictably, and LLM interpretation of git operations can be "sloppy" (wrong commit formats, unexpected attribution, etc.).
-- **Solution**: Create a separate open-source git kit (e.g., `cgk` - Claude Git Kit) with:
-  - Workbench that invokes `claude` CLI directly from bash (not via Task tool)
-  - Haiku model for mechanical commit formatting
-  - Claude Code treats it as a background process to monitor
-  - Deterministic prompts baked into bash, not interpreted at runtime
-- **JJ integration**: `/jja-notch` remains the JJ command; it delegates to the git kit via bash:
-  ```bash
-  # notch command tells Claude Code to run:
-  ./Tools/cgk/cgw_workbench.sh cgk-commit --heat "$heat" --pace "$pace" --brand "$brand"
-  ```
-  JJ owns the concept (notch = JJ-aware commit); git kit owns the execution.
-- **Absorbs from other kits**:
-  - CMK's prep-pr command (branch preparation for upstream PRs)
-  - Any other git-centric operations that benefit from controlled LLM formatting
-- **Benefits**:
-  - Bash-level control over exactly what prompt haiku receives
-  - No system prompt inheritance confusion
-  - Claude Code monitors completion without executing git itself
-  - Reusable across projects independent of JJ or CMK
-- **Architecture sketch**:
-  ```bash
-  # cgk_workbench.sh command implementation:
-  claude --model haiku -p "Format commit: $context" | xargs git commit -m
-  ```
-- **Prerequisite**: Validate that `claude` CLI can be invoked from bash with controlled prompts and predictable output parsing
+### ~~JSON Storage with jq Management~~ → `jjs_studbook.json`
+~~Consider storing itches and/or heats as JSON documents managed via jq.~~
+Implemented as `jjs_studbook.json` - central registry of heats/paces with Favor keys. Uses `jq --sort-keys --indent 2` for stable diffs. Paddock prose stays markdown (hybrid approach).
 
 ---
 
