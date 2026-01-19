@@ -18,14 +18,17 @@ Arguments: $ARGUMENTS (optional Firemark or silks to select specific heat)
 - Skip to Step 2
 
 **If $ARGUMENTS is empty or contains silks:**
-- Run: `./tt/vvw-r.RunVVX.sh jjx_muster --status current`
+- Run: `./tt/vvw-r.RunVVX.sh jjx_muster --status racing`
 - Parse TSV output: `FIREMARK<TAB>SILKS<TAB>STATUS<TAB>PACE_COUNT`
 
-**If 0 heats:** Report "No active heats. Create one with `./tt/vvw-r.RunVVX.sh jjx_nominate`." and stop.
+**If 0 racing heats:**
+- Report: "No racing heats found."
+- Suggest: "Check stabled heats with `/jjc-heat-muster` or use `/jjc-heat-furlough <firemark> --racing` to resume a heat."
+- Stop.
 
-**If 1 heat:** Use that heat's Firemark.
+**If 1 racing heat:** Use that heat's Firemark automatically (no prompt).
 
-**If 2+ heats:**
+**If 2+ racing heats:**
 - If $ARGUMENTS matches a silks value, use that heat
 - Otherwise list heats and ask user to select
 
@@ -67,6 +70,44 @@ Show:
   ```
 - Current pace silks and state (if present)
 - Spec (the pace specification)
+
+## Step 3.5: Name assessment
+
+Before branching on state, assess whether the pace silks fits the spec:
+
+**Assessment:**
+- Read the spec content
+- Consider if the kebab-case name accurately reflects the work
+- If name fits: proceed silently to Step 4
+- If mismatch detected: present 3-option prompt
+
+**If mismatch detected:**
+
+```
+⚠ Name check: "{current_silks}" may not fit.
+  Spec is about: [brief summary of actual work]
+  Suggested: "{better_name}"
+
+  [R] Rename to "{better_name}" (default)
+  [C] Continue with current name
+  [S] Stop
+
+  Choice [R]:
+```
+
+**On R (or Enter):**
+- Run: `./tt/vvw-r.RunVVX.sh jjx_tally <CORONET> --silks "{better_name}"`
+- Report: `"Renamed to {better_name}"`
+- Update pace_silks in context to reflect new name
+- Continue to Step 4
+
+**On C:**
+- Proceed silently to Step 4 with current name
+
+**On S:**
+- Report: "Mount stopped at Step 3.5"
+- Suggest: "Consider using `/jjc-pace-reslate` to refine the pace scope and silks"
+- Stop mount
 
 ## Step 4: Branch on state
 

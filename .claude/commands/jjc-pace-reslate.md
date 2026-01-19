@@ -34,16 +34,64 @@ Extract from $ARGUMENTS:
 **If identifier looks like silks (kebab-case):**
 - Need heat context to resolve
 - If FIREMARK available from session: use it
-- Otherwise run `./tt/vvw-r.RunVVX.sh jjx_muster --status current`:
+- Otherwise run `./tt/vvw-r.RunVVX.sh jjx_muster`:
   - If 1 heat: use it
-  - If 0 heats: Error "No active heats"
+  - If 0 heats: Error "No heats found"
   - If 2+ heats: ask user to select
 - Run `./tt/vvw-r.RunVVX.sh jjx_parade <FIREMARK>` and find pace by silks match
 - Error if silks not found in heat
 
-## Step 3: Apply reslate
+## Step 3: Name assessment
 
-Run:
+Before applying the reslate, assess whether the pace silks still fits the refined spec.
+
+**Fetch current pace data:**
+```bash
+./tt/vvw-r.RunVVX.sh jjx_parade <FIREMARK> --pace <CORONET>
+```
+
+Extract:
+- Current silks (display name)
+- Current spec text (from most recent tack)
+
+**Compare gestalts:**
+- Old focus: What the current spec emphasized
+- New focus: What the refined spec emphasizes
+- Assess: Does the current name still capture the refined essence?
+
+**If name still fits:**
+- Proceed silently to Step 4 (apply reslate)
+
+**If gestalt has shifted:**
+- Suggest new silks based on refined focus
+- Present 3-option prompt:
+
+```
+⚠ Name check: "old-silks" may not fit refined spec.
+  Was: [old focus summary]
+  Now: [new focus summary]
+  Suggested: "better-name"
+
+  [R] Rename to "better-name" (default)
+  [C] Continue with current name
+  [S] Stop (abort reslate)
+
+  Choice [R]:
+```
+
+**On user response:**
+- **R** (or Enter): Proceed with rename (set `RENAME_TO="better-name"`)
+- **C**: Proceed with current silks (set `RENAME_TO=""`)
+- **S**: Abort reslate entirely, report "Reslate aborted by user" and exit
+
+## Step 4: Apply reslate
+
+**If renaming (RENAME_TO is set):**
+```bash
+echo "<NEW_TEXT>" | ./tt/vvw-r.RunVVX.sh jjx_tally <CORONET> --silks "<RENAME_TO>"
+```
+
+**Otherwise:**
 ```bash
 echo "<NEW_TEXT>" | ./tt/vvw-r.RunVVX.sh jjx_tally <CORONET>
 ```
@@ -54,10 +102,11 @@ To change state, use:
 - `/jjc-pace-bridle` → bridled (arm for autonomous execution)
 - `/jjc-pace-wrap` → complete
 
-## Step 4: Report and assess
+## Step 5: Report and assess
 
 On success, report:
 - "Refined pace: **<SILKS>** (₢AAAAC)"
+- If renamed: "Renamed from: **<OLD_SILKS>**"
 - "State: <current state> (unchanged)"
 - "New tack text: <first 100 chars>..."
 
@@ -67,7 +116,7 @@ Then **assess the pace's health**:
 2. **Scope**: Has scope crept or tightened appropriately?
 3. **Readiness**: Is it now ready for priming?
 
-## Step 5: Assess bridleability
+## Step 6: Assess bridleability
 
 Apply **Primeability Assessment** criteria from CLAUDE.md.
 
@@ -76,7 +125,7 @@ If not bridleable, state why: "Needs human judgment — [reason]"
 
 **Next:** `/jjc-pace-reslate` (refine more) | `/jjc-pace-bridle` (arm) | `/jjc-parade-overview` (view all)
 
-## Step 6: Auto-commit changes
+## Step 7: Auto-commit changes
 
 Run guarded commit:
 ```bash

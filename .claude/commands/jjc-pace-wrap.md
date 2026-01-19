@@ -44,6 +44,21 @@ Review the work completed:
 
 Construct a brief outcome summary (1-3 sentences).
 
+## Step 3.5: Commit implementation changes
+
+Run notch to commit any pending work with proper JJ context:
+
+```bash
+./tt/vvw-r.RunVVX.sh jjx_notch <CORONET>
+```
+
+**Interpret the result:**
+- Success with commit hash → report the hash, proceed to Step 4
+- "nothing to commit" or empty staging → proceed silently to Step 4
+- Actual error (lock failure, guard rejection, etc.) → report error and stop wrap
+
+This ensures implementation changes are attributed to the pace before wrap closes it out.
+
 ## Step 4: Transition to complete
 
 Run:

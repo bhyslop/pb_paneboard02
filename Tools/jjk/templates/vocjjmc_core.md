@@ -3,7 +3,7 @@
 Job Jockey (JJ) is installed for managing project initiatives.
 
 **Concepts:**
-- **Heat**: Bounded initiative with coherent goals that are clear and present (3-50 sessions). Location: `current/` (active) or `retired/` (done).
+- **Heat**: Bounded initiative with coherent goals that are clear and present (3-50 sessions). Status: `racing` (active execution) or `stabled` (paused for planning). Location: `current/` or `retired/` (done).
 - **Pace**: Discrete action within a heat; can be bridled for autonomous execution via `/jjc-pace-bridle`
 - **Itch**: Future work (any detail level), lives in jji_itch.md
 - **Scar**: Closed work with lessons learned, lives in jjs_scar.md
@@ -39,6 +39,7 @@ ALWAYS read the corresponding slash command before attempting JJ operations.
 | Evaluate bridleable paces | /jjc-heat-quarter |
 | Reorder paces | /jjc-heat-rail |
 | Add steeplechase marker | /jjc-heat-chalk |
+| Pause or resume heat | /jjc-heat-furlough |
 | Create new heat | /jjc-heat-nominate |
 | List all heats | /jjc-heat-muster |
 | Draft paces between heats | /jjc-heat-restring |
@@ -56,9 +57,14 @@ ALWAYS read the corresponding slash command before attempting JJ operations.
 | slate | /jjc-pace-slate |
 | wrap | /jjc-pace-wrap |
 | bridle | /jjc-pace-bridle |
+| notch | /jjc-pace-notch |
+| furlough | /jjc-heat-furlough |
 | muster | /jjc-heat-muster |
 | groom | /jjc-heat-groom |
 | quarter | /jjc-heat-quarter |
+
+**Commit Discipline:**
+When working on a heat/pace, ALWAYS use `/jjc-pace-notch` for commits. NEVER use `vvx_commit` directly — it bypasses pace affiliation and steeplechase tracking.
 
 **Build & Run Discipline:**
 Always run these after Rust code changes:
@@ -88,3 +94,14 @@ When evaluating whether a pace is ready for autonomous execution (bridled state)
 - ✓ Bridleable: "Add error handling to `fetchUser` following pattern in `fetchOrder`"
 - ✗ Not bridleable: "Define KitAsset struct and registry pattern" (design decisions)
 - ✗ Not bridleable: "Improve performance of dashboard" (unclear scope, many approaches)
+
+### Wrap Discipline
+
+**NEVER auto-wrap a pace.** Always ask the user explicitly: "Ready to wrap ₢XXXXX?" and wait for confirmation before running `/jjc-pace-wrap`. The user decides when work is complete, not the agent.
+
+This applies to:
+- Direct work on rough paces
+- Spawned agents executing bridled paces
+- Any situation where work appears "done"
+
+When work is complete, report outcomes and ask. Do not wrap.

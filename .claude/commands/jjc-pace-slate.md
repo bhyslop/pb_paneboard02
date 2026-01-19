@@ -42,10 +42,10 @@ Extract from $ARGUMENTS:
 - Use that Firemark
 
 **Otherwise:**
-- Run: `./tt/vvw-r.RunVVX.sh jjx_muster --status current`
+- Run: `./tt/vvw-r.RunVVX.sh jjx_muster`
 - Parse TSV output
 
-**If 0 heats:** Error: "No active heats. Create one with `/jjc-heat-nominate` first."
+**If 0 heats:** Error: "No heats found. Create one with `/jjc-heat-nominate` first."
 
 **If 1 heat:** Use that heat's Firemark.
 

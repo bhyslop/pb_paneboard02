@@ -33,7 +33,7 @@ Extract from $ARGUMENTS:
 
 Run:
 ```bash
-./tt/vvw-r.RunVVX.sh jjx_muster --status current
+./tt/vvw-r.RunVVX.sh jjx_muster
 ```
 
 Verify both source and destination Firemarks appear in the output.
