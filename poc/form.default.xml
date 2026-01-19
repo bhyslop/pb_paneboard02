@@ -435,6 +435,9 @@
   <LayoutAction key="u" layout="grid-left"   traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
   <LayoutAction key="i" layout="grid-center" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
   <LayoutAction key="o" layout="grid-left"   traverse="xryf" mirrorX="flip" mirrorY="keep"/>
+  <LayoutAction key="numpad7" layout="grid-left"   traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="numpad8" layout="grid-center" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="numpad9" layout="grid-left"   traverse="xryf" mirrorX="flip" mirrorY="keep"/>
 
   <!-- 3x3 Grid: Middle row (full-height focus)
        j = left-biased, full height
@@ -444,6 +447,9 @@
   <LayoutAction key="j" layout="grid-left"   traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
   <LayoutAction key="k" layout="grid-k"      traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
   <LayoutAction key="l" layout="grid-left"   traverse="xryf" mirrorX="flip" mirrorY="keep"/>
+  <LayoutAction key="numpad4" layout="grid-left"   traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="numpad5" layout="grid-k"      traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
+  <LayoutAction key="numpad6" layout="grid-left"   traverse="xryf" mirrorX="flip" mirrorY="keep"/>
 
   <!-- 3x3 Grid: Bottom row (bottom-biased subdivisions)
        m = left-biased, bottom-biased (mirrored Y)
@@ -453,8 +459,12 @@
   <LayoutAction key="m"      layout="grid-left"   traverse="xfyr" mirrorX="keep" mirrorY="flip"/>
   <LayoutAction key="comma"  layout="grid-center" traverse="xfyr" mirrorX="keep" mirrorY="flip"/>
   <LayoutAction key="period" layout="grid-left"   traverse="xryr" mirrorX="flip" mirrorY="flip"/>
+  <LayoutAction key="numpad1" layout="grid-left"   traverse="xfyr" mirrorX="keep" mirrorY="flip"/>
+  <LayoutAction key="numpad2" layout="grid-center" traverse="xfyr" mirrorX="keep" mirrorY="flip"/>
+  <LayoutAction key="numpad3" layout="grid-left"   traverse="xryr" mirrorX="flip" mirrorY="flip"/>
 
   <!-- Display movement -->
   <DisplayMove key="h" target="prev" wrap="true"/>
+  <DisplayMove key="delete" target="prev" wrap="true"/>
   <DisplayMove key="semicolon" target="next" wrap="true"/>
 </Form>

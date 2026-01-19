@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright 2025 Scale Invariant, Inc.
+# Copyright 2026 Scale Invariant, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,72 +16,57 @@
 #
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
-# PBK Workbench - Routes PaneBoard Cargo commands
+# VVW Workbench - Routes VVK management commands
 
 set -euo pipefail
 
 # Get script directory
-PBW_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
+VVW_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
 
 # Source dependencies
-source "${PBW_SCRIPT_DIR}/../buk/buc_command.sh"
+source "${VVW_SCRIPT_DIR}/../buk/buc_command.sh"
 
 # Show filename on each displayed line
 buc_context "${0##*/}"
 
-# Verbose output if BUD_VERBOSE is set
-pbw_show() {
-  test "${BUD_VERBOSE:-0}" != "1" || echo "PBWSHOW: $*"
-}
+# Verify launcher provided regime environment
+test -n "${BUD_REGIME_FILE:-}"   || buc_die "BUD_REGIME_FILE not set - must be called via launcher"
+test -n "${BUD_STATION_FILE:-}"  || buc_die "BUD_STATION_FILE not set - must be called via launcher"
 
 # Simple routing function
-pbw_route() {
-  local z_command="$1"
-  shift
-  local z_args="$*"
-
-  pbw_show "Routing command: ${z_command} with args: ${z_args}"
-
-  # Verify BUD environment variables are present
-  test -n "${BUD_TEMP_DIR:-}" || buc_die "BUD_TEMP_DIR not set - must be called from BUD"
-  test -n "${BUD_NOW_STAMP:-}" || buc_die "BUD_NOW_STAMP not set - must be called from BUD"
-
-  pbw_show "BUD environment verified"
-
-  # Route based on command
-  case "${z_command}" in
-
-    # Proof of Concept - build and run
-    pbw-p)
-      echo "Building and running PaneBoard PoC..."
-      cd poc
-      cargo build "$@" && cargo run "$@"
-      ;;
-
-    # Proof of Concept - timed run (BUD_TOKEN_3 = seconds)
-    pbw-t)
-      local z_timeout="${BUD_TOKEN_3:-10}"
-      echo "Building and running PaneBoard PoC (timeout=${z_timeout}s)..."
-      cd poc
-      cargo build "$@" && cargo run "$@" -- --timeout "${z_timeout}"
-      ;;
-
-    *)
-      buc_die "Unknown command: ${z_command}"
-      ;;
-  esac
-}
-
-# Main entry point
-pbw_main() {
+vvw_route() {
   local z_command="${1:-}"
   shift || true
 
   test -n "${z_command}" || buc_die "No command specified"
 
-  pbw_route "${z_command}" "$@"
+  # Verify BUD environment variables are present
+  test -n "${BUD_TEMP_DIR:-}" || buc_die "BUD_TEMP_DIR not set - must be called from BUD"
+  test -n "${BUD_NOW_STAMP:-}" || buc_die "BUD_NOW_STAMP not set - must be called from BUD"
+
+  # Route based on command
+  local z_vvb_cli="${VVW_SCRIPT_DIR}/vvb_cli.sh"
+
+  case "${z_command}" in
+
+    # Run VVX binary - primary command
+    vvw-r)  exec "${z_vvb_cli}" vvb_run "$@" ;;
+
+    # Show platform
+    vvx-p)  exec "${z_vvb_cli}" vvb_platform "$@" ;;
+
+    # Unknown command
+    *)   buc_die "Unknown command: ${z_command}" ;;
+  esac
 }
 
-pbw_main "$@"
+vvw_main() {
+  local z_command="${1:-}"
+  shift || true
+
+  vvw_route "${z_command}" "$@"
+}
+
+vvw_main "$@"
 
 # eof

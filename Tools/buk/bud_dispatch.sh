@@ -174,7 +174,7 @@ zbud_process_args() {
 
   # Store target and extra arguments
   BUD_TARGET="$target"
-  BUD_CLI_ARGS="$*"
+  BUD_CLI_ARGS=("$@")
 
   # Export command context for workbench access
   export BUD_COMMAND
@@ -250,23 +250,27 @@ zbud_main() {
   zbud_process_args "$@" || (echo "ERROR: Argument processing failed" >&2 && exit 1)
   zbud_show "Arguments processed"
 
-  # Build coordinator command using configured script
+  # Build complete invocation array (always has ≥2 elements, so always safe under set -u)
   local coordinator_cmd="${BUD_COORDINATOR_SCRIPT}"
-  zbud_show "Coordinator command: $coordinator_cmd $BUD_COMMAND $BUD_CLI_ARGS"
+  local -a zbud_invocation=("$coordinator_cmd" "$BUD_COMMAND")
+  if [[ ${#BUD_CLI_ARGS[@]} -gt 0 ]]; then
+    zbud_invocation+=("${BUD_CLI_ARGS[@]}")
+  fi
+  zbud_show "Coordinator command: ${zbud_invocation[*]}"
 
   # Log command to all log files (or disable)
   if [[ -n "${BUD_NO_LOG:-}" ]]; then
     echo "logs:        disabled"
   elif [[ -n "${BUD_INTERACTIVE:-}" ]]; then
     echo "log (interactive): $BUD_LOG_HIST"
-    echo "command: $coordinator_cmd $BUD_COMMAND $BUD_CLI_ARGS" >> "$BUD_LOG_HIST"
-    echo "Git context: $BUD_GIT_CONTEXT"                        >> "$BUD_LOG_HIST"
+    echo "command: ${zbud_invocation[*]}" >> "$BUD_LOG_HIST"
+    echo "Git context: $BUD_GIT_CONTEXT"  >> "$BUD_LOG_HIST"
   else
     echo "log files:   $BUD_LOG_LAST $BUD_LOG_SAME $BUD_LOG_HIST"
-    echo "command: $coordinator_cmd $BUD_COMMAND $BUD_CLI_ARGS" >> "$BUD_LOG_LAST"
-    echo "command: $coordinator_cmd $BUD_COMMAND $BUD_CLI_ARGS" >> "$BUD_LOG_SAME"
-    echo "command: $coordinator_cmd $BUD_COMMAND $BUD_CLI_ARGS" >> "$BUD_LOG_HIST"
-    echo "Git context: $BUD_GIT_CONTEXT"                        >> "$BUD_LOG_HIST"
+    echo "command: ${zbud_invocation[*]}" >> "$BUD_LOG_LAST"
+    echo "command: ${zbud_invocation[*]}" >> "$BUD_LOG_SAME"
+    echo "command: ${zbud_invocation[*]}" >> "$BUD_LOG_HIST"
+    echo "Git context: $BUD_GIT_CONTEXT"  >> "$BUD_LOG_HIST"
   fi
   echo "transcript:  ${BUD_TRANSCRIPT}"
   echo "output dir:  ${BUD_OUTPUT_DIR}"
@@ -278,19 +282,19 @@ zbud_main() {
   zBUD_STATUS_FILE="${BUD_TEMP_DIR}/status-$$"
   if [[ -n "${BUD_INTERACTIVE:-}" ]]; then
     # Interactive mode: uncurated logging to historical log, preserves line buffering
-    "$coordinator_cmd" "$BUD_COMMAND" $BUD_CLI_ARGS 2>&1 | tee -a "$BUD_LOG_HIST"
+    "${zbud_invocation[@]}" 2>&1 | tee -a "$BUD_LOG_HIST"
     zBUD_EXIT_STATUS=${PIPESTATUS[0]}
     echo $zBUD_EXIT_STATUS > "${zBUD_STATUS_FILE}"
     zbud_show "Coordinator status (interactive): $zBUD_EXIT_STATUS"
   elif [[ -n "${BUD_NO_LOG:-}" ]]; then
     {
-      "$coordinator_cmd" "$BUD_COMMAND" $BUD_CLI_ARGS
+      "${zbud_invocation[@]}"
       echo $? > "${zBUD_STATUS_FILE}"
       zbud_show "Coordinator status: $(cat ${zBUD_STATUS_FILE})"
     }
   else
     {
-      "$coordinator_cmd" "$BUD_COMMAND" $BUD_CLI_ARGS
+      "${zbud_invocation[@]}"
       echo $? > "${zBUD_STATUS_FILE}"
       zbud_show "Coordinator status: $(cat ${zBUD_STATUS_FILE})"
     } | while IFS= read -r line; do
