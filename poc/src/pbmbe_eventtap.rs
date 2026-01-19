@@ -373,11 +373,6 @@ extern "C" fn tap_cb(_proxy: *mut c_void, event_type: u32, event: *mut c_void, _
         let need = K_CG_EVENT_FLAG_MASK_CONTROL | K_CG_EVENT_FLAG_MASK_SHIFT | K_CG_EVENT_FLAG_MASK_ALTERNATE;
         let reject = K_CG_EVENT_FLAG_MASK_COMMAND;
 
-        // Debug logging for modifier flags
-        if has_ctrl || has_shift || has_opt {
-            eprintln!("DEBUG: flags=0x{:08x}, ctrl={}, shift={}, cmd={}, opt={}, need=0x{:08x}", flags, has_ctrl, has_shift, has_cmd, has_opt, need);
-        }
-
         if (flags & need) != need { return event; }
         if (flags & reject) != 0 { return event; }
 

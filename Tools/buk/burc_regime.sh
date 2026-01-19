@@ -43,6 +43,10 @@ zburc_kindle() {
   # Validate delimiter is exactly one character
   test "${#BURC_TABTARGET_DELIMITER}" -eq 1 || buc_die "BURC_TABTARGET_DELIMITER must be exactly one character"
 
+  # Export variables needed by child processes (exec'd dispatch, workbenches)
+  export BURC_TABTARGET_DIR
+  export BURC_TOOLS_DIR
+
   ZBURC_KINDLED=1
 }
 
