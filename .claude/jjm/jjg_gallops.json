@@ -5,10 +5,24 @@
       "silks": "paneboard-alpha-gallops",
       "creation_time": "260119",
       "status": "racing",
-      "order": [],
-      "next_pace_seed": "AAA",
+      "order": [
+        "₢AAAAA"
+      ],
+      "next_pace_seed": "AAB",
       "paddock_file": ".claude/jjm/jjp_AA.md",
-      "paces": {}
+      "paces": {
+        "₢AAAAA": {
+          "tacks": [
+            {
+              "ts": "260119-0938",
+              "state": "rough",
+              "text": "Make a list of files changed in the last 6 git commits",
+              "silks": "list-recent-files",
+              "commit": "8daa898"
+            }
+          ]
+        }
+      }
     }
   }
 }
