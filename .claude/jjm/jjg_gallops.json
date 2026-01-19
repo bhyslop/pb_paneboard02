@@ -2,27 +2,13 @@
   "next_heat_seed": "AB",
   "heats": {
     "₣AA": {
-      "silks": "birthing-job-jockey",
-      "creation_time": "260118",
-      "status": "current",
-      "order": [
-        "₢AAAAA"
-      ],
-      "next_pace_seed": "AAB",
+      "silks": "paneboard-alpha-gallops",
+      "creation_time": "260119",
+      "status": "racing",
+      "order": [],
+      "next_pace_seed": "AAA",
       "paddock_file": ".claude/jjm/jjp_AA.md",
-      "paces": {
-        "₢AAAAA": {
-          "tacks": [
-            {
-              "ts": "260118-1528",
-              "state": "rough",
-              "text": "Investigate whether mirroring screens confuses PaneBoard on macOS",
-              "silks": "investigate-mirrored-screens",
-              "commit": "762e38f"
-            }
-          ]
-        }
-      }
+      "paces": {}
     }
   }
 }
