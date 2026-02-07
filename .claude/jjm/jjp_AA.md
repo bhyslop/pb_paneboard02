@@ -14,15 +14,10 @@ During a Command+Tab session, as each Tab/Shift+Tab press highlights a different
 
 This gives spatial confirmation: "that's the window I'm about to switch to."
 
-## Slush Items (future paces or separate heats)
+## Triage Record (₢AAAAF)
 
-- Investigate whether mirroring/duplicating screens confuses PB on macOS
-- Build system monitor overlay visible when holding the switching chord a while: IO, CPU, GPU
-- Implement app-specific Control+CVX emulation
-- Word highlight on tab switcher entries
-- Dechatter: debounce swap lag sometimes seen at work
-- Apple Developer ID signing and binary distribution
-- Convert to binary-only distribution
+- "Put the box around them during alt-tab" — already covered by ₢AAAAC + ₢AAAAD, resolved
+- 7 remaining slush items moved to jji_itch.md (2 flagged as heat candidates: signing + binary distribution)
 
 ## References
 
