@@ -91,6 +91,13 @@
         "₢AAAAE": {
           "tacks": [
             {
+              "ts": "260207-1256",
+              "state": "rough",
+              "text": "Reopening: orange border appears sized correctly but positioned incorrectly. Debug needed.",
+              "silks": "pb-highlight-cleanup-edge-cases",
+              "commit": "dd9649e"
+            },
+            {
               "ts": "260207-1254",
               "state": "complete",
               "text": "Audited all 5 edge cases. Cases 1+2 already covered by cleanup funnel (hide_alt_tab_overlay_and_cleanup + cancel_alt_tab_session both hide border). Cases 3-5 flow through same funnel. No additional code needed — architecture is sound.",
