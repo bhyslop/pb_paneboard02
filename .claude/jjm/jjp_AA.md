@@ -14,6 +14,16 @@ During a Command+Tab session, as each Tab/Shift+Tab press highlights a different
 
 This gives spatial confirmation: "that's the window I'm about to switch to."
 
+## Design Decisions (₢AAAAB)
+
+1. **Border thickness**: 6.0 pt (12 physical px on Retina). Thicker than the 4pt green characterization border for at-a-glance visibility during fast Tab cycling. Uses same borderless NSWindow overlay pattern at `.statusBar + 1` level.
+
+2. **Cross-repo strategy**: Resolved — all paces operate in this repo directly.
+
+3. **AX geometry during Alt-Tab**: No shadow structure exists — MruWindowEntry stores only pid/window_id/bundle_id/title/activation_state, no position. Each highlight change requires a live AX query via `AxElement::get_current_rect()`. This is fast (single call per Tab press). Edge cases: minimized/off-Space windows may fail AX query — skip border (no border is better than wrong border).
+
+4. **Slush item scoping**: Completed in ₢AAAAF — 7 items moved to jji_itch.md, 1 resolved as already covered.
+
 ## Triage Record (₢AAAAF)
 
 - "Put the box around them during alt-tab" — already covered by ₢AAAAC + ₢AAAAD, resolved
