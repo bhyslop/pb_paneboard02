@@ -142,7 +142,7 @@ pub unsafe fn show_alt_tab_overlay(highlight_index: usize) {
                 if let Some(rect) = get_window_rect(entry.identity.pid, entry.identity.window_id) {
                     let primary_h = crate::pbmbd_display::get_primary_display_height();
                     let cocoa_y = primary_h - rect.y - rect.h;
-                    pbmbo_show_highlight_border(rect.x, cocoa_y, rect.w, rect.h, 1.0, 0.647, 0.0);
+                    pbmbo_show_highlight_border(rect.x, cocoa_y, rect.w, rect.h, 1.0, 1.0, 0.0);
                 } else {
                     pbmbo_hide_highlight_border();
                 }
@@ -204,7 +204,7 @@ pub unsafe fn update_alt_tab_highlight(highlight_index: usize) {
                 if let Some(rect) = get_window_rect(entry.identity.pid, entry.identity.window_id) {
                     let primary_h = crate::pbmbd_display::get_primary_display_height();
                     let cocoa_y = primary_h - rect.y - rect.h;
-                    pbmbo_show_highlight_border(rect.x, cocoa_y, rect.w, rect.h, 1.0, 0.647, 0.0);
+                    pbmbo_show_highlight_border(rect.x, cocoa_y, rect.w, rect.h, 1.0, 1.0, 0.0);
                 } else {
                     pbmbo_hide_highlight_border();
                 }

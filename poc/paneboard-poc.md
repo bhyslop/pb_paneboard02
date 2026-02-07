@@ -1012,7 +1012,7 @@ This phase adds a **barebones popup overlay** to visualize Alt-Tab navigation an
 * **Icon styling:** native macOS rounded corners, 8–12 pt horizontal padding between icon and text. Missing icons render as transparent 32×32 box for consistent alignment.
 * **Highlight:** full-width background bar behind the selected entry.
 * **Placement:** occupy the **lower half of the *visible frame* of every display** (respects menu bar and Dock placement).
-  * **Implementation note (macOS):** When initializing `NSWindow` with the `screen:` parameter, provide the `contentRect` in that screen's **local coordinate space** (not global). Compute it by subtracting `screen.frame.origin` from `screen.visibleFrame.origin`.
+  * **Implementation note (macOS):** `NSWindow` frame coordinates use the **global Cocoa coordinate system** (origin at bottom-left of primary display, Y up). When positioning overlay windows, pass global Cocoa coordinates directly — do **not** subtract `screen.frame.origin`. The `screen:` parameter in `NSWindow(contentRect:styleMask:backing:defer:screen:)` associates the window with a display for color space matching but does not change the coordinate space of `contentRect`. Screen-local conversion was attempted and caused windows to appear on the wrong monitor for secondary displays.
 
 #### 🔧 Text Column Order Revision (Overlay Display)
 
@@ -1101,15 +1101,15 @@ This guarantees each session is independent, no carryover occurs, and debugging 
 
 **Window Highlight Border (During Alt-Tab)**
 
-During an active Alt-Tab session, PaneBoard draws an orange border around the on-screen window corresponding to the currently highlighted MRU entry. This provides spatial confirmation — the user sees exactly which window they are about to switch to. The orange border is visible simultaneously with the popup overlay.
+During an active Alt-Tab session, PaneBoard draws a yellow highlight around the on-screen window corresponding to the currently highlighted MRU entry. This provides spatial confirmation — the user sees exactly which window they are about to switch to. The yellow highlight is visible simultaneously with the popup overlay.
 
 **Overlay**
 
 A single reusable `NSWindow` following the characterization border pattern:
-- Borderless, transparent, with a **6pt orange stroke border** (12 physical px on Retina)
+- Borderless, with a **6pt yellow stroke border** (12 physical px on Retina) and a **translucent yellow fill** (15% opacity)
 - Window level above the Alt-Tab popup (`.statusBar + 2` or higher)
 - `ignoresMouseEvents = true`, `canBecomeKey = false`, `canBecomeMain = false`
-- Color is parameterized (orange for Alt-Tab)
+- Color is parameterized (yellow with translucent fill for Alt-Tab)
 - Single window instance — repositioned on each highlight change, not recreated
 
 **Lifecycle**
@@ -1117,10 +1117,14 @@ A single reusable `NSWindow` following the characterization border pattern:
 On each highlight change (Tab or Shift+Tab during active session):
 1. Look up the highlighted `MruWindowEntry` to get `(pid, window_id)`
 2. Query `AXPosition` and `AXSize` via `AxElement::get_current_rect()`
-3. If geometry available: show/reposition the orange border to surround the window rect
+3. If geometry available: show/reposition the yellow highlight to surround the window rect
 4. If query fails (minimized, off-Space, stale): hide the border — no border is better than a wrong border
 
 On session end (Command release, mouse click cancellation, or any other termination path): hide the border as part of cleanup alongside the popup.
+
+**Coordinate Conversion**
+
+`AxElement::get_current_rect()` returns AX/CG coordinates (top-left origin, Y down). `NSWindow` positioning requires global Cocoa coordinates (bottom-left origin, Y up). The conversion is: `cocoa_y = primary_screen_height - ax_y - height`. This conversion is performed in Rust before passing coordinates to Swift overlay functions. See `pbmbd_display.rs` for the `get_primary_display_height()` utility.
 
 **Highlight Border Logging Contract**
 

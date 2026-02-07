@@ -800,6 +800,10 @@ class HighlightBorderContentView: NSView {
         NSColor.clear.setFill()
         bounds.fill()
 
+        // Draw translucent fill
+        borderColor.withAlphaComponent(0.15).setFill()
+        bounds.fill()
+
         // Draw 6px colored border
         borderColor.setStroke()
 
