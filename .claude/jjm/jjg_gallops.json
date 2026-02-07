@@ -55,6 +55,13 @@
         "₢AAAAC": {
           "tacks": [
             {
+              "ts": "260207-1242",
+              "state": "complete",
+              "text": "Added highlight border overlay primitive in Swift (HighlightBorderWindow, 6pt parameterized border, show/reposition/hide C-ABI) + Rust FFI declarations. Fixed content view frame bug in reposition path. Build clean.",
+              "silks": "pb-window-highlight-overlay",
+              "commit": "0b942c2"
+            },
+            {
               "ts": "260207-1211",
               "state": "rough",
               "text": "Create a reusable \"highlight border\" overlay that draws a colored border around an arbitrary screen rect.\n\nGoal\n\nA function/module that takes a screen rect (x, y, width, height) and a color, and displays a borderless NSWindow overlay with an N-px colored border around that rect. Adapted from the green startup characterization border pattern.\n\nRequirements\n\n- Borderless, transparent NSWindow with only a colored stroke border\n- Must be topmost (above all other windows) so it's visible during Alt-Tab\n- Must support show/hide/reposition without recreating the window\n- Orange color for Alt-Tab use case (but parameterized)\n- Border thickness determined by ₢AAAAB investigation\n\nPattern to follow\n\nThe green startup characterization border (Display Characterization section of POC spec, ~line 392). That code creates a borderless transparent window with a 4px green border positioned at viewport bounds. This is the same pattern, just parameterized for arbitrary rects and colors.\n\nKey files\n\n- pbmbo_overlay.rs (existing base overlay utilities)\n- pbmbo_observer.swift (Swift overlay code)\n\nDepends on\n\n₢AAAAB (design decisions determine border thickness and cross-repo strategy)",
