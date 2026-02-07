@@ -91,6 +91,13 @@
         "₢AAAAE": {
           "tacks": [
             {
+              "ts": "260207-1254",
+              "state": "complete",
+              "text": "Audited all 5 edge cases. Cases 1+2 already covered by cleanup funnel (hide_alt_tab_overlay_and_cleanup + cancel_alt_tab_session both hide border). Cases 3-5 flow through same funnel. No additional code needed — architecture is sound.",
+              "silks": "pb-highlight-cleanup-edge-cases",
+              "commit": "95b1c38"
+            },
+            {
               "ts": "260207-1215",
               "state": "rough",
               "text": "Ensure the orange highlight border is properly dismissed on all session termination paths, not just Command release.\n\nCases to handle\n\n1. Mouse click cancellation (existing path in Alt-Tab: \"Any mouse click during active session immediately cancels\")\n2. CGEventTap auto-disable recovery (tap health check re-enables tap, but overlay may be stranded)\n3. Escape hatch (both Command keys held = blocking suspended)\n4. App termination during active session\n5. Display disconnect during active session (overlay window on vanished display)\n\nGoal\n\nAudit every session termination path and ensure the orange overlay is hidden. Add defensive cleanup if overlay state is stale (e.g., timer-based check similar to tap health monitor).\n\nKey files\n\n- pbmsa_alttab.rs (session lifecycle, cleanup paths)\n- pbmbe_eventtap.rs (tap health monitoring, mouse click handling)\n- pbmbo_observer.swift (overlay show/hide)\n\nDepends on\n\n₢AAAAD (overlay must be wired into Alt-Tab before we can harden cleanup)",
