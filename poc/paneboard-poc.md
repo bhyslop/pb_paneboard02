@@ -1099,6 +1099,36 @@ Treat **early termination** cases (e.g. Command released before Tab, or Command 
 
 This guarantees each session is independent, no carryover occurs, and debugging shows clear lifecycle boundaries.
 
+**Window Highlight Border (During Alt-Tab)**
+
+During an active Alt-Tab session, PaneBoard draws an orange border around the on-screen window corresponding to the currently highlighted MRU entry. This provides spatial confirmation — the user sees exactly which window they are about to switch to. The orange border is visible simultaneously with the popup overlay.
+
+**Overlay**
+
+A single reusable `NSWindow` following the characterization border pattern:
+- Borderless, transparent, with a **6pt orange stroke border** (12 physical px on Retina)
+- Window level above the Alt-Tab popup (`.statusBar + 2` or higher)
+- `ignoresMouseEvents = true`, `canBecomeKey = false`, `canBecomeMain = false`
+- Color is parameterized (orange for Alt-Tab)
+- Single window instance — repositioned on each highlight change, not recreated
+
+**Lifecycle**
+
+On each highlight change (Tab or Shift+Tab during active session):
+1. Look up the highlighted `MruWindowEntry` to get `(pid, window_id)`
+2. Query `AXPosition` and `AXSize` via `AxElement::get_current_rect()`
+3. If geometry available: show/reposition the orange border to surround the window rect
+4. If query fails (minimized, off-Space, stale): hide the border — no border is better than a wrong border
+
+On session end (Command release, mouse click cancellation, or any other termination path): hide the border as part of cleanup alongside the popup.
+
+**Highlight Border Logging Contract**
+
+```
+ALT_TAB: highlight_border | shown at (x, y, w, h) for window_id=<id>
+ALT_TAB: highlight_border | hidden (reason=<session_end|query_failed>)
+```
+
 **Logging Contract**
 
 * Session lifecycle:
