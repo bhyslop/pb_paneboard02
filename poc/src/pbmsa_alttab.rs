@@ -7,13 +7,21 @@ use std::sync::{Arc, Mutex};
 use std::ffi::c_void;
 use core_foundation_sys::base::CFTypeRef;
 use crate::pbmsm_mru::{get_mru_snapshot, MruWindowEntry, ActivationState};
-use crate::pbmba_ax::{AxElement, get_frontmost_app_info};
+use crate::pbmba_ax::{
+    AxElement, get_frontmost_app_info,
+    AXUIElementCreateApplication, AXUIElementCopyAttributeValue,
+    _AXUIElementGetWindow, CFArrayGetCount, CFArrayGetValueAtIndex,
+    ax_attr_windows, KAX_ERROR_SUCCESS,
+};
 use crate::pbmp_pane::focus_window_by_id;
+use core_foundation::base::{CFRelease, TCFType};
 use crate::pbmbo_overlay::{
     strings_to_ffi,
     pbmbo_show_alt_tab_overlay,
     pbmbo_update_alt_tab_highlight,
     pbmbo_hide_alt_tab_overlay,
+    pbmbo_show_highlight_border,
+    pbmbo_hide_highlight_border,
 };
 
 // Alt-Tab session state
@@ -38,6 +46,59 @@ impl Default for AltTabSession {
     }
 }
 
+/// Helper to get window rect via AX enumeration
+/// Returns None if window not found or AX query fails
+unsafe fn get_window_rect(pid: u32, window_id: u32) -> Option<crate::pbmbd_display::Rect> {
+    // Create app element
+    let app_element = AXUIElementCreateApplication(pid);
+    if app_element.is_null() {
+        return None;
+    }
+
+    // Query kAXWindowsAttribute
+    let windows_attr = ax_attr_windows();
+    let mut windows_array: CFTypeRef = std::ptr::null();
+    let rc = AXUIElementCopyAttributeValue(
+        app_element,
+        windows_attr.as_concrete_TypeRef() as CFTypeRef,
+        &mut windows_array,
+    );
+
+    if rc != KAX_ERROR_SUCCESS || windows_array.is_null() {
+        CFRelease(app_element as CFTypeRef);
+        return None;
+    }
+
+    // Iterate through CFArray to find target window
+    let count = CFArrayGetCount(windows_array);
+    let mut result = None;
+
+    for i in 0..count {
+        let window_element = CFArrayGetValueAtIndex(windows_array, i) as crate::pbmba_ax::AXUIElementRef;
+        if window_element.is_null() {
+            continue;
+        }
+
+        // Get window ID
+        let mut wid: u32 = 0;
+        let wid_rc = _AXUIElementGetWindow(window_element, &mut wid);
+        if wid_rc == 0 && wid == window_id {
+            // Found the window - wrap in AxElement and get rect
+            let ax_win = AxElement(window_element);
+            result = ax_win.get_current_rect();
+            // Prevent drop from releasing the element (it's owned by the array)
+            std::mem::forget(ax_win);
+            break;
+        }
+    }
+
+    // Cleanup
+    CFRelease(windows_array);
+    CFRelease(app_element as CFTypeRef);
+
+    result
+}
+
 /// Helper to show Alt-Tab overlay with MRU entries
 /// Defers to main runloop for thread safety
 pub unsafe fn show_alt_tab_overlay(highlight_index: usize) {
@@ -59,11 +120,11 @@ pub unsafe fn show_alt_tab_overlay(highlight_index: usize) {
     let (c_activation_states, activation_state_ptrs) = strings_to_ffi(&activation_states);
 
     let count = bundle_ids.len() as i32;
-    let data = Rc::new((bundle_id_ptrs, title_ptrs, activation_state_ptrs, c_bundle_ids, c_titles, c_activation_states));
+    let data = Rc::new((bundle_id_ptrs, title_ptrs, activation_state_ptrs, c_bundle_ids, c_titles, c_activation_states, snapshot, highlight_index));
 
     // Create block that calls Swift function
     let block = StackBlock::new(move || {
-        let (ref bundle_id_ptrs, ref title_ptrs, ref activation_state_ptrs, _, _, _) = *data;
+        let (ref bundle_id_ptrs, ref title_ptrs, ref activation_state_ptrs, _, _, _, ref snapshot, highlight_index) = *data;
         pbmbo_show_alt_tab_overlay(
             bundle_id_ptrs.as_ptr(),
             title_ptrs.as_ptr(),
@@ -71,6 +132,20 @@ pub unsafe fn show_alt_tab_overlay(highlight_index: usize) {
             count,
             highlight_index as i32,
         );
+
+        // Show highlight border for the selected window
+        if highlight_index < snapshot.len() {
+            let entry = &snapshot[highlight_index];
+            if entry.identity.window_id != 0 {
+                if let Some(rect) = get_window_rect(entry.identity.pid, entry.identity.window_id) {
+                    pbmbo_show_highlight_border(rect.x, rect.y, rect.w, rect.h, 1.0, 0.647, 0.0);
+                } else {
+                    pbmbo_hide_highlight_border();
+                }
+            } else {
+                pbmbo_hide_highlight_border();
+            }
+        }
     });
 
     // Schedule on main runloop
@@ -104,11 +179,11 @@ pub unsafe fn update_alt_tab_highlight(highlight_index: usize) {
     let (c_activation_states, activation_state_ptrs) = strings_to_ffi(&activation_states);
 
     let count = bundle_ids.len() as i32;
-    let data = Rc::new((bundle_id_ptrs, title_ptrs, activation_state_ptrs, c_bundle_ids, c_titles, c_activation_states));
+    let data = Rc::new((bundle_id_ptrs, title_ptrs, activation_state_ptrs, c_bundle_ids, c_titles, c_activation_states, snapshot, highlight_index));
 
     // Create block that calls Swift function
     let block = StackBlock::new(move || {
-        let (ref bundle_id_ptrs, ref title_ptrs, ref activation_state_ptrs, _, _, _) = *data;
+        let (ref bundle_id_ptrs, ref title_ptrs, ref activation_state_ptrs, _, _, _, ref snapshot, highlight_index) = *data;
         pbmbo_update_alt_tab_highlight(
             bundle_id_ptrs.as_ptr(),
             title_ptrs.as_ptr(),
@@ -116,6 +191,20 @@ pub unsafe fn update_alt_tab_highlight(highlight_index: usize) {
             count,
             highlight_index as i32,
         );
+
+        // Update highlight border for the selected window
+        if highlight_index < snapshot.len() {
+            let entry = &snapshot[highlight_index];
+            if entry.identity.window_id != 0 {
+                if let Some(rect) = get_window_rect(entry.identity.pid, entry.identity.window_id) {
+                    pbmbo_show_highlight_border(rect.x, rect.y, rect.w, rect.h, 1.0, 0.647, 0.0);
+                } else {
+                    pbmbo_hide_highlight_border();
+                }
+            } else {
+                pbmbo_hide_highlight_border();
+            }
+        }
     });
 
     // Schedule on main runloop
@@ -136,6 +225,7 @@ pub unsafe fn hide_alt_tab_overlay_and_cleanup() {
     // Create block that calls Swift function
     let block = StackBlock::new(|| {
         pbmbo_hide_alt_tab_overlay();
+        pbmbo_hide_highlight_border();
     });
 
     // Schedule on main runloop
@@ -162,6 +252,7 @@ pub unsafe fn cancel_alt_tab_session() {
     // Create block that calls Swift function to hide overlay
     let block = StackBlock::new(|| {
         pbmbo_hide_alt_tab_overlay();
+        pbmbo_hide_highlight_border();
     });
 
     // Schedule on main runloop
