@@ -91,6 +91,13 @@
         "₢AAAAE": {
           "tacks": [
             {
+              "ts": "260207-1316",
+              "state": "complete",
+              "text": "Fixed multi-monitor coordinate bug: removed erroneous screen-local conversion in NSWindow positioning (3 functions). Changed highlight border from orange stroke to yellow with 15% translucent fill. Updated poc spec with correct NSWindow coordinate guidance and coordinate conversion docs.",
+              "silks": "pb-highlight-coordinate-fix",
+              "commit": "c2cd336"
+            },
+            {
               "ts": "260207-1304",
               "state": "rough",
               "text": "Debug and fix coordinate system mismatch in highlight border positioning. The border was sized correctly but placed wrong because get_current_rect() returns AX/CG coordinates (top-left origin, Y down) while NSWindow uses Cocoa coordinates (bottom-left origin, Y up). Fix: convert via cocoa_y = primary_screen_height - ax_y - height, reusing get_primary_display_height() from pbmbd_display.rs. Applied to both show_alt_tab_overlay and update_alt_tab_highlight call sites in pbmsa_alttab.rs. Build clean, needs runtime verification.",
