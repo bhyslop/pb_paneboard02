@@ -735,14 +735,9 @@ public func pbmbo_show_characterization_windows(
             continue
         }
 
-        // Convert global coordinates to screen-local coordinates
-        let sf = screen.frame
-        let localX = rectX - sf.origin.x
-        let localY = rectY - sf.origin.y
-
         let windowFrame = NSRect(
-            x: localX,
-            y: localY,
+            x: rectX,
+            y: rectY,
             width: rectW,
             height: rectH
         )
@@ -841,14 +836,9 @@ public func pbmbo_show_highlight_border(x: Double, y: Double, w: Double, h: Doub
         return
     }
 
-    // Convert global coordinates to screen-local coordinates
-    let sf = screen.frame
-    let localX = x - sf.origin.x
-    let localY = y - sf.origin.y
-
     let windowFrame = NSRect(
-        x: localX,
-        y: localY,
+        x: x,
+        y: y,
         width: w,
         height: h
     )
@@ -915,14 +905,9 @@ public func pbmbo_reposition_highlight_border(x: Double, y: Double, w: Double, h
         return
     }
 
-    // Convert global coordinates to screen-local coordinates
-    let sf = screen.frame
-    let localX = x - sf.origin.x
-    let localY = y - sf.origin.y
-
     let windowFrame = NSRect(
-        x: localX,
-        y: localY,
+        x: x,
+        y: y,
         width: w,
         height: h
     )
