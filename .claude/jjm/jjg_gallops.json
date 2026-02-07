@@ -81,6 +81,13 @@
         "₢AAAAF": {
           "tacks": [
             {
+              "ts": "260207-1225",
+              "state": "complete",
+              "text": "Triaged 8 slush items: confirmed alt-tab box already covered by AAAAC/AAAAD; moved 7 items to jji_itch.md (2 flagged as heat candidates for signing/distribution). Updated paddock with triage record.",
+              "silks": "triage-slush-reminders",
+              "commit": "cb7e7e0"
+            },
+            {
               "ts": "260207-1215",
               "state": "rough",
               "text": "Triage the raw slush reminders below. For each item, decide: slate as a pace on this heat, defer to jji_itch.md, or nominate as a separate heat. Update the paddock accordingly.\n\nRaw slush (verbatim from user)\n\n- Investigate whether mirroring screens confuses PB on macos\n- In fact, as the windows are selected during alt tab chord, put the box around them, better than prev idea below\n  - put some sort of visual highlight around which window was selected, can't see on iterm plus what window is focused\n- Build out system monitor visible when I hold the switching chord a while: IO, CPU, GPU?\n- Implement app specific control CVX emulation\n- Word Highlight on tab switcher\n- dechatter because of swap lag sometimes at work\n- do apple Developer ID signing and distribute binary\n- Convert to binary distribution only\n\nNotes\n\nThe \"put the box around them\" item is already covered by the main paces on this heat (₢AAAAC, ₢AAAAD). Confirm that during triage and mark it resolved. The remaining items need sorting into actionable locations.",
