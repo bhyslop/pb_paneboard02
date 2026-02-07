@@ -73,6 +73,13 @@
         "₢AAAAD": {
           "tacks": [
             {
+              "ts": "260207-1249",
+              "state": "complete",
+              "text": "Wired highlight border into Alt-Tab: get_window_rect() helper, border show/reposition on highlight change, hide on cleanup/cancel. Edge cases handled (GUESS entries, AX failures). Build clean.",
+              "silks": "pb-wire-highlight-to-alttab",
+              "commit": "4acfdfc"
+            },
+            {
               "ts": "260207-1212",
               "state": "rough",
               "text": "Wire the orange highlight border overlay into the Alt-Tab session lifecycle.\n\nGoal\n\nDuring a Command+Tab session, each time the highlight changes (Tab or Shift+Tab press), query the highlighted window's screen geometry and show the orange border overlay around it. On session end, dismiss the overlay.\n\nBehavior\n\n1. On each highlight change in Alt-Tab session:\n  - Get the highlighted MRU entry's (pid, window_id)\n  - Query AXPosition and AXSize for that window\n  - Show/reposition the orange border overlay to surround that window's rect\n2. On Command release (session end): hide the overlay\n3. Edge cases (per ₢AAAAB decisions): handle minimized windows, off-screen windows, failed AX queries\n\nKey files\n\n- pbmsa_alttab.rs (Alt-Tab session state, highlight change logic)\n- pbmba_ax.rs (AX queries for position/size)\n- pbmsm_mru.rs (MRU entry data with pid/window_id)\n- New overlay primitive from ₢AAAAC\n\nDepends on\n\n₢AAAAC (highlight overlay primitive must exist)",
