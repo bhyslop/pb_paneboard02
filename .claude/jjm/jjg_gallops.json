@@ -37,6 +37,13 @@
         "₢AAAAB": {
           "tacks": [
             {
+              "ts": "260207-1228",
+              "state": "complete",
+              "text": "Investigated all 4 design questions. Border=6pt, cross-repo resolved, AX query needed per highlight (no shadow cache), slush triaged in AAAAF.",
+              "silks": "investigate-design-questions",
+              "commit": "dbedb1c"
+            },
+            {
               "ts": "260207-1211",
               "state": "rough",
               "text": "Investigate and decisively answer the open design questions before implementation begins. Read the PaneBoard POC source code and spec, then write answers directly into the paddock file.\n\nQuestions to resolve\n\n1. Border thickness: Should the orange highlight border be 4px (matching green startup border) or thicker for at-a-glance visibility during fast Tab cycling? Examine the green border code in pbmbo_overlay.rs or the Swift overlay, measure what 4px looks like at retina scale, and recommend a value. Decide and document.\n2. Cross-repo strategy: This heat lives in rbm_alpha but PaneBoard source lives in ../pb_paneboard02/poc/src/. Determine: should paces directly edit PB source files (Claude has permissions per CLAUDE.md for Tools/), or should paces produce design specs that get implemented in the PB repo separately? Examine whether the JJ commit workflow (notch) can handle files outside the current repo. Decide and document.\n3. AX geometry during Alt-Tab: During a Command+Tab session, can we reliably query AXPosition/AXSize for the highlighted window? What happens for minimized windows, windows on other Spaces, or fullscreen windows? Review existing AX query patterns in pbmba_ax.rs and the MRU validation logic. Document the edge cases and proposed handling (skip border? show on last known position?).\n4. Slush item scoping: Review the slush items in the paddock. Which belong on this heat as paces vs. deferred to itch file or separate heats? Recommend and document.\n\nDeliverable\n\nUpdated paddock file (.claude/jjm/jjp_AA.md) with a \"Design Decisions\" section containing firm answers for each question above.\n\nFiles to examine\n\n- poc/src/pbmbo_overlay.rs\n- poc/src/pbmba_ax.rs\n- poc/src/pbmsa_alttab.rs\n- poc/src/pbmsm_mru.rs\n- poc/src/pbmbo_observer.swift\n- poc/paneboard-poc.md",
