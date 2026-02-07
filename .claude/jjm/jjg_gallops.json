@@ -7,11 +7,11 @@
       "status": "racing",
       "order": [
         "₢AAAAA",
+        "₢AAAAF",
         "₢AAAAB",
         "₢AAAAC",
         "₢AAAAD",
-        "₢AAAAE",
-        "₢AAAAF"
+        "₢AAAAE"
       ],
       "next_pace_seed": "AAG",
       "paddock_file": ".claude/jjm/jjp_AA.md",
