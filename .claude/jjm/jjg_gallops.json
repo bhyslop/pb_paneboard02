@@ -91,6 +91,13 @@
         "₢AAAAE": {
           "tacks": [
             {
+              "ts": "260207-1304",
+              "state": "rough",
+              "text": "Debug and fix coordinate system mismatch in highlight border positioning. The border was sized correctly but placed wrong because get_current_rect() returns AX/CG coordinates (top-left origin, Y down) while NSWindow uses Cocoa coordinates (bottom-left origin, Y up). Fix: convert via cocoa_y = primary_screen_height - ax_y - height, reusing get_primary_display_height() from pbmbd_display.rs. Applied to both show_alt_tab_overlay and update_alt_tab_highlight call sites in pbmsa_alttab.rs. Build clean, needs runtime verification.",
+              "silks": "pb-highlight-coordinate-fix",
+              "commit": "ae68823"
+            },
+            {
               "ts": "260207-1256",
               "state": "rough",
               "text": "Reopening: orange border appears sized correctly but positioned incorrectly. Debug needed.",
