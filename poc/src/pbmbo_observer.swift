@@ -779,3 +779,167 @@ public func pbmbo_show_characterization_windows(
         print("CHAR: Characterization windows dismissed")
     }
 }
+
+// MARK: - Highlight Border Window
+
+/// Highlight border window with parameterized color and 6px border
+class HighlightBorderWindow: NSWindow {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
+/// Highlight border content view - draws 6px colored border only
+class HighlightBorderContentView: NSView {
+    private var borderColor: NSColor = .orange
+    private let borderWidth: CGFloat = 6.0
+
+    func setColor(r: Double, g: Double, b: Double) {
+        borderColor = NSColor(red: r, green: g, blue: b, alpha: 1.0)
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        // Clear background (fully transparent)
+        NSColor.clear.setFill()
+        bounds.fill()
+
+        // Draw 6px colored border
+        borderColor.setStroke()
+
+        let borderPath = NSBezierPath(rect: bounds.insetBy(dx: borderWidth / 2, dy: borderWidth / 2))
+        borderPath.lineWidth = borderWidth
+        borderPath.stroke()
+    }
+}
+
+/// Global highlight border window instance (single persistent window)
+private var highlightBorderWindow: HighlightBorderWindow?
+
+/// Show or create highlight border at specified rect with given color
+@_cdecl("pbmbo_show_highlight_border")
+public func pbmbo_show_highlight_border(x: Double, y: Double, w: Double, h: Double, r: Double, g: Double, b: Double) {
+    let screens = NSScreen.screens
+    guard !screens.isEmpty else {
+        print("HIGHLIGHT: No screens available")
+        return
+    }
+
+    // Find which screen contains this rect
+    var targetScreen: NSScreen? = nil
+    for screen in screens {
+        let sf = screen.frame
+        if x >= sf.origin.x && x < sf.origin.x + sf.size.width {
+            targetScreen = screen
+            break
+        }
+    }
+
+    guard let screen = targetScreen else {
+        print("HIGHLIGHT: No screen found for rect at x=\(x)")
+        return
+    }
+
+    // Convert global coordinates to screen-local coordinates
+    let sf = screen.frame
+    let localX = x - sf.origin.x
+    let localY = y - sf.origin.y
+
+    let windowFrame = NSRect(
+        x: localX,
+        y: localY,
+        width: w,
+        height: h
+    )
+
+    // Create window if it doesn't exist, otherwise update existing
+    if highlightBorderWindow == nil {
+        let window = HighlightBorderWindow(
+            contentRect: windowFrame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false,
+            screen: screen
+        )
+
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.level = .statusBar + 2  // Above Alt-Tab popup (which is at .statusBar)
+        window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        window.ignoresMouseEvents = true
+
+        let contentView = HighlightBorderContentView(frame: windowFrame)
+        window.contentView = contentView
+
+        highlightBorderWindow = window
+    } else {
+        // Reposition existing window
+        highlightBorderWindow?.setFrame(windowFrame, display: true)
+    }
+
+    // Set color
+    if let contentView = highlightBorderWindow?.contentView as? HighlightBorderContentView {
+        contentView.setColor(r: r, g: g, b: b)
+    }
+
+    // Show window
+    highlightBorderWindow?.orderFrontRegardless()
+
+    print("HIGHLIGHT: Border shown at (\(x), \(y), \(w), \(h)) color=(\(r), \(g), \(b))")
+}
+
+/// Reposition existing highlight border window
+@_cdecl("pbmbo_reposition_highlight_border")
+public func pbmbo_reposition_highlight_border(x: Double, y: Double, w: Double, h: Double) {
+    guard let window = highlightBorderWindow else {
+        return  // No-op if not shown
+    }
+
+    let screens = NSScreen.screens
+    guard !screens.isEmpty else {
+        return
+    }
+
+    // Find which screen contains this rect
+    var targetScreen: NSScreen? = nil
+    for screen in screens {
+        let sf = screen.frame
+        if x >= sf.origin.x && x < sf.origin.x + sf.size.width {
+            targetScreen = screen
+            break
+        }
+    }
+
+    guard let screen = targetScreen else {
+        return
+    }
+
+    // Convert global coordinates to screen-local coordinates
+    let sf = screen.frame
+    let localX = x - sf.origin.x
+    let localY = y - sf.origin.y
+
+    let windowFrame = NSRect(
+        x: localX,
+        y: localY,
+        width: w,
+        height: h
+    )
+
+    window.setFrame(windowFrame, display: true)
+
+    // Trigger redraw (content view auto-resizes with window)
+    if let contentView = window.contentView as? HighlightBorderContentView {
+        contentView.needsDisplay = true
+    }
+
+    print("HIGHLIGHT: Border repositioned to (\(x), \(y), \(w), \(h))")
+}
+
+/// Hide highlight border window
+@_cdecl("pbmbo_hide_highlight_border")
+public func pbmbo_hide_highlight_border() {
+    highlightBorderWindow?.orderOut(nil)
+    print("HIGHLIGHT: Border hidden")
+}
