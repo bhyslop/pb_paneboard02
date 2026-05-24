@@ -34,12 +34,16 @@ ZBUL_LAUNCHER_SOURCED=1
 # couples to where the launcher dir sits and breaks whenever it moves.
 ZBUL_PROJECT_ROOT="${PWD}"
 
-# Establish config directory — canonical locator for the moorings dir. This
-# literal is the irreducible bootstrap anchor: the launcher must find the
-# config dir before it can source anything, so the moorings-dir name cannot be
-# derived from a sourced constant here. BUBC_moorings_dir mirrors this value
-# for non-bootstrap consumers to derive from.
-export BURD_CONFIG_DIR="${ZBUL_PROJECT_ROOT}/rbmm_moorings"
+# Config directory is supplied by the project-intimate trampoline (z-launcher),
+# the SOLE file that knows this project's moorings/config dir name. The shared
+# kit no longer hardcodes the name — it consumes the exported absolute path, so
+# one kit serves every consumer (.buk, rbmm_moorings, …). bubc derives
+# BUBC_moorings_dir from this for non-bootstrap consumers.
+test -n "${BURD_CONFIG_DIR:-}" || {
+  echo "bul_launcher: BURD_CONFIG_DIR unset — dispatch must run through z-launcher" >&2
+  exit 1
+}
+export BURD_CONFIG_DIR
 
 # Load BURC configuration
 export BURD_REGIME_FILE="${BURD_CONFIG_DIR}/burc.env"
