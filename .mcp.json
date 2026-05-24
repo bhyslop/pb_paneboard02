@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "vvx": {
+      "command": "./Tools/vvk/bin/vvx",
+      "args": ["mcp"]
+    }
+  }
+}
