@@ -24,14 +24,16 @@ set -euo pipefail
 VVW_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
 
 # Source dependencies
-source "${VVW_SCRIPT_DIR}/../buk/buc_command.sh"
+source "${BURD_BUK_DIR}/buc_command.sh"
+source "${BURD_BUK_DIR}/buv_validation.sh"
+source "${BURD_BUK_DIR}/burd_regime.sh"
 
 # Show filename on each displayed line
 buc_context "${0##*/}"
 
-# Verify launcher provided regime environment
-test -n "${BUD_REGIME_FILE:-}"   || buc_die "BUD_REGIME_FILE not set - must be called via launcher"
-test -n "${BUD_STATION_FILE:-}"  || buc_die "BUD_STATION_FILE not set - must be called via launcher"
+# Verify dispatch completed
+zbuv_kindle
+zburd_kindle
 
 # Simple routing function
 vvw_route() {
@@ -40,9 +42,7 @@ vvw_route() {
 
   test -n "${z_command}" || buc_die "No command specified"
 
-  # Verify BUD environment variables are present
-  test -n "${BUD_TEMP_DIR:-}" || buc_die "BUD_TEMP_DIR not set - must be called from BUD"
-  test -n "${BUD_NOW_STAMP:-}" || buc_die "BUD_NOW_STAMP not set - must be called from BUD"
+  zburd_sentinel
 
   # Route based on command
   local z_vvb_cli="${VVW_SCRIPT_DIR}/vvb_cli.sh"

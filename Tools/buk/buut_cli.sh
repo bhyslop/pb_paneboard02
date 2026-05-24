@@ -20,21 +20,24 @@
 
 set -euo pipefail
 
-ZBUUT_CLI_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
-
-# Source all dependencies
-source "${ZBUUT_CLI_SCRIPT_DIR}/buc_command.sh"
-source "${ZBUUT_CLI_SCRIPT_DIR}/buv_validation.sh"
-source "${ZBUUT_CLI_SCRIPT_DIR}/buut_tabtarget.sh"
+source "${BASH_SOURCE[0]%/*}/buc_command.sh"
 
 zbuut_furnish() {
+  buc_doc_env "BURD_BUK_DIR          " "BUK module directory (dispatch-provided)"
+  buc_doc_env "BURD_TEMP_DIR         " "Temporary directory for intermediate files"
+  buc_doc_env "BURC_TABTARGET_DIR    " "Directory for tabtarget scripts"
+  buc_doc_env "BURC_TOOLS_DIR        " "Directory for tools"
+  buc_doc_env_done || return 0
 
-  buc_doc_env "BUD_TEMP_DIR         " "Temporary directory for intermediate files"
-  buc_doc_env "BURC_TABTARGET_DIR   " "Directory for tabtarget scripts"
-  buc_doc_env "BURC_TOOLS_DIR       " "Directory for tools"
+  source "${BURD_BUK_DIR}/buv_validation.sh"
+  source "${BURD_BUK_DIR}/burd_regime.sh"
+  source "${BURD_BUK_DIR}/buut_tabtarget.sh"
 
-  # Load BURC configuration
-  local z_burc_file="${PWD}/.buk/burc.env"
+  zbuv_kindle
+  zburd_kindle
+
+  # Load BURC configuration (BURD_REGIME_FILE is the dispatch-resolved burc.env path)
+  local z_burc_file="${BURD_REGIME_FILE}"
   buv_file_exists "${z_burc_file}"
   source "${z_burc_file}" || buc_die "Failed to source BURC file"
 

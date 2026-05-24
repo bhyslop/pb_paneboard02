@@ -17,96 +17,54 @@
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
 # BURS CLI - Command line interface for BURS regime operations
-#
-# Requires BUD_STATION_FILE environment variable (path to burs.env).
-# This CLI sources the file and validates/renders/displays BURS configuration.
 
 set -euo pipefail
 
-ZBURS_CLI_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
-
-# Source dependencies
-source "${ZBURS_CLI_SCRIPT_DIR}/buc_command.sh"
-source "${ZBURS_CLI_SCRIPT_DIR}/burs_regime.sh"
+source "${BURD_BUK_DIR}/buc_command.sh"
 
 ######################################################################
-# CLI Functions
+# Command Functions
 
-zburs_cli_kindle() {
-  test -z "${ZBURS_CLI_KINDLED:-}" || buc_die "BURS CLI already kindled"
-
-  # Verify environment
-  test -n "${BUD_STATION_FILE:-}" || buc_die "BUD_STATION_FILE not set - must be called via launcher"
-
-  ZBURS_SPEC_FILE="${ZBURS_CLI_SCRIPT_DIR}/burs_specification.md"
-
-  ZBURS_CLI_KINDLED=1
-}
-
-# Command: validate - source file and validate
 burs_validate() {
-  buc_step "Validating BURS: ${BUD_STATION_FILE}"
+  buc_doc_brief "Validate BURS station regime configuration via enrollment report"
+  buc_doc_shown || return 0
 
-  source "${BUD_STATION_FILE}" || buc_die "Failed to source BURS"
-  zburs_kindle
-
-  buc_success "BURS configuration valid"
+  buc_step "Validating BURS station regime: ${BURD_STATION_FILE}"
+  buv_report BURS "Station Regime"
+  buc_step "BURS station regime valid"
 }
 
-# Command: render - display configuration values
 burs_render() {
-  buc_step "BURS Configuration: ${BUD_STATION_FILE}"
+  buc_doc_brief "Display diagnostic view of BURS station regime configuration"
+  buc_doc_shown || return 0
 
-  source "${BUD_STATION_FILE}" || buc_die "Failed to source BURS"
-
-  # Render with aligned columns
-  printf "%-25s %s\n" "BURS_LOG_DIR" "${BURS_LOG_DIR:-<not set>}"
-}
-
-# Command: info - display specification (formatted for terminal)
-burs_info() {
-  cat <<EOF
-
-${ZBUC_CYAN}========================================${ZBUC_RESET}
-${ZBUC_WHITE}BURS - Bash Utility Regime Station${ZBUC_RESET}
-${ZBUC_CYAN}========================================${ZBUC_RESET}
-
-${ZBUC_YELLOW}Overview${ZBUC_RESET}
-Developer/machine-level configuration for personal preferences.
-NOT checked into git - each developer has their own BURS file.
-
-${ZBUC_YELLOW}Variables${ZBUC_RESET}
-
-  ${ZBUC_GREEN}BURS_LOG_DIR${ZBUC_RESET}
-    Where this developer stores logs
-    Type: string
-    Example: ../_logs_buk
-
-${ZBUC_CYAN}For full specification, see: ${ZBURS_SPEC_FILE}${ZBUC_RESET}
-
-EOF
+  buv_render BURS "BURS - Bash Utility Station Regime" "${BURD_STATION_FILE}"
 }
 
 ######################################################################
-# Main dispatch
+# Furnish and Main
 
-zburs_cli_kindle
+zburs_furnish() {
+  buc_doc_env "BURD_BUK_DIR          " "BUK module directory (dispatch-provided)"
+  buc_doc_env_done || return 0
 
-z_command="${1:-}"
+  source "${BURD_BUK_DIR}/buv_validation.sh"
+  source "${BURD_BUK_DIR}/burd_regime.sh"
+  source "${BURD_BUK_DIR}/burs_regime.sh"
+  source "${BURD_BUK_DIR}/bupr_PresentationRegime.sh"
 
-case "${z_command}" in
-  validate)
-    burs_validate
-    ;;
-  render)
-    burs_render
-    ;;
-  info)
-    burs_info
-    ;;
-  *)
-    buc_die "Unknown command: ${z_command}. Usage: burs_cli.sh {validate|render|info}"
-    ;;
-esac
+  zbuv_kindle
+  zburd_kindle
+  zburd_enforce
+
+  source "${BURD_STATION_FILE}" || buc_die "Failed to source BURS: ${BURD_STATION_FILE}"
+
+  zburs_kindle
+  zburs_enforce
+
+  zbupr_kindle
+}
+
+buc_execute burs_ "Bash Utility Station Regime" zburs_furnish "$@"
 
 # eof

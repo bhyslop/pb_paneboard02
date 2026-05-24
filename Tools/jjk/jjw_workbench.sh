@@ -16,7 +16,9 @@
 #
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
-# JJW Workbench - Routes Job Jockey commands
+# JJW Workbench - Routes Job Jockey commands to CLIs via zipper registry
+#
+# All commands dispatch via buz_exec_lookup (see jjz_zipper.sh for colophon mapping).
 
 set -euo pipefail
 
@@ -24,46 +26,43 @@ set -euo pipefail
 JJW_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
 
 # Source dependencies
-source "${JJW_SCRIPT_DIR}/../buk/buc_command.sh"
+source "${BURD_BUK_DIR}/buc_command.sh"
+source "${BURD_BUK_DIR}/buv_validation.sh"
+source "${BURD_BUK_DIR}/burd_regime.sh"
+source "${BURD_BUK_DIR}/buz_zipper.sh"
+source "${JJW_SCRIPT_DIR}/jjz_zipper.sh"
 
 # Show filename on each displayed line
 buc_context "${0##*/}"
 
-# Verbose output if BUD_VERBOSE is set
+# Kindle dispatch and zipper registry
+zbuv_kindle
+zburd_kindle
+zbuz_kindle
+zjjz_kindle
+
+# Verbose output if BURE_VERBOSE is set
 jjw_show() {
-  test "${BUD_VERBOSE:-0}" != "1" || echo "JJWSHOW: $*"
+  test "${BURE_VERBOSE:-0}" != "1" || echo "JJWSHOW: $*"
 }
 
-# Simple routing function
+######################################################################
+# Routing
+
 jjw_route() {
   local z_command="$1"
   shift
 
   jjw_show "Routing command: ${z_command} with args: $*"
 
-  # Verify BDU environment variables are present
-  test -n "${BUD_TEMP_DIR:-}" || buc_die "BUD_TEMP_DIR not set - must be called from BUD"
-  test -n "${BUD_NOW_STAMP:-}" || buc_die "BUD_NOW_STAMP not set - must be called from BUD"
+  zburd_sentinel
+  zjjz_healthcheck
 
-  jjw_show "BDU environment verified"
+  jjw_show "BURD environment verified"
 
-  # Route based on command - only arcanum commands remain
-  # All jjw-* commands deprecated: use /jjc-* slash commands instead
-  case "${z_command}" in
-
-    # Arcanum commands (install/check/uninstall)
-    jja-c|jja-i|jja-u)
-      jjw_show "Delegating to arcanum: ${z_command}"
-      exec "${JJW_SCRIPT_DIR}/jja_arcanum.sh" "${z_command}" "$@"
-      ;;
-
-    *)
-      buc_die "Unknown command: ${z_command} (jjw-* commands removed; use /jjc-* slash commands)"
-      ;;
-  esac
+  buz_exec_lookup "${z_command}" "${JJW_SCRIPT_DIR}" "$@"
 }
 
-# Main entry point
 jjw_main() {
   local z_command="${1:-}"
   shift || true

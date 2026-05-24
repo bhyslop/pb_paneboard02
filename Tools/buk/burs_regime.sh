@@ -30,14 +30,41 @@ ZBURS_SOURCED=1
 zburs_kindle() {
   test -z "${ZBURS_KINDLED:-}" || buc_die "Module burs already kindled"
 
-  # Validate all required BURS variables
-  test -n "${BURS_LOG_DIR:-}" || buc_die "BURS_LOG_DIR is not set"
+  # No defaults set — buv uses ${!varname:-} for safe indirect expansion under set -u.
+  # Unset variables are detected distinctly from empty by zbuv_check_capture.
 
-  ZBURS_KINDLED=1
+  # Enroll all BURS variables — single source of truth for validation and rendering
+
+  buv_regime_enroll BURS
+
+  buv_group_enroll "Developer Identity"
+  buv_xname_enroll   BURS_USER     1   32  "Local developer username (routes to ${BUBC_moorings_dir}/${BUBC_rbmu_users_subdir}/ profiles)"
+  buv_string_enroll  BURS_TINCTURE 1    3  "Per-station tincture composed by test fixtures into cloud/runtime prefixes and family stems for parallel-run disjointness on a shared payor manor (lowercase alphanumeric, leading letter, no hyphen)"
+
+  buv_group_enroll "Developer Logging"
+  buv_string_enroll  BURS_LOG_DIR  1  512  "Directory for BUK operation logs"
+
+  # Guard against unexpected BURS_ variables not in enrollment
+  buv_scope_sentinel BURS BURS_
+
+  # Lock all enrolled BURS_ variables against mutation
+  buv_lock BURS
+
+  readonly ZBURS_KINDLED=1
 }
 
 zburs_sentinel() {
   test "${ZBURS_KINDLED:-}" = "1" || buc_die "Module burs not kindled - call zburs_kindle first"
+}
+
+# Enforce all BURS enrollment validations
+zburs_enforce() {
+  zburs_sentinel
+
+  buv_vet BURS
+
+  [[ "${BURS_TINCTURE}" =~ ^[a-z][a-z0-9]{0,2}$ ]] \
+    || buc_die "Invalid BURS_TINCTURE format: ${BURS_TINCTURE} (expected 1-3 chars, lowercase alphanumeric starting with letter; no hyphens)"
 }
 
 # eof

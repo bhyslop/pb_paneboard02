@@ -33,7 +33,7 @@ set -euo pipefail
 # Constants
 
 # Canonical BURC relative path - single definition for this script
-readonly ZVVI_BURC_RELPATH=".buk/burc.env"
+readonly ZVVI_BURC_RELPATH="rbmm_moorings/burc.env"
 
 ######################################################################
 # Local BCG-style functions (cannot source BUK)

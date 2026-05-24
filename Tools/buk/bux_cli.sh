@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright 2025 Scale Invariant, Inc.
+# Copyright 2026 Scale Invariant, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 #
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
-# BURC CLI - Command line interface for BURC regime operations
+# BUX CLI - General-purpose test fixtures for BUK dispatch
 
 set -euo pipefail
 
@@ -25,46 +25,23 @@ source "${BURD_BUK_DIR}/buc_command.sh"
 ######################################################################
 # Command Functions
 
-burc_validate() {
-  buc_doc_brief "Validate BURC configuration regime via enrollment report"
+bux_delay() {
+  buc_doc_brief "Sleep 20 seconds (timing fixture for concurrent dispatch testing)"
   buc_doc_shown || return 0
 
-  buc_step "Validating BURC configuration regime: ${BURD_REGIME_FILE}"
-  buv_report BURC "Configuration Regime"
-  buc_step "BURC configuration valid"
-}
-
-burc_render() {
-  buc_doc_brief "Display diagnostic view of BURC configuration regime"
-  buc_doc_shown || return 0
-
-  buv_render BURC "BURC - Bash Utility Configuration Regime" "${BURD_REGIME_FILE}"
+  buc_step "Delay: sleeping 20 seconds"
+  sleep 20
+  buc_step "Delay: complete"
 }
 
 ######################################################################
 # Furnish and Main
 
-zburc_furnish() {
+zbux_furnish() {
   buc_doc_env "BURD_BUK_DIR          " "BUK module directory (dispatch-provided)"
   buc_doc_env_done || return 0
-
-  source "${BURD_BUK_DIR}/buv_validation.sh"
-  source "${BURD_BUK_DIR}/burd_regime.sh"
-  source "${BURD_BUK_DIR}/burc_regime.sh"
-  source "${BURD_BUK_DIR}/bupr_PresentationRegime.sh"
-
-  zbuv_kindle
-  zburd_kindle
-  zburd_enforce
-
-  source "${BURD_REGIME_FILE}" || buc_die "Failed to source BURC: ${BURD_REGIME_FILE}"
-
-  zburc_kindle
-  zburc_enforce
-
-  zbupr_kindle
 }
 
-buc_execute burc_ "Bash Utility Configuration Regime" zburc_furnish "$@"
+buc_execute bux_ "BUK Test Fixtures" zbux_furnish "$@"
 
 # eof

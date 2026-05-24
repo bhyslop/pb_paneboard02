@@ -28,7 +28,7 @@ set -euo pipefail
 ######################################################################
 # Constants
 
-readonly ZVVU_BURC_RELPATH=".buk/burc.env"
+readonly ZVVU_BURC_RELPATH="rbmm_moorings/burc.env"
 
 ######################################################################
 # Local BCG-style functions

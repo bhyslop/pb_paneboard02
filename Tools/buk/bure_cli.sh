@@ -16,7 +16,10 @@
 #
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
-# BURC CLI - Command line interface for BURC regime operations
+# BURE CLI - Command line interface for BURE regime operations
+#
+# BURE is an ambient regime — variables are read from the current environment.
+# No file sourcing is required; callers export BURE_* variables before invoking.
 
 set -euo pipefail
 
@@ -25,46 +28,45 @@ source "${BURD_BUK_DIR}/buc_command.sh"
 ######################################################################
 # Command Functions
 
-burc_validate() {
-  buc_doc_brief "Validate BURC configuration regime via enrollment report"
+bure_validate() {
+  buc_doc_brief "Validate BURE environment regime via enrollment report"
   buc_doc_shown || return 0
 
-  buc_step "Validating BURC configuration regime: ${BURD_REGIME_FILE}"
-  buv_report BURC "Configuration Regime"
-  buc_step "BURC configuration valid"
+  buc_step "Validating BURE ambient environment"
+  buv_report BURE "Environment Regime"
+  buc_step "BURE configuration valid"
 }
 
-burc_render() {
-  buc_doc_brief "Display diagnostic view of BURC configuration regime"
+bure_render() {
+  buc_doc_brief "Display diagnostic view of BURE environment regime"
   buc_doc_shown || return 0
 
-  buv_render BURC "BURC - Bash Utility Configuration Regime" "${BURD_REGIME_FILE}"
+  buv_render BURE "BURE - Bash Utility Environment Regime (ambient)" ""
 }
 
 ######################################################################
 # Furnish and Main
 
-zburc_furnish() {
+zbure_furnish() {
   buc_doc_env "BURD_BUK_DIR          " "BUK module directory (dispatch-provided)"
   buc_doc_env_done || return 0
 
   source "${BURD_BUK_DIR}/buv_validation.sh"
   source "${BURD_BUK_DIR}/burd_regime.sh"
-  source "${BURD_BUK_DIR}/burc_regime.sh"
+  source "${BURD_BUK_DIR}/bure_regime.sh"
   source "${BURD_BUK_DIR}/bupr_PresentationRegime.sh"
 
   zbuv_kindle
   zburd_kindle
   zburd_enforce
 
-  source "${BURD_REGIME_FILE}" || buc_die "Failed to source BURC: ${BURD_REGIME_FILE}"
-
-  zburc_kindle
-  zburc_enforce
+  # BURE is ambient — no env file to source, variables already in environment
+  zbure_kindle
+  zbure_enforce
 
   zbupr_kindle
 }
 
-buc_execute burc_ "Bash Utility Configuration Regime" zburc_furnish "$@"
+buc_execute bure_ "Bash Utility Environment Regime" zbure_furnish "$@"
 
 # eof

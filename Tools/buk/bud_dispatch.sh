@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2153  # kindle chain - per BCG
 #
 # Copyright 2025 Scale Invariant, Inc.
 #
@@ -16,38 +17,42 @@
 #
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
-# Bash Dispatch Utility - Direct bash dispatch
+# Bash Utility Regime Dispatch - Direct bash dispatch
 
 set -euo pipefail
 
-BUD_VERBOSE=${BUD_VERBOSE:-0}
+BURE_VERBOSE=${BURE_VERBOSE:-0}
 
-BUD_REGIME_FILE=${BUD_REGIME_FILE:-"__MISSING_REGIME_FILE__"}
+BURD_REGIME_FILE=${BURD_REGIME_FILE:-"__MISSING_BURD_REGIME_FILE__"}
 
 # Utility function for verbose output
-zbud_show() { test "$BUD_VERBOSE" != "1" || echo "BDUSHOW: $*"; }
+zbud_show() { test "$BURE_VERBOSE" != "1" || echo "BURDSHOW: $*"; }
 
 # Enable trace mode if verbose level is 2
-if [[ "$BUD_VERBOSE" == "2" ]]; then
+if test "${BURE_VERBOSE}" = "2"; then
   set -x
 fi
 
 zbud_die() { echo "FATAL: $*" >&2; exit 1; }
 
+zburd_sentinel() {
+  test "${ZBURD_INITIALIZED:-}" = "1" || zbud_die "Dispatch not initialized - zbud_main not complete"
+}
+
 # String validator with optional length constraints
 zbud_check_string() {
-  local context=$1
-  local varname=$2
-  eval "local val=\${$varname:-}" || zbud_die "Variable '$varname' is not defined in '$context'"
-  local min=$3
-  local max=$4
+  local -r z_context="${1}"
+  local -r z_varname="${2}"
+  local z_val="${!z_varname:-}"
+  local -r z_min="${3}"
+  local -r z_max="${4}"
 
-  test "$min" = "0" -a -z "$val" && return 0
-  test -n "$val" || zbud_die "[$context] $varname must not be empty"
+  test "${z_min}" != "0" -o -n "${z_val}" || return 0
+  test -n "${z_val}" || zbud_die "[${z_context}] ${z_varname} must not be empty"
 
-  if [ -n "$max" ]; then
-    test ${#val} -ge $min || zbud_die "[$context] $varname must be at least $min chars, got '${val}' (${#val})"
-    test ${#val} -le $max || zbud_die "[$context] $varname must be no more than $max chars, got '${val}' (${#val})"
+  if test -n "${z_max}"; then
+    test ${#z_val} -ge "${z_min}" || zbud_die "[${z_context}] ${z_varname} must be at least ${z_min} chars, got '${z_val}' (${#z_val})"
+    test ${#z_val} -le "${z_max}" || zbud_die "[${z_context}] ${z_varname} must be no more than ${z_max} chars, got '${z_val}' (${#z_val})"
   fi
 }
 
@@ -55,131 +60,141 @@ zbud_check_string() {
 zbud_setup() {
   zbud_show "Starting BDU setup"
 
-  source            "${BUD_REGIME_FILE}"
-  zbud_check_string "${BUD_REGIME_FILE}" BURC_STATION_FILE        1 256
-  zbud_check_string "${BUD_REGIME_FILE}" BURC_LOG_LAST            1 256
-  zbud_check_string "${BUD_REGIME_FILE}" BURC_LOG_EXT             1 32
-  zbud_check_string "${BUD_REGIME_FILE}" BURC_TABTARGET_DIR       1 256
-  zbud_check_string "${BUD_REGIME_FILE}" BURC_TABTARGET_DELIMITER 1 8
-  zbud_check_string "${BUD_REGIME_FILE}" BURC_TEMP_ROOT_DIR       1 256
-  zbud_check_string "${BUD_REGIME_FILE}" BURC_OUTPUT_ROOT_DIR     1 256
-  zbud_check_string "${BUD_REGIME_FILE}" BURC_TOOLS_DIR           1 256
+  source            "${BURD_REGIME_FILE}"
 
-  # Source station file
-  zbud_show "Sourcing station file: ${BURC_STATION_FILE}"
-  source                           "${BURC_STATION_FILE}"
+  # Apply BURV (Bash Utility Regime Verification) overrides if set
+  BURC_OUTPUT_ROOT_DIR="${BURV_OUTPUT_ROOT_DIR:-${BURC_OUTPUT_ROOT_DIR}}"
+  BURC_TEMP_ROOT_DIR="${BURV_TEMP_ROOT_DIR:-${BURC_TEMP_ROOT_DIR}}"
 
-  # Validate station variables
-  zbud_check_string "${BURC_STATION_FILE}" BURS_LOG_DIR 1 256
+  zbud_check_string "${BURD_REGIME_FILE}" BURC_STATION_FILE        1 256
+  zbud_check_string "${BURD_REGIME_FILE}" BURC_LOG_LAST            1 256
+  zbud_check_string "${BURD_REGIME_FILE}" BURC_LOG_EXT             1 32
+  zbud_check_string "${BURD_REGIME_FILE}" BURC_TABTARGET_DIR       1 256
+  zbud_check_string "${BURD_REGIME_FILE}" BURC_TABTARGET_DELIMITER 1 8
+  zbud_check_string "${BURD_REGIME_FILE}" BURC_TEMP_ROOT_DIR       1 256
+  zbud_check_string "${BURD_REGIME_FILE}" BURC_OUTPUT_ROOT_DIR     1 256
+  zbud_check_string "${BURD_REGIME_FILE}" BURC_TOOLS_DIR           1 256
 
-  BUD_NOW_STAMP=$(date +'%Y%m%d-%H%M%S')-$$-$((RANDOM % 1000))
-  zbud_show "Generated timestamp: ${BUD_NOW_STAMP}"
+  # Dispatch-provided directory variables (survive exec boundary for CLIs)
+  BURD_TOOLS_DIR="${BURC_TOOLS_DIR}"
+  BURD_BUK_DIR="${BURC_TOOLS_DIR}/buk"
+  BURD_TABTARGET_DIR="${BURC_TABTARGET_DIR}"
+  export BURD_TOOLS_DIR BURD_BUK_DIR BURD_TABTARGET_DIR
 
-  BUD_TEMP_DIR="${BURC_TEMP_ROOT_DIR}/temp-${BUD_NOW_STAMP}"
-  mkdir -p                           "${BUD_TEMP_DIR}"
-  zbud_show "Generated temporary dir: ${BUD_TEMP_DIR}"
+  # Source station file (skip for no-log handbook tabtargets)
+  if test -z "${BURD_NO_LOG:-}"; then
+    zbud_show "Sourcing station file: ${BURC_STATION_FILE}"
+    source                           "${BURC_STATION_FILE}"
 
-  # Validate temporary directory
-  if [[ ! -d "${BUD_TEMP_DIR}" ]]; then
-    echo "ERROR: Failed to create temporary directory: ${BUD_TEMP_DIR}" >&2
-    return 1
+    # Validate station variables
+    zbud_check_string "${BURC_STATION_FILE}" BURS_LOG_DIR 1 256
   fi
 
-  if [[ -n "$(find "${BUD_TEMP_DIR}" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
-    echo "ERROR: Temporary directory is not empty: ${BUD_TEMP_DIR}" >&2
-    return 1
-  fi
+  mkdir -p "${BURC_TEMP_ROOT_DIR}" || zbud_die "Failed to create temp root: ${BURC_TEMP_ROOT_DIR}"
+  local -r z_date_file="${BURC_TEMP_ROOT_DIR}/bud_bootstrap_date.txt"
+  date +'%Y%m%d-%H%M%S %s' > "${z_date_file}" || zbud_die "Failed to get datetime"
+  local z_datetime
+  z_datetime=$(<"${z_date_file}")
+  test -n "${z_datetime}" || zbud_die "Empty datetime from ${z_date_file}"
+  BURD_NOW_STAMP="${z_datetime% *}-$$-$((RANDOM % 1000))"
+  BURD_NOW_EPOCH="${z_datetime#* }"
+  zbud_show "Generated timestamp: ${BURD_NOW_STAMP} epoch: ${BURD_NOW_EPOCH}"
+
+  BURD_TEMP_DIR="${BURC_TEMP_ROOT_DIR}/temp-${BURD_NOW_STAMP}"
+  case "${BURD_TEMP_DIR}" in
+    /*) ;;
+    *)  BURD_TEMP_DIR="${PWD}/${BURD_TEMP_DIR}" ;;
+  esac
+  mkdir -p                           "${BURD_TEMP_DIR}" || zbud_die "Failed to create temp directory: ${BURD_TEMP_DIR}"
+  zbud_show "Generated temporary dir: ${BURD_TEMP_DIR}"
 
   # Setup transcript file path
-  BUD_TRANSCRIPT="${BUD_TEMP_DIR}/transcript.txt"
+  BURD_TRANSCRIPT="${BURD_TEMP_DIR}/transcript.txt"
 
   # Setup output directory (fixed location, cleared on each run)
-  BUD_OUTPUT_DIR="${BURC_OUTPUT_ROOT_DIR}/current"
+  BURD_OUTPUT_DIR="${BURC_OUTPUT_ROOT_DIR}/current"
+  case "${BURD_OUTPUT_DIR}" in
+    /*) ;;
+    *)  BURD_OUTPUT_DIR="${PWD}/${BURD_OUTPUT_DIR}" ;;
+  esac
 
   # Clear if exists, then create fresh
-  if [[ -d "$BUD_OUTPUT_DIR" ]]; then
-    zbud_show "Clearing existing output directory: $BUD_OUTPUT_DIR"
-    rm -rf "$BUD_OUTPUT_DIR"
+  if test -d "${BURD_OUTPUT_DIR}"; then
+    zbud_show "Clearing existing output directory: ${BURD_OUTPUT_DIR}"
+    rm -rf "${BURD_OUTPUT_DIR}" || zbud_die "Failed to remove output directory: ${BURD_OUTPUT_DIR}"
   fi
-  mkdir -p "$BUD_OUTPUT_DIR"
+  mkdir -p "${BURD_OUTPUT_DIR}" || zbud_die "Failed to create output directory: ${BURD_OUTPUT_DIR}"
 
-  # Validate output directory
-  if [[ ! -d "$BUD_OUTPUT_DIR" ]]; then
-    echo "ERROR: Failed to create output directory: $BUD_OUTPUT_DIR" >&2
-    return 1
-  fi
-
-  if [[ -n "$(find "$BUD_OUTPUT_DIR" -mindepth 1 -print -quit 2>/dev/null)" ]]; then
-    echo "ERROR: Output directory is not empty: $BUD_OUTPUT_DIR" >&2
-    return 1
-  fi
-
-  zbud_show "Output directory ready: $BUD_OUTPUT_DIR"
+  zbud_show "Output directory ready: ${BURD_OUTPUT_DIR}"
 
   # Get Git context
-  BUD_GIT_CONTEXT=$(git describe --always --dirty --tags --long 2>/dev/null || echo "git-unavailable")
-  zbud_show "Git context: $BUD_GIT_CONTEXT"
+  local -r z_git_context_file="${BURD_TEMP_DIR}/bud_git_context.txt"
+  local -r z_git_context_stderr="${BURD_TEMP_DIR}/bud_git_context_stderr.txt"
+  if git describe --always --dirty --tags --long > "${z_git_context_file}" 2>"${z_git_context_stderr}"; then
+    BURD_GIT_CONTEXT=$(<"${z_git_context_file}")
+  else
+    BURD_GIT_CONTEXT="git-unavailable"
+  fi
+  zbud_show "Git context: ${BURD_GIT_CONTEXT}"
 
   # Export for child processes
-  export BUD_TEMP_DIR
-  export BUD_OUTPUT_DIR
-  export BUD_NOW_STAMP
-  export BUD_TRANSCRIPT
-  export BUD_GIT_CONTEXT
+  export BURD_TEMP_DIR
+  export BURD_OUTPUT_DIR
+  export BURD_NOW_STAMP
+  export BURD_NOW_EPOCH
+  export BURD_TRANSCRIPT
+  export BURD_GIT_CONTEXT
 
   return 0
 }
 
 # Process command-line arguments
 zbud_process_args() {
-  local target=$1
+  local -r z_target="${1}"
   shift
 
-  zbud_show "Processing target: $target"
+  zbud_show "Processing target: ${z_target}"
 
   # Extract tokens from tabtarget
-  IFS="${BURC_TABTARGET_DELIMITER}" read -ra tokens <<< "$target"
-  zbud_show "Split tokens: ${tokens[*]}"
+  local -a z_tokens
+  IFS="${BURC_TABTARGET_DELIMITER}" read -ra z_tokens <<< "${z_target}"
+  zbud_show "Split tokens: ${z_tokens[*]}"
 
-  # Store primary command token (legacy, equivalent to BUD_TOKEN_1)
-  BUD_COMMAND="${tokens[0]}"
+  # Store primary command token (legacy, equivalent to BURD_TOKEN_1)
+  BURD_COMMAND="${z_tokens[0]}"
 
   # Explode tokens into numbered variables for workbench access
   # Pattern matches MBC_TTPARAM__FIRST through MBC_TTPARAM__FIFTH
-  BUD_TOKEN_1="${tokens[0]:-}"
-  BUD_TOKEN_2="${tokens[1]:-}"
-  BUD_TOKEN_3="${tokens[2]:-}"
-  BUD_TOKEN_4="${tokens[3]:-}"
-  BUD_TOKEN_5="${tokens[4]:-}"
+  BURD_TOKEN_1="${z_tokens[0]:-}"
+  BURD_TOKEN_2="${z_tokens[1]:-}"
+  BURD_TOKEN_3="${z_tokens[2]:-}"
+  BURD_TOKEN_4="${z_tokens[3]:-}"
+  BURD_TOKEN_5="${z_tokens[4]:-}"
 
-  export BUD_TOKEN_1 BUD_TOKEN_2 BUD_TOKEN_3 BUD_TOKEN_4 BUD_TOKEN_5
+  export BURD_TOKEN_1 BURD_TOKEN_2 BURD_TOKEN_3 BURD_TOKEN_4 BURD_TOKEN_5
 
   # Create tag for log files
-  local tag="${tokens[0]}-${tokens[2]:-unknown}"
+  local -r z_tag="${z_tokens[0]}-${z_tokens[2]:-unknown}"
 
-  # Setup log paths
-  BUD_LOG_LAST="${BURS_LOG_DIR}/${BURC_LOG_LAST}.${BURC_LOG_EXT}"
-  BUD_LOG_SAME="${BURS_LOG_DIR}/same-${tag}.${BURC_LOG_EXT}"
-  BUD_LOG_HIST="${BURS_LOG_DIR}/hist-${tag}-$BUD_NOW_STAMP.${BURC_LOG_EXT}"
-
-  # Prepare/initialize log files unless logging disabled
-  if [[ -z "${BUD_NO_LOG:-}" ]]; then
-    # Prepare log directories
+  # Setup log paths and files (skip entirely for no-log tabtargets)
+  if test -z "${BURD_NO_LOG:-}"; then
+    BURD_LOG_LAST="${BURS_LOG_DIR}/${BURC_LOG_LAST}.${BURC_LOG_EXT}"
+    BURD_LOG_SAME="${BURS_LOG_DIR}/same-${z_tag}.${BURC_LOG_EXT}"
+    BURD_LOG_HIST="${BURS_LOG_DIR}/hist-${z_tag}-${BURD_NOW_STAMP}.${BURC_LOG_EXT}"
     mkdir -p "${BURS_LOG_DIR}"
-    # Initialize log files
-    > "$BUD_LOG_LAST"
-    > "$BUD_LOG_SAME"
-    > "$BUD_LOG_HIST"
+    : > "${BURD_LOG_LAST}"
+    : > "${BURD_LOG_SAME}"
+    : > "${BURD_LOG_HIST}"
   fi
 
   # Store target and extra arguments
-  BUD_TARGET="$target"
-  BUD_CLI_ARGS=("$@")
+  BURD_TARGET="${z_target}"
+  BURD_CLI_ARGS=("$@")
 
   # Export command context for workbench access
-  export BUD_COMMAND
-  export BUD_TARGET
-  export BUD_CLI_ARGS
+  export BURD_COMMAND
+  export BURD_TARGET
+  export BURD_CLI_ARGS
 
   return 0
 }
@@ -191,49 +206,86 @@ zbud_curate_same() {
       -e '/^$/d'                                 \
       -e 's/\x1b[\[][0-9;]*[a-zA-Z]//g'          \
       -e 's/\x1b[(][A-Z]//g'                     \
-      -e "s|${BUD_TEMP_DIR}|BUD_EPHEMERAL_DIR|g" \
+      -e "s|${BURD_TEMP_DIR}|BURD_EPHEMERAL_DIR|g" \
       -e '/VOLATILE/d'
 }
 
 # Function to curate logs for the historical log file (with timestamps)
 zbud_curate_hist() {
-  while read -r line; do
-    printf "[%s] %s\n" "$(date +"%Y-%m-%d %H:%M:%S")" "$line"
+  while read -r z_line; do
+    printf "[%s] %s\n" "$(date +"%Y-%m-%d %H:%M:%S")" "${z_line}"
   done
 }
 
 # Generate and log checksum for a file
 zbud_generate_checksum() {
-  local file=$1
-  local output_file=$2
+  local -r z_file="${1}"
+  local -r z_output_file="${2}"
 
-  # Try multiple checksum commands (platform-dependent)
-  local checksum=$(sha256sum            "$file" 2>/dev/null ||
-                   openssl dgst -sha256 "$file" 2>/dev/null ||
-                   echo "checksum-unavailable")
+  local z_checksum
+  z_checksum=$(openssl dgst -sha256 -r "${z_file}" 2>/dev/null) || z_checksum="checksum-unavailable"
+  read -r z_checksum _ <<< "${z_checksum}"
 
-  echo "Same log checksum: $checksum" >> "$output_file"
+  echo "Same log checksum: ${z_checksum}" >> "${z_output_file}"
   return 0
 }
 
-# Resolve color policy once at dispatch time and export BUD_COLOR (0/1)
+# Resolve color policy once at dispatch time and export BURE_COLOR (0/1)
 zbud_resolve_color() {
-  if [ -n "${NO_COLOR:-}" ]; then
-    export BUD_COLOR=0
+  if test -n "${NO_COLOR:-}"; then
+    export BURE_COLOR=0
     return 0
   fi
-  case "${BUD_COLOR:-auto}" in
+  case "${BURE_COLOR:-auto}" in
     0|1)
-      export BUD_COLOR
+      export BURE_COLOR
       ;;
     auto|*)
-      if [ -t 1 ] && [ "${TERM:-}" != "dumb" ] && command -v tput >/dev/null 2>&1 && [ "$(tput colors 2>/dev/null || echo 0)" -gt 0 ]; then
-          export BUD_COLOR=1
+      if test -t 1 && test "${TERM:-}" != "dumb"; then
+          export BURE_COLOR=1
       else
-          export BUD_COLOR=0
+          export BURE_COLOR=0
       fi
       ;;
   esac
+}
+
+# Write nanosecond-precision timestamp to the file specified by $1
+zbud_nanosecond_timestamp() {
+  local -r z_output_file="${1}"
+  if command -v gdate >/dev/null 2>&1; then
+    gdate +'%Y%m%d-%H%M%S.%N' > "${z_output_file}" || zbud_die "gdate failed"
+  else
+    date +'%Y%m%d-%H%M%S.000000000' > "${z_output_file}" || zbud_die "date failed"
+  fi
+}
+
+zbud_write_burx_initial() {
+  local -r z_ts_file="${BURD_TEMP_DIR}/zbud_began_at.txt"
+  zbud_nanosecond_timestamp "${z_ts_file}"
+  local -r z_began_at=$(<"${z_ts_file}")
+  test -n "${z_began_at}" || zbud_die "Empty began_at timestamp"
+
+  local -r z_label="${BURE_LABEL:-}"
+  local -r z_content="BURX_PID=$$
+BURX_BEGAN_AT=${z_began_at}
+BURX_TABTARGET=${BURD_TARGET}
+BURX_TEMP_DIR=${BURD_TEMP_DIR}
+BURX_TRANSCRIPT=${BURD_TRANSCRIPT}
+BURX_LOG_HIST=${BURD_LOG_HIST:-}
+BURX_LABEL=${z_label}"
+  buf_write_fact_single "${BUF_burx_env}" "${z_content}"
+}
+
+zbud_write_burx_completion() {
+  local -r z_exit_status="${1}"
+  local -r z_ts_file="${BURD_TEMP_DIR}/zbud_ended_at.txt"
+  zbud_nanosecond_timestamp "${z_ts_file}"
+  local -r z_ended_at=$(<"${z_ts_file}")
+  test -n "${z_ended_at}" || zbud_die "Empty ended_at timestamp"
+
+  printf 'BURX_EXIT_STATUS=%s\nBURX_ENDED_AT=%s\n' "${z_exit_status}" "${z_ended_at}" >> "${BURD_OUTPUT_DIR}/${BUF_burx_env}"
+  printf 'BURX_EXIT_STATUS=%s\nBURX_ENDED_AT=%s\n' "${z_exit_status}" "${z_ended_at}" >> "${BURD_TEMP_DIR}/${BUF_burx_env}"
 }
 
 zbud_main() {
@@ -243,84 +295,111 @@ zbud_main() {
   zbud_resolve_color
 
   # Setup environment
-  zbud_setup || (echo "ERROR: Environment setup failed" >&2 && exit 1)
+  zbud_setup || { echo "ERROR: Environment setup failed" >&2; exit 1; }
   zbud_show "Environment setup complete"
 
+  # Source fact-file module for BURX writes
+  source "${BURC_TOOLS_DIR}/buk/buf_fact.sh"
+
   # Process arguments
-  zbud_process_args "$@" || (echo "ERROR: Argument processing failed" >&2 && exit 1)
+  zbud_process_args "$@" || { echo "ERROR: Argument processing failed" >&2; exit 1; }
   zbud_show "Arguments processed"
 
-  # Build complete invocation array (always has ≥2 elements, so always safe under set -u)
-  local coordinator_cmd="${BUD_COORDINATOR_SCRIPT}"
-  local -a zbud_invocation=("$coordinator_cmd" "$BUD_COMMAND")
-  if [[ ${#BUD_CLI_ARGS[@]} -gt 0 ]]; then
-    zbud_invocation+=("${BUD_CLI_ARGS[@]}")
-  fi
-  zbud_show "Coordinator command: ${zbud_invocation[*]}"
+  # Write initial BURX exchange state
+  zbud_write_burx_initial
 
-  # Log command to all log files (or disable)
-  if [[ -n "${BUD_NO_LOG:-}" ]]; then
-    echo "logs:        disabled"
-  elif [[ -n "${BUD_INTERACTIVE:-}" ]]; then
-    echo "log (interactive): $BUD_LOG_HIST"
-    echo "command: ${zbud_invocation[*]}" >> "$BUD_LOG_HIST"
-    echo "Git context: $BUD_GIT_CONTEXT"  >> "$BUD_LOG_HIST"
-  else
-    echo "log files:   $BUD_LOG_LAST $BUD_LOG_SAME $BUD_LOG_HIST"
-    echo "command: ${zbud_invocation[*]}" >> "$BUD_LOG_LAST"
-    echo "command: ${zbud_invocation[*]}" >> "$BUD_LOG_SAME"
-    echo "command: ${zbud_invocation[*]}" >> "$BUD_LOG_HIST"
-    echo "Git context: $BUD_GIT_CONTEXT"  >> "$BUD_LOG_HIST"
+  # Detect unexpected BURD_ variables
+  local -r z_known="BURD_CONFIG_DIR BURD_REGIME_FILE BURD_NO_LOG BURD_INTERACTIVE BURD_COORDINATOR_SCRIPT BURD_LAUNCHER BURD_STATION_FILE BURD_TERM_COLS BURD_NOW_STAMP BURD_NOW_EPOCH BURD_TEMP_DIR BURD_OUTPUT_DIR BURD_TRANSCRIPT BURD_GIT_CONTEXT BURD_LOG_LAST BURD_LOG_SAME BURD_LOG_HIST BURD_COMMAND BURD_TARGET BURD_CLI_ARGS BURD_TOKEN_1 BURD_TOKEN_2 BURD_TOKEN_3 BURD_TOKEN_4 BURD_TOKEN_5 BURD_TOOLS_DIR BURD_BUK_DIR BURD_TABTARGET_DIR"
+  ZBURD_UNEXPECTED=()
+  local z_var
+  for z_var in $(compgen -v BURD_); do
+    case " ${z_known} " in
+      *" ${z_var} "*) : ;;
+      *) ZBURD_UNEXPECTED+=("${z_var}") ;;
+    esac
+  done
+
+  # Die on unexpected variables
+  if test ${#ZBURD_UNEXPECTED[@]} -gt 0; then
+    zbud_die "Unexpected BURD_ variables: ${ZBURD_UNEXPECTED[*]}"
   fi
-  echo "transcript:  ${BUD_TRANSCRIPT}"
-  echo "output dir:  ${BUD_OUTPUT_DIR}"
+
+  ZBURD_INITIALIZED=1
+
+  # Build complete invocation array (always has ≥2 elements, so always safe under set -u)
+  local -r z_coordinator_cmd="${BURD_COORDINATOR_SCRIPT}"
+  local -a z_invocation=("${z_coordinator_cmd}" "${BURD_COMMAND}")
+  if test ${#BURD_CLI_ARGS[@]} -gt 0; then
+    z_invocation+=("${BURD_CLI_ARGS[@]}")
+  fi
+  zbud_show "Coordinator command: ${z_invocation[*]}"
+
+  # Log command to all log files (or suppress all output if BURD_NO_LOG)
+  if test -z "${BURD_NO_LOG:-}"; then
+    if test -n "${BURD_INTERACTIVE:-}"; then
+      echo "log (interactive): ${BURD_LOG_HIST}"
+      echo "command: ${z_invocation[*]}" >> "${BURD_LOG_HIST}"
+      echo "Git context: ${BURD_GIT_CONTEXT}"  >> "${BURD_LOG_HIST}"
+    else
+      echo "log files:   ${BURD_LOG_LAST} ${BURD_LOG_SAME} ${BURD_LOG_HIST}"
+      echo "command: ${z_invocation[*]}" >> "${BURD_LOG_LAST}"
+      echo "command: ${z_invocation[*]}" >> "${BURD_LOG_SAME}"
+      echo "command: ${z_invocation[*]}" >> "${BURD_LOG_HIST}"
+      echo "Git context: ${BURD_GIT_CONTEXT}"  >> "${BURD_LOG_HIST}"
+    fi
+    echo "transcript:  ${BURD_TRANSCRIPT}"
+    echo "output dir:  ${BURD_OUTPUT_DIR}"
+  fi
 
   zbud_show "Executing coordinator"
 
   # Execute coordinator with logging
   set +e
-  zBUD_STATUS_FILE="${BUD_TEMP_DIR}/status-$$"
-  if [[ -n "${BUD_INTERACTIVE:-}" ]]; then
-    # Interactive mode: uncurated logging to historical log, preserves line buffering
-    "${zbud_invocation[@]}" 2>&1 | tee -a "$BUD_LOG_HIST"
-    zBUD_EXIT_STATUS=${PIPESTATUS[0]}
-    echo $zBUD_EXIT_STATUS > "${zBUD_STATUS_FILE}"
-    zbud_show "Coordinator status (interactive): $zBUD_EXIT_STATUS"
-  elif [[ -n "${BUD_NO_LOG:-}" ]]; then
+  zBURD_STATUS_FILE="${BURD_TEMP_DIR}/status-$$"
+  if test -n "${BURD_INTERACTIVE:-}" && test -z "${BURD_NO_LOG:-}"; then
+    # Interactive mode with logging: uncurated tee to historical log, preserves line buffering
+    "${z_invocation[@]}" 2>&1 | tee -a "${BURD_LOG_HIST}"
+    zBURD_EXIT_STATUS=${PIPESTATUS[0]}
+    echo "${zBURD_EXIT_STATUS}" > "${zBURD_STATUS_FILE}"
+    zbud_show "Coordinator status (interactive): ${zBURD_EXIT_STATUS}"
+  elif test -n "${BURD_NO_LOG:-}"; then
     {
-      "${zbud_invocation[@]}"
-      echo $? > "${zBUD_STATUS_FILE}"
-      zbud_show "Coordinator status: $(cat ${zBUD_STATUS_FILE})"
+      "${z_invocation[@]}"
+      echo $? > "${zBURD_STATUS_FILE}"
+      zbud_show "Coordinator status: $(cat "${zBURD_STATUS_FILE}")"
     }
   else
     {
-      "${zbud_invocation[@]}"
-      echo $? > "${zBUD_STATUS_FILE}"
-      zbud_show "Coordinator status: $(cat ${zBUD_STATUS_FILE})"
-    } | while IFS= read -r line; do
-        printf '%s\n' "$line" >> "$BUD_LOG_LAST"
-        printf '%s\n' "$line" | zbud_curate_same >> "$BUD_LOG_SAME"
-        printf '%s\n' "$line" | zbud_curate_hist >> "$BUD_LOG_HIST"
-        printf '%s\n' "$line"  # to stdout
+      "${z_invocation[@]}" 2>&1
+      echo $? > "${zBURD_STATUS_FILE}"
+      zbud_show "Coordinator status: $(cat "${zBURD_STATUS_FILE}")"
+    } | while IFS= read -r z_line; do
+        printf '%s\n' "${z_line}" >> "${BURD_LOG_LAST}"
+        printf '%s\n' "${z_line}" | zbud_curate_same >> "${BURD_LOG_SAME}"
+        printf '%s\n' "${z_line}" | zbud_curate_hist >> "${BURD_LOG_HIST}"
+        printf '%s\n' "${z_line}"  # to stdout
       done
   fi
 
-  zBUD_EXIT_STATUS=$(cat "${zBUD_STATUS_FILE}")
-  rm                     "${zBUD_STATUS_FILE}"
+  zBURD_EXIT_STATUS=$(cat "${zBURD_STATUS_FILE}")
+  rm                     "${zBURD_STATUS_FILE}"
+
+  # Write BURX completion state
+  zbud_write_burx_completion "${zBURD_EXIT_STATUS}"
+
   set -e
 
   # Generate checksum for the log files (only when enabled)
-  if [[ -z "${BUD_NO_LOG:-}" ]]; then
-    zbud_generate_checksum "$BUD_LOG_SAME" "$BUD_LOG_HIST"
+  if test -z "${BURD_NO_LOG:-}"; then
+    zbud_generate_checksum "${BURD_LOG_SAME}" "${BURD_LOG_HIST}"
     zbud_show "Checksum generated"
   fi
 
-  zbud_show "BDU completed with status: $zBUD_EXIT_STATUS"
+  zbud_show "BDU completed with status: ${zBURD_EXIT_STATUS}"
 
-  exit "$zBUD_EXIT_STATUS"
+  exit "${zBURD_EXIT_STATUS}"
 }
 
 zbud_main "$@"
 
 # eof
-

@@ -16,7 +16,9 @@
 #
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
-# BUK Workbench - Routes BUK management commands
+# BUK Workbench - Routes BUK management commands via zipper registry
+#
+# All commands dispatch via buz_exec_lookup (see buwz_zipper.sh for colophon mapping).
 
 set -euo pipefail
 
@@ -25,60 +27,40 @@ BUW_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
 
 # Source dependencies
 source "${BUW_SCRIPT_DIR}/buc_command.sh"
+source "${BUW_SCRIPT_DIR}/buv_validation.sh"
+source "${BURD_BUK_DIR}/burd_regime.sh"
+source "${BUW_SCRIPT_DIR}/buz_zipper.sh"
+source "${BUW_SCRIPT_DIR}/buwz_zipper.sh"
 
 # Show filename on each displayed line
 buc_context "${0##*/}"
 
-# Verify launcher provided regime environment
-test -n "${BUD_REGIME_FILE:-}"   || buc_die "BUD_REGIME_FILE not set - must be called via launcher"
-test -n "${BUD_STATION_FILE:-}"  || buc_die "BUD_STATION_FILE not set - must be called via launcher"
+# Kindle dispatch and zipper registry
+zbuv_kindle
+zburd_kindle
+zbuz_kindle
+zbuwz_kindle
 
-# Verbose output if BUD_VERBOSE is set
+# Verbose output if BURE_VERBOSE is set
 buw_show() {
-  test "${BUD_VERBOSE:-0}" != "1" || echo "BUWSHOW: $*"
+  test "${BURE_VERBOSE:-0}" != "1" || echo "BUWSHOW: $*"
 }
 
-# Simple routing function
+######################################################################
+# Routing
+
 buw_route() {
   local z_command="$1"
   shift
 
   buw_show "Routing command: ${z_command} with args: $*"
 
-  # Verify BDU environment variables are present
-  test -n "${BUD_TEMP_DIR:-}" || buc_die "BUD_TEMP_DIR not set - must be called from BUD"
-  test -n "${BUD_NOW_STAMP:-}" || buc_die "BUD_NOW_STAMP not set - must be called from BUD"
+  zburd_sentinel
+  zbuwz_healthcheck
 
-  buw_show "BDU environment verified"
+  buw_show "BURD environment verified"
 
-  # Route based on command
-  local z_buut_cli="${BUW_SCRIPT_DIR}/buut_cli.sh"
-  local z_burc_cli="${BUW_SCRIPT_DIR}/burc_cli.sh"
-  local z_burs_cli="${BUW_SCRIPT_DIR}/burs_cli.sh"
-
-  case "${z_command}" in
-
-    # TabTarget subsystem (buw-tt-*)
-    buw-tt-ll)  exec "${z_buut_cli}" buut_list_launchers                 "$@" ;;
-    buw-tt-cbl) exec "${z_buut_cli}" buut_tabtarget_batch_logging        "$@" ;;
-    buw-tt-cbn) exec "${z_buut_cli}" buut_tabtarget_batch_nolog          "$@" ;;
-    buw-tt-cil) exec "${z_buut_cli}" buut_tabtarget_interactive_logging  "$@" ;;
-    buw-tt-cin) exec "${z_buut_cli}" buut_tabtarget_interactive_nolog    "$@" ;;
-    buw-tt-cl)  exec "${z_buut_cli}" buut_launcher                       "$@" ;;
-
-    # Regime subsystem
-    buw-rgv-burc) exec "${z_burc_cli}" validate ;;
-    buw-rgr-burc) exec "${z_burc_cli}" render ;;
-    buw-rgi-burc) exec "${z_burc_cli}" info ;;
-
-    # Regime subsystem
-    buw-rgv-burs) exec "${z_burs_cli}" validate ;;
-    buw-rgr-burs) exec "${z_burs_cli}" render ;;
-    buw-rgi-burs) exec "${z_burs_cli}" info ;;
-
-    # Unknown command
-    *)   buc_die "Unknown command: ${z_command}" ;;
-  esac
+  buz_exec_lookup "${z_command}" "${BUW_SCRIPT_DIR}" "$@"
 }
 
 buw_main() {

@@ -19,437 +19,833 @@
 # Compatible with Bash 3.2 (e.g., macOS default shell)
 
 # Multiple inclusion guard
-[[ -n "${ZBUV_INCLUDED:-}" ]] && return 0
+test -z "${ZBUV_INCLUDED:-}" || return 0
 ZBUV_INCLUDED=1
 
+# Literal constants — check capture output protocol markers
+BUV_check_gated="gated"
+BUV_check_fail="fail:"
+
 # Source the console utility library
-ZBUV_SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
+ZBUV_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
 source "${ZBUV_SCRIPT_DIR}/buc_command.sh"
 
 buv_file_exists() {
-  local filepath="$1"
-  test -f "$filepath" || buc_die "Required file not found: $filepath"
+  local z_filepath="${1:-}"
+  test -f "${z_filepath}" || buc_die "Required file not found: ${z_filepath}"
 }
 
 buv_dir_exists() {
-  local dirpath="$1"
-  test -d "$dirpath" || buc_die "Required directory not found: $dirpath"
+  local z_dirpath="${1:-}"
+  test -d "${z_dirpath}" || buc_die "Required directory not found: ${z_dirpath}"
 }
 
 buv_dir_empty() {
-  local dirpath="$1"
-  test -d          "$dirpath"               || buc_die "Required directory not found: $dirpath"
-  test -z "$(ls -A "$dirpath" 2>/dev/null)" || buc_die "Directory must be empty: $dirpath"
+  local z_dirpath="${1:-}"
+  test -d "${z_dirpath}" || buc_die "Required directory not found: ${z_dirpath}"
+  local z_check_file
+  z_check_file=$(mktemp)
+  find "${z_dirpath}" -maxdepth 1 -mindepth 1 -print -quit > "${z_check_file}"
+  test ! -s "${z_check_file}" || { rm -f "${z_check_file}"; buc_die "Directory must be empty: ${z_dirpath}"; }
+  rm -f "${z_check_file}"
 }
 
-# Generic environment variable wrapper
-buv_env_wrapper() {
-  local func_name=$1
-  local varname=$2
-  eval "local val=\${$varname:-}" || buc_die "Variable '$varname' is not defined"
-  shift 2
+# ---------------------------------------------------------------------------
+# Enrollment infrastructure
+# ---------------------------------------------------------------------------
 
-  ${func_name} "$varname" "$val" "$@"
+zbuv_kindle() {
+  test -z "${ZBUV_KINDLED:-}" || buc_die "Module buv already kindled"
+
+  # Enrollment rolls (9 parallel arrays)
+  z_buv_scope_roll=()
+  z_buv_varname_roll=()
+  z_buv_type_roll=()
+  z_buv_gate_var_roll=()
+  z_buv_gate_val_roll=()
+  z_buv_p1_roll=()
+  z_buv_p2_roll=()
+  z_buv_group_roll=()
+  z_buv_desc_roll=()
+
+  # Group registry rolls (4 parallel arrays, foreign-keyed by group title)
+  z_buv_grp_scope_roll=()
+  z_buv_grp_title_roll=()
+  z_buv_grp_gate_var_roll=()
+  z_buv_grp_gate_val_roll=()
+
+  # Mutable kindle state: regime context (set by buv_regime_enroll / buv_group_enroll / buv_gate_enroll)
+  z_buv_current_scope=""
+  z_buv_current_group=""
+  z_buv_current_group_idx=-1
+  z_buv_current_gate_var=""
+  z_buv_current_gate_val=""
+
+  readonly ZBUV_KINDLED=1
 }
 
-# Generic optional wrapper - returns empty if value is empty
-buv_opt_wrapper() {
-  local func_name=$1
-  local varname=$2
-  eval "local val=\${$varname:-}" || buc_die "Variable '$varname' is not defined"
-
-  # Empty is always valid for optional
-  test -z "$val" && return 0
-
-  shift 2
-  ${func_name} "$varname" "$val" "$@"
+zbuv_sentinel() {
+  test "${ZBUV_KINDLED:-}" = "1" || buc_die "Module buv not kindled - call zbuv_kindle first"
 }
 
-# String validator with optional length constraints
-buv_val_string() {
-  local varname=$1
-  local val=$2
-  local min=$3
-  local max=$4
-  local default=${5-}  # empty permitted
+# Test support: reset enrollment state without re-kindling
+zbuv_reset_enrollment() {
+  zbuv_sentinel
 
-  # Validate required parameters
-  test -n "$varname" || buc_die "varname parameter is required"
-  test -n "$min"     || buc_die "min parameter is required for varname '$varname'"
-  test -n "$max"     || buc_die "max parameter is required for varname '$varname'"
+  # Clear enrollment rolls
+  z_buv_scope_roll=()
+  z_buv_varname_roll=()
+  z_buv_type_roll=()
+  z_buv_gate_var_roll=()
+  z_buv_gate_val_roll=()
+  z_buv_p1_roll=()
+  z_buv_p2_roll=()
+  z_buv_group_roll=()
+  z_buv_desc_roll=()
 
-  # Use default if value is empty and default provided
-  if [ -z "$val" -a -n "$default" ]; then
-    val="$default"
-  fi
+  # Clear group registry rolls
+  z_buv_grp_scope_roll=()
+  z_buv_grp_title_roll=()
+  z_buv_grp_gate_var_roll=()
+  z_buv_grp_gate_val_roll=()
 
-  # Allow empty if min=0
-  if [ "$min" = "0" -a -z "$val" ]; then
-    echo "$val"
-    return 0
-  fi
-
-  # Otherwise must not be empty
-  test -n "$val" || buc_die "$varname must not be empty"
-
-  # Check length constraints if max provided
-  if [ -n "$max" ]; then
-    test ${#val} -ge $min || buc_die "$varname must be at least $min chars, got '${val}' (${#val})"
-    test ${#val} -le $max || buc_die "$varname must be no more than $max chars, got '${val}' (${#val})"
-  fi
-
-  echo "$val"
+  # Reset regime context state
+  z_buv_current_scope=""
+  z_buv_current_group=""
+  z_buv_current_group_idx=-1
+  z_buv_current_gate_var=""
+  z_buv_current_gate_val=""
 }
 
-# Cross-context name validator (system-safe identifier)
-buv_val_xname() {
-  local varname=$1
-  local val=$2
-  local min=$3
-  local max=$4
-  local default=${5-}  # empty permitted
+# Regime context setters — called during kindle to establish enrollment scope
 
-  # Validate required parameters
-  test -n "$varname" || buc_die "varname parameter is required"
-  test -n "$min"     || buc_die "min parameter is required for varname '$varname'"
-  test -n "$max"     || buc_die "max parameter is required for varname '$varname'"
+# buv_regime_enroll SCOPE — set current enrollment scope
+# Validates that SCOPE is non-empty. All subsequent enroll calls use this scope
+# until another buv_regime_enroll is called.
+buv_regime_enroll() {
+  zbuv_sentinel
 
-  # Use default if value is empty and default provided
-  if [ -z "$val" -a -n "$default" ]; then
-    val="$default"
-  fi
-
-  # Allow empty if min=0
-  if [ "$min" = "0" -a -z "$val" ]; then
-    echo "$val"
-    return 0
-  fi
-
-  # Otherwise must not be empty
-  test -n "$val" || buc_die "$varname must not be empty"
-
-  # Check length constraints
-  test ${#val} -ge $min || buc_die "$varname must be at least $min chars, got '${val}' (${#val})"
-  test ${#val} -le $max || buc_die "$varname must be no more than $max chars, got '${val}' (${#val})"
-
-  # Must start with letter and contain only allowed chars
-  test $(echo "$val" | grep -E '^[a-zA-Z][a-zA-Z0-9_-]*$') || \
-    buc_die "$varname must start with letter and contain only letters, numbers, underscore, hyphen, got '$val'"
-
-  echo "$val"
+  local z_scope="${1:-}"
+  test -n "${z_scope}" || buc_die "buv_regime_enroll: scope required"
+  z_buv_current_scope="${z_scope}"
+  z_buv_current_group=""
+  z_buv_current_group_idx=-1
+  z_buv_current_gate_var=""
+  z_buv_current_gate_val=""
 }
 
-# Google-style resource identifier (lowercase, digits, hyphens)
-# Must start with a letter, end with letter/digit.
-# Examples: GCP project IDs, GAR repo IDs.
-buv_val_gname() {
-  local varname=$1
-  local val=$2
-  local min=$3
-  local max=$4
-  local default=${5-}  # empty permitted
+# buv_group_enroll TITLE — set current group context
+# Creates a group registry entry. All subsequent enroll calls are tagged with
+# this group title until the next buv_group_enroll call.
+# Resets gate context — use buv_gate_enroll after this to gate items.
+buv_group_enroll() {
+  zbuv_sentinel
 
-  # Required params
-  test -n "$varname" || buc_die "varname parameter is required"
-  test -n "$min"     || buc_die "min parameter is required for varname '$varname'"
-  test -n "$max"     || buc_die "max parameter is required for varname '$varname'"
+  test -n "${z_buv_current_scope}" || buc_die "buv_group_enroll: call buv_regime_enroll first"
 
-  # Defaulting
-  if [ -z "$val" -a -n "$default" ]; then
-    val="$default"
-  fi
+  local z_title="${1:-}"
+  test -n "${z_title}" || buc_die "buv_group_enroll: title required"
 
-  # Allow empty if min=0
-  if [ "$min" = "0" -a -z "$val" ]; then
-    echo "$val"
-    return 0
-  fi
+  z_buv_grp_scope_roll+=("${z_buv_current_scope}")
+  z_buv_grp_title_roll+=("${z_title}")
+  z_buv_grp_gate_var_roll+=("")
+  z_buv_grp_gate_val_roll+=("")
 
-  # Non-empty and length window
-  test -n "$val" || buc_die "$varname must not be empty"
-  test ${#val} -ge $min || buc_die "$varname must be at least $min chars, got '${val}' (${#val})"
-  test ${#val} -le $max || buc_die "$varname must be no more than $max chars, got '${val}' (${#val})"
-
-  # Pattern: ^[a-z][a-z0-9-]*[a-z0-9]$
-  test "$(echo "$val" | grep -E '^[a-z][a-z0-9-]*[a-z0-9]$')" || \
-    buc_die "$varname must match ^[a-z][a-z0-9-]*[a-z0-9]$ (lowercase letters, digits, hyphens; start with a letter; end with letter/digit), got '$val'"
-
-  echo "$val"
+  z_buv_current_group="${z_title}"
+  z_buv_current_group_idx=$(( ${#z_buv_grp_scope_roll[@]} - 1 ))
+  z_buv_current_gate_var=""
+  z_buv_current_gate_val=""
 }
 
-# Fully Qualified Image Name component validator
-buv_val_fqin() {
-  local varname=$1
-  local val=$2
-  local min=$3
-  local max=$4
-  local default=${5-}  # empty permitted
+# buv_gate_enroll GATE_VAR GATE_VAL — set gate context within current group
+# All subsequent variable enrolls in this group are gated by this condition.
+# Also registers the gate on the current group for render section headers.
+buv_gate_enroll() {
+  zbuv_sentinel
 
-  # Validate required parameters
-  test -n "$varname" || buc_die "varname parameter is required"
-  test -n "$min"     || buc_die "min parameter is required for varname '$varname'"
-  test -n "$max"     || buc_die "max parameter is required for varname '$varname'"
+  test -n "${z_buv_current_group}" || buc_die "buv_gate_enroll: call buv_group_enroll first"
 
-  # Use default if value is empty and default provided
-  if [ -z "$val" -a -n "$default" ]; then
-    val="$default"
-  fi
+  local z_gate_var="${1:-}"
+  local z_gate_val="${2:-}"
+  test -n "${z_gate_var}" || buc_die "buv_gate_enroll: gate variable required"
+  test -n "${z_gate_val}" || buc_die "buv_gate_enroll: gate value required"
 
-  # Allow empty if min=0
-  if [ "$min" = "0" -a -z "$val" ]; then
-    echo "$val"
-    return 0
-  fi
+  z_buv_current_gate_var="${z_gate_var}"
+  z_buv_current_gate_val="${z_gate_val}"
 
-  # Otherwise must not be empty
-  test -n "$val" || buc_die "$varname must not be empty"
-
-  # Check length constraints
-  test ${#val} -ge $min || buc_die "$varname must be at least $min chars, got '${val}' (${#val})"
-  test ${#val} -le $max || buc_die "$varname must be no more than $max chars, got '${val}' (${#val})"
-
-  # Allow letters, numbers, dots, hyphens, underscores, forward slashes, colons
-  test $(echo "$val" | grep -E '^[a-zA-Z0-9][a-zA-Z0-9:._/-]*$') || \
-    buc_die "$varname must start with letter/number and contain only letters, numbers, colons, dots, underscores, hyphens, forward slashes, got '$val'"
-
-  echo "$val"
+  z_buv_grp_gate_var_roll[z_buv_current_group_idx]="${z_gate_var}"
+  z_buv_grp_gate_val_roll[z_buv_current_group_idx]="${z_gate_val}"
 }
 
-# Boolean validator
-buv_val_bool() {
-  local varname=$1
-  local val=$2
-  local default=${3-}
+# Internal enrollment helper — all public enroll functions delegate here
+# Usage: zbuv_enroll VARNAME TYPE P1 P2 DESC
+# Gate context inherited from buv_gate_enroll; group from buv_group_enroll.
+zbuv_enroll() {
+  zbuv_sentinel
 
-  # Validate required parameters
-  test -n "$varname" || buc_die "varname parameter is required"
+  local z_varname="${1:-}"
+  local z_type="${2:-}"
+  local z_p1="${3:-}"
+  local z_p2="${4:-}"
+  local z_desc="${5:-}"
 
-  # Use default if value is empty and default provided
-  if [ -z "$val" -a -n "$default" ]; then
-    val="$default"
-  fi
+  test -n "${z_buv_current_scope}" || buc_die "zbuv_enroll: call buv_regime_enroll first"
+  [[ "${z_varname}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || buc_die "zbuv_enroll: invalid variable name: '${z_varname}'"
 
-  test -n "$val" || buc_die "$varname must not be empty"
-  test "$val" = "0" -o "$val" = "1" || buc_die "$varname must be 0 or 1, got: '$val'"
-
-  echo "$val"
+  z_buv_scope_roll+=("${z_buv_current_scope}")
+  z_buv_varname_roll+=("${z_varname}")
+  z_buv_type_roll+=("${z_type}")
+  z_buv_gate_var_roll+=("${z_buv_current_gate_var}")
+  z_buv_gate_val_roll+=("${z_buv_current_gate_val}")
+  z_buv_p1_roll+=("${z_p1}")
+  z_buv_p2_roll+=("${z_p2}")
+  z_buv_group_roll+=("${z_buv_current_group}")
+  z_buv_desc_roll+=("${z_desc}")
 }
 
-# Decimal range validator
-buv_val_decimal() {
-  local varname=$1
-  local val=$2
-  local min=$3
-  local max=$4
-  local default=${5-}
-
-  # Validate required parameters
-  test -n "$varname" || buc_die "varname parameter is required"
-  test -n "$min"     || buc_die "min parameter is required for varname '$varname'"
-  test -n "$max"     || buc_die "max parameter is required for varname '$varname'"
-
-  # Use default if value is empty and default provided
-  if [ -z "$val" -a -n "$default" ]; then
-    val="$default"
-  fi
-
-  test -n "$val" || buc_die "$varname must not be empty"
-  test $val -ge $min -a $val -le $max || buc_die "$varname value '$val' must be between $min and $max"
-
-  echo "$val"
-}
-
-# IPv4 validator
-buv_val_ipv4() {
-  local varname=$1
-  local val=$2
-  local default=${3-}  # empty permitted
-
-  # Validate required parameters
-  test -n "$varname" || buc_die "varname parameter is required"
-
-  # Use default if value is empty and default provided
-  if [ -z "$val" -a -n "$default" ]; then
-    val="$default"
-  fi
-
-  test -n "$val" || buc_die "$varname must not be empty"
-  test $(echo $val | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$') || buc_die "$varname has invalid IPv4 format: '$val'"
-
-  echo "$val"
-}
-
-# CIDR validator
-buv_val_cidr() {
-  local varname=$1
-  local val=$2
-  local default=${3-}
-
-  # Validate required parameters
-  test -n "$varname" || buc_die "varname parameter is required"
-
-  # Use default if value is empty and default provided
-  if [ -z "$val" -a -n "$default" ]; then
-    val="$default"
-  fi
-
-  test -n "$val" || buc_die "$varname must not be empty"
-  test $(echo $val | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$') || buc_die "$varname has invalid CIDR format: '$val'"
-
-  echo "$val"
-}
-
-# Domain validator
-buv_val_domain() {
-  local varname=$1
-  local val=$2
-  local default=${3-}
-
-  # Validate required parameters
-  test -n "$varname" || buc_die "varname parameter is required"
-
-  # Use default if value is empty and default provided
-  if [ -z "$val" -a -n "$default" ]; then
-    val="$default"
-  fi
-
-  test -n "$val" || buc_die "$varname must not be empty"
-  test $(echo $val | grep -E '^[a-zA-Z0-9][a-zA-Z0-9\.-]*[a-zA-Z0-9]$') || buc_die "$varname has invalid domain format: '$val'"
-
-  echo "$val"
-}
-
-# Port validator
-buv_val_port() {
-  local varname=$1
-  local val=$2
-  local default=${3-}
-
-  # Validate required parameters
-  test -n "$varname" || buc_die "varname parameter is required"
-
-  # Use default if value is empty and default provided
-  if [ -z "$val" -a -n "$default" ]; then
-    val="$default"
-  fi
-
-  test -n "$val" || buc_die "$varname must not be empty"
-  test $val -ge 1 -a $val -le 65535 || buc_die "$varname value '$val' must be between 1 and 65535"
-
-  echo "$val"
-}
-
-# OCI/Docker image reference that MUST be digest-pinned
-# Accepts:
-#   - Any registry host: letters, digits, dots, hyphens; optional :port
-#   - Repository path: one or more slash-separated lowercase segments [a-z0-9._-]
-#   - Mandatory digest: @sha256:<64 lowercase hex>
+# Public enrollment functions — scalar types
 #
-# Examples:
-#   docker.io/stedolan/jq@sha256:...
-#   ghcr.io/anchore/syft@sha256:...
-#   gcr.io/go-containerregistry/gcrane@sha256:...
-#   us-central1-docker.pkg.dev/my-proj/my-repo/tool@sha256:...
-buv_val_odref() {
-  local varname=$1
-  local val=$2
-  local default=${3-}  # empty permitted (only if caller wants to allow empty)
+# Signature: buv_TYPE_enroll VARNAME P1 P2 "description"
+# Scope from buv_regime_enroll; group from buv_group_enroll; gate from buv_gate_enroll.
 
-  test -n "$varname" || buc_die "varname parameter is required"
+buv_string_enroll() {
+  local z_varname="${1:-}"
+  local z_p1="${2:-}"
+  local z_p2="${3:-}"
+  local z_desc="${4:-}"
+  zbuv_enroll "${z_varname}" "string" "${z_p1}" "${z_p2}" "${z_desc}"
+}
 
-  # Defaulting when allowed by caller
-  if [ -z "$val" -a -n "$default" ]; then
-    val="$default"
+buv_secret_enroll() {
+  local z_varname="${1:-}"
+  local z_p1="${2:-}"
+  local z_p2="${3:-}"
+  local z_desc="${4:-}"
+  zbuv_enroll "${z_varname}" "secret" "${z_p1}" "${z_p2}" "${z_desc}"
+}
+
+buv_xname_enroll() {
+  local z_varname="${1:-}"
+  local z_p1="${2:-}"
+  local z_p2="${3:-}"
+  local z_desc="${4:-}"
+  zbuv_enroll "${z_varname}" "xname" "${z_p1}" "${z_p2}" "${z_desc}"
+}
+
+buv_gname_enroll() {
+  local z_varname="${1:-}"
+  local z_p1="${2:-}"
+  local z_p2="${3:-}"
+  local z_desc="${4:-}"
+  zbuv_enroll "${z_varname}" "gname" "${z_p1}" "${z_p2}" "${z_desc}"
+}
+
+buv_fqin_enroll() {
+  local z_varname="${1:-}"
+  local z_p1="${2:-}"
+  local z_p2="${3:-}"
+  local z_desc="${4:-}"
+  zbuv_enroll "${z_varname}" "fqin" "${z_p1}" "${z_p2}" "${z_desc}"
+}
+
+buv_bool_enroll() {
+  local z_varname="${1:-}"
+  local z_desc="${2:-}"
+  zbuv_enroll "${z_varname}" "bool" "" "" "${z_desc}"
+}
+
+buv_enum_enroll() {
+  local z_varname="${1:-}"
+  local z_desc="${2:-}"
+  shift 2
+  zbuv_enroll "${z_varname}" "enum" "$*" "" "${z_desc}"
+}
+
+buv_decimal_enroll() {
+  local z_varname="${1:-}"
+  local z_p1="${2:-}"
+  local z_p2="${3:-}"
+  local z_desc="${4:-}"
+  zbuv_enroll "${z_varname}" "decimal" "${z_p1}" "${z_p2}" "${z_desc}"
+}
+
+buv_odref_enroll() {
+  local z_varname="${1:-}"
+  local z_desc="${2:-}"
+  zbuv_enroll "${z_varname}" "odref" "" "" "${z_desc}"
+}
+
+buv_ipv4_enroll() {
+  local z_varname="${1:-}"
+  local z_desc="${2:-}"
+  zbuv_enroll "${z_varname}" "ipv4" "" "" "${z_desc}"
+}
+
+buv_port_enroll() {
+  local z_varname="${1:-}"
+  local z_desc="${2:-}"
+  zbuv_enroll "${z_varname}" "port" "" "" "${z_desc}"
+}
+
+# Public enrollment functions — list types
+
+buv_list_string_enroll() {
+  local z_varname="${1:-}"
+  local z_p1="${2:-}"
+  local z_p2="${3:-}"
+  local z_desc="${4:-}"
+  zbuv_enroll "${z_varname}" "list_string" "${z_p1}" "${z_p2}" "${z_desc}"
+}
+
+buv_list_ipv4_enroll() {
+  local z_varname="${1:-}"
+  local z_desc="${2:-}"
+  zbuv_enroll "${z_varname}" "list_ipv4" "" "" "${z_desc}"
+}
+
+buv_list_gname_enroll() {
+  local z_varname="${1:-}"
+  local z_p1="${2:-}"
+  local z_p2="${3:-}"
+  local z_desc="${4:-}"
+  zbuv_enroll "${z_varname}" "list_gname" "${z_p1}" "${z_p2}" "${z_desc}"
+}
+
+buv_list_cidr_enroll() {
+  local z_varname="${1:-}"
+  local z_desc="${2:-}"
+  zbuv_enroll "${z_varname}" "list_cidr" "" "" "${z_desc}"
+}
+
+buv_list_domain_enroll() {
+  local z_varname="${1:-}"
+  local z_desc="${2:-}"
+  zbuv_enroll "${z_varname}" "list_domain" "" "" "${z_desc}"
+}
+
+# Internal check capture — validates a single enrolled variable by roll index.
+# Returns error detail on stdout (empty = pass).
+# Echo "${BUV_check_gated}" when gate doesn't match (caller decides skip behavior).
+# Echo "${BUV_check_fail}<detail>" on validation failure.
+zbuv_check_capture() {
+  zbuv_sentinel
+
+  local z_idx="${1:-}"
+  local z_varname="${z_buv_varname_roll[$z_idx]}"
+  local z_type="${z_buv_type_roll[$z_idx]}"
+  local z_gate_var="${z_buv_gate_var_roll[$z_idx]}"
+  local z_gate_val="${z_buv_gate_val_roll[$z_idx]}"
+  local z_p1="${z_buv_p1_roll[$z_idx]}"
+  local z_p2="${z_buv_p2_roll[$z_idx]}"
+
+  # Gating check — if gated and gate doesn't match, skip (pass)
+  if test -n "${z_gate_var}"; then
+    local z_gate_actual="${!z_gate_var:-}"
+    if test "${z_gate_actual}" != "${z_gate_val}"; then
+      echo "${BUV_check_gated}"
+      return 0
+    fi
   fi
 
-  # Must not be empty here (use buv_opt_odref for optional)
-  test -n "$val" || buc_die "$varname must not be empty"
+  # Unset detection — distinguish "not set" from "set but empty"
+  if test -z "${!z_varname+x}"; then
+    case "${z_type}" in
+      string|secret|gname)
+        if test "${z_p1}" = "0"; then return 0; fi ;;
+      list_string|list_ipv4|list_gname|list_cidr|list_domain)
+        return 0 ;;
+    esac
+    echo "${BUV_check_fail}${z_varname} is not set (missing from .env?)"
+    return 0
+  fi
 
-  # Enforce digest-pinned image ref:
-  #   host[:port]/repo(/subrepo)@sha256:64hex
-  #   - host: [a-z0-9.-]+ with optional :port
-  #   - each repo segment: [a-z0-9._-]+ (lowercase)
-  #   - digest algo fixed to sha256 with 64 lowercase hex chars
-  local _re='^[a-z0-9.-]+(:[0-9]{2,5})?/([a-z0-9._-]+/)*[a-z0-9._-]+@sha256:[0-9a-f]{64}$'
-  echo "$val" | grep -Eq "$_re" || buc_die "$varname has invalid image reference format (require host[:port]/repo@sha256:<64hex>), got '$val'"
+  local z_val="${!z_varname:-}"
 
-  echo "$val"
+  case "${z_type}" in
+
+    string|secret)
+      if test "${z_p1}" = "0" && test -z "${z_val}"; then
+        return 0
+      fi
+      if test -z "${z_val}"; then
+        echo "${BUV_check_fail}${z_varname} must not be empty"
+        return 0
+      fi
+      if test "${#z_val}" -lt "${z_p1}"; then
+        echo "${BUV_check_fail}${z_varname} must be at least ${z_p1} chars, got '${z_val}' (${#z_val})"
+        return 0
+      fi
+      if test "${#z_val}" -gt "${z_p2}"; then
+        echo "${BUV_check_fail}${z_varname} must be no more than ${z_p2} chars, got '${z_val}' (${#z_val})"
+        return 0
+      fi
+      ;;
+
+    xname)
+      if test -z "${z_val}"; then
+        echo "${BUV_check_fail}${z_varname} must not be empty"
+        return 0
+      fi
+      if test "${#z_val}" -lt "${z_p1}"; then
+        echo "${BUV_check_fail}${z_varname} must be at least ${z_p1} chars, got '${z_val}' (${#z_val})"
+        return 0
+      fi
+      if test "${#z_val}" -gt "${z_p2}"; then
+        echo "${BUV_check_fail}${z_varname} must be no more than ${z_p2} chars, got '${z_val}' (${#z_val})"
+        return 0
+      fi
+      [[ "${z_val}" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]] || {
+        echo "${BUV_check_fail}${z_varname} must start with letter and contain only letters, numbers, underscore, hyphen, got '${z_val}'"
+        return 0
+      }
+      ;;
+
+    gname)
+      if test -z "${z_val}"; then
+        if test "${z_p1}" -gt 0; then
+          echo "${BUV_check_fail}${z_varname} must not be empty"
+          return 0
+        fi
+        return 0
+      fi
+      if test "${#z_val}" -lt "${z_p1}"; then
+        echo "${BUV_check_fail}${z_varname} must be at least ${z_p1} chars, got '${z_val}' (${#z_val})"
+        return 0
+      fi
+      if test "${#z_val}" -gt "${z_p2}"; then
+        echo "${BUV_check_fail}${z_varname} must be no more than ${z_p2} chars, got '${z_val}' (${#z_val})"
+        return 0
+      fi
+      [[ "${z_val}" =~ ^[a-z][a-z0-9-]*[a-z0-9]$ ]] || {
+        echo "${BUV_check_fail}${z_varname} must match ^[a-z][a-z0-9-]*[a-z0-9]$ (lowercase letters, digits, hyphens; start with a letter; end with letter/digit), got '${z_val}'"
+        return 0
+      }
+      ;;
+
+    fqin)
+      if test -z "${z_val}"; then
+        echo "${BUV_check_fail}${z_varname} must not be empty"
+        return 0
+      fi
+      if test "${#z_val}" -lt "${z_p1}"; then
+        echo "${BUV_check_fail}${z_varname} must be at least ${z_p1} chars, got '${z_val}' (${#z_val})"
+        return 0
+      fi
+      if test "${#z_val}" -gt "${z_p2}"; then
+        echo "${BUV_check_fail}${z_varname} must be no more than ${z_p2} chars, got '${z_val}' (${#z_val})"
+        return 0
+      fi
+      [[ "${z_val}" =~ ^[a-zA-Z0-9][a-zA-Z0-9:._/@-]*$ ]] || {
+        echo "${BUV_check_fail}${z_varname} must start with letter/number and contain only letters, numbers, colons, dots, underscores, hyphens, forward slashes, at-signs, got '${z_val}'"
+        return 0
+      }
+      ;;
+
+    bool)
+      if test -z "${z_val}"; then
+        echo "${BUV_check_fail}${z_varname} must not be empty"
+        return 0
+      fi
+      if test "${z_val}" != "0" && test "${z_val}" != "1"; then
+        echo "${BUV_check_fail}${z_varname} must be 0 or 1, got: '${z_val}'"
+        return 0
+      fi
+      ;;
+
+    enum)
+      if test -z "${z_val}"; then
+        echo "${BUV_check_fail}${z_varname} must not be empty"
+        return 0
+      fi
+      local z_choice
+      local z_found=0
+      for z_choice in ${z_p1}; do
+        if test "${z_val}" = "${z_choice}"; then
+          z_found=1
+          break
+        fi
+      done
+      if test "${z_found}" = "0"; then
+        echo "${BUV_check_fail}${z_varname} must be one of: ${z_p1}, got '${z_val}'"
+        return 0
+      fi
+      ;;
+
+    decimal)
+      if test -z "${z_val}"; then
+        echo "${BUV_check_fail}${z_varname} must not be empty"
+        return 0
+      fi
+      if test "${z_val}" -ge "${z_p1}" && test "${z_val}" -le "${z_p2}"; then
+        return 0
+      fi
+      echo "${BUV_check_fail}${z_varname} value '${z_val}' must be between ${z_p1} and ${z_p2}"
+      return 0
+      ;;
+
+    odref)
+      if test -z "${z_val}"; then
+        echo "${BUV_check_fail}${z_varname} must not be empty"
+        return 0
+      fi
+      local z_re='^[a-z0-9.-]+(:[0-9]{2,5})?/([a-z0-9._-]+/)*[a-z0-9._-]+@sha256:[0-9a-f]{64}$'
+      [[ "${z_val}" =~ ${z_re} ]] || {
+        echo "${BUV_check_fail}${z_varname} has invalid image reference format (require host[:port]/repo@sha256:<64hex>), got '${z_val}'"
+        return 0
+      }
+      ;;
+
+    ipv4)
+      if test -z "${z_val}"; then
+        echo "${BUV_check_fail}${z_varname} must not be empty"
+        return 0
+      fi
+      [[ "${z_val}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || {
+        echo "${BUV_check_fail}${z_varname} has invalid IPv4 format: '${z_val}'"
+        return 0
+      }
+      ;;
+
+    port)
+      if test -z "${z_val}"; then
+        echo "${BUV_check_fail}${z_varname} must not be empty"
+        return 0
+      fi
+      if test "${z_val}" -ge 1 && test "${z_val}" -le 65535; then
+        return 0
+      fi
+      echo "${BUV_check_fail}${z_varname} value '${z_val}' must be between 1 and 65535"
+      return 0
+      ;;
+
+    list_string)
+      local z_item
+      local z_item_num=0
+      for z_item in ${z_val}; do
+        z_item_num=$((z_item_num + 1))
+        if test "${#z_item}" -lt "${z_p1}"; then
+          echo "${BUV_check_fail}${z_varname} item #${z_item_num} must be at least ${z_p1} chars, got '${z_item}' (${#z_item})"
+          return 0
+        fi
+        if test "${#z_item}" -gt "${z_p2}"; then
+          echo "${BUV_check_fail}${z_varname} item #${z_item_num} must be no more than ${z_p2} chars, got '${z_item}' (${#z_item})"
+          return 0
+        fi
+      done
+      ;;
+
+    list_ipv4)
+      local z_item
+      local z_item_num=0
+      for z_item in ${z_val}; do
+        z_item_num=$((z_item_num + 1))
+        [[ "${z_item}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || {
+          echo "${BUV_check_fail}${z_varname} item #${z_item_num} has invalid IPv4 format: '${z_item}'"
+          return 0
+        }
+      done
+      ;;
+
+    list_gname)
+      local z_item
+      local z_item_num=0
+      for z_item in ${z_val}; do
+        z_item_num=$((z_item_num + 1))
+        if test "${#z_item}" -lt "${z_p1}"; then
+          echo "${BUV_check_fail}${z_varname} item #${z_item_num} must be at least ${z_p1} chars, got '${z_item}' (${#z_item})"
+          return 0
+        fi
+        if test "${#z_item}" -gt "${z_p2}"; then
+          echo "${BUV_check_fail}${z_varname} item #${z_item_num} must be no more than ${z_p2} chars, got '${z_item}' (${#z_item})"
+          return 0
+        fi
+        [[ "${z_item}" =~ ^[a-z][a-z0-9-]*[a-z0-9]$ ]] || {
+          echo "${BUV_check_fail}${z_varname} item #${z_item_num} must match ^[a-z][a-z0-9-]*[a-z0-9]$, got '${z_item}'"
+          return 0
+        }
+      done
+      ;;
+
+    list_cidr)
+      local z_item
+      local z_item_num=0
+      for z_item in ${z_val}; do
+        z_item_num=$((z_item_num + 1))
+        [[ "${z_item}" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$ ]] || {
+          echo "${BUV_check_fail}${z_varname} item #${z_item_num} has invalid CIDR format: '${z_item}'"
+          return 0
+        }
+      done
+      ;;
+
+    list_domain)
+      local z_item
+      local z_item_num=0
+      for z_item in ${z_val}; do
+        z_item_num=$((z_item_num + 1))
+        [[ "${z_item}" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$ ]] || {
+          echo "${BUV_check_fail}${z_varname} item #${z_item_num} has invalid domain format: '${z_item}'"
+          return 0
+        }
+      done
+      ;;
+
+    *)
+      echo "${BUV_check_fail}unknown type: ${z_type}"
+      return 0
+      ;;
+
+  esac
 }
 
-# List validators
-buv_val_list_ipv4() {
-  local varname=$1
-  local val=$2
+# buv_hallmark_format VALUE — validate hallmark string matches [cbg]YYMMDDHHMMSS-rYYMMDDHHMMSS
+# Returns 0 on valid, dies on invalid. Pass empty string to skip (optional fields).
+buv_hallmark_format() {
+  local z_val="${1:-}"
+  test -n "${z_val}" || return 0
+  [[ "${z_val}" =~ ^[cbg][0-9]{12}-r[0-9]{12}$ ]] \
+    || buc_die "Invalid hallmark format: '${z_val}' (expected [cbg]YYMMDDHHMMSS-rYYMMDDHHMMSS)"
+}
 
-  # Validate required parameters
-  test -n "$varname" || buc_die "varname parameter is required"
+# buv_scope_sentinel SCOPE PREFIX — die if any PREFIX_ vars exist that are not enrolled in SCOPE
+# Usage: buv_scope_sentinel RBRN RBRN_
+buv_scope_sentinel() {
+  zbuv_sentinel
 
-  test -z "$val" && return 0  # Empty lists allowed
+  local z_scope="${1:-}"
+  local z_prefix="${2:-}"
+  test -n "${z_scope}"  || buc_die "buv_scope_sentinel: scope required"
+  test -n "${z_prefix}" || buc_die "buv_scope_sentinel: prefix required"
 
-  local item_num=0
-  for item in $val; do
-    item_num=$((item_num + 1))
-    test $(echo $item | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$') || buc_die "$varname item #$item_num has invalid IPv4 format: '$item'"
+  # Build lookup string from enrolled varnames for this scope
+  local z_known=" "
+  local z_i
+  for z_i in "${!z_buv_scope_roll[@]}"; do
+    test "${z_buv_scope_roll[$z_i]}" = "${z_scope}" || continue
+    z_known="${z_known}${z_buv_varname_roll[$z_i]} "
+  done
+
+  # Scan environment for unexpected vars with this prefix
+  local z_unexpected=()
+  local z_var
+  for z_var in $(compgen -v "${z_prefix}"); do
+    case "${z_known}" in
+      *" ${z_var} "*) : ;;
+      *) z_unexpected+=("${z_var}") ;;
+    esac
+  done
+
+  if test "${#z_unexpected[@]}" -gt 0; then
+    buc_die "Unexpected ${z_prefix}* variables not enrolled in ${z_scope}: ${z_unexpected[*]}"
+  fi
+}
+
+# buv_docker_env SCOPE ARRAY_VAR — populate ARRAY_VAR with -e VARNAME=val pairs for all enrolled vars in SCOPE
+# Usage: buv_docker_env RBRN ZRBRN_DOCKER_ENV
+buv_docker_env() {
+  zbuv_sentinel
+
+  local z_scope="${1:-}"
+  local z_array_var="${2:-}"
+  test -n "${z_scope}"     || buc_die "buv_docker_env: scope required"
+  test -n "${z_array_var}" || buc_die "buv_docker_env: array variable name required"
+  [[ "${z_array_var}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] \
+    || buc_die "buv_docker_env: invalid array variable name: '${z_array_var}'"
+
+  eval "${z_array_var}=()"
+
+  local z_i
+  for z_i in "${!z_buv_scope_roll[@]}"; do
+    test "${z_buv_scope_roll[$z_i]}" = "${z_scope}" || continue
+    local z_varname="${z_buv_varname_roll[$z_i]}"
+    local z_val="${!z_varname:-}"
+    eval "${z_array_var}+=(\"-e\" \"${z_varname}=${z_val}\")"
   done
 }
 
-buv_val_list_cidr() {
-  local varname=$1
-  local val=$2
+# buv_vet SCOPE — iterate all enrolled vars in scope; die on first failure
+buv_vet() {
+  zbuv_sentinel
 
-  # Validate required parameters
-  test -n "$varname" || buc_die "varname parameter is required"
+  local z_scope="${1:-}"
+  test -n "${z_scope}" || buc_die "buv_vet: scope required"
 
-  test -z "$val" && return 0  # Empty lists allowed
-
-  local item_num=0
-  for item in $val; do
-    item_num=$((item_num + 1))
-    test $(echo $item | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$') || buc_die "$varname item #$item_num has invalid CIDR format: '$item'"
+  local z_i
+  local z_err
+  for z_i in "${!z_buv_scope_roll[@]}"; do
+    test "${z_buv_scope_roll[$z_i]}" = "${z_scope}" || continue
+    z_err=$(zbuv_check_capture "${z_i}")
+    test -z "${z_err}" || test "${z_err}" = "${BUV_check_gated}" || buc_die "${z_buv_varname_roll[$z_i]}: ${z_err#"${BUV_check_fail}"}"
   done
 }
 
-buv_val_list_domain() {
-  local varname=$1
-  local val=$2
+# buv_lock SCOPE — make all enrolled variables in scope readonly
+# Call after enforce succeeds. Prevents downstream mutation of validated config.
+buv_lock() {
+  zbuv_sentinel
 
-  # Validate required parameters
-  test -n "$varname" || buc_die "varname parameter is required"
+  local -r z_scope="${1:-}"
+  test -n "${z_scope}" || buc_die "buv_lock: scope required"
 
-  test -z "$val" && return 0  # Empty lists allowed
-
-  local item_num=0
-  for item in $val; do
-    item_num=$((item_num + 1))
-    test $(echo $item | grep -E '^[a-zA-Z0-9][a-zA-Z0-9\.-]*[a-zA-Z0-9]$') || buc_die "$varname item #$item_num has invalid domain format: '$item'"
+  local z_i
+  for z_i in "${!z_buv_scope_roll[@]}"; do
+    test "${z_buv_scope_roll[$z_i]}" = "${z_scope}" || continue
+    readonly "${z_buv_varname_roll[$z_i]}"
   done
 }
 
-# Environment variable validators
-buv_env_string()             { buv_env_wrapper "buv_val_string"           "$@"; }
-buv_env_xname()              { buv_env_wrapper "buv_val_xname"            "$@"; }
-buv_env_gname()              { buv_env_wrapper "buv_val_gname"            "$@"; }
-buv_env_fqin()               { buv_env_wrapper "buv_val_fqin"             "$@"; }
-buv_env_bool()               { buv_env_wrapper "buv_val_bool"             "$@"; }
-buv_env_decimal()            { buv_env_wrapper "buv_val_decimal"          "$@"; }
-buv_env_ipv4()               { buv_env_wrapper "buv_val_ipv4"             "$@"; }
-buv_env_cidr()               { buv_env_wrapper "buv_val_cidr"             "$@"; }
-buv_env_domain()             { buv_env_wrapper "buv_val_domain"           "$@"; }
-buv_env_port()               { buv_env_wrapper "buv_val_port"             "$@"; }
-buv_env_odref()              { buv_env_wrapper "buv_val_odref"            "$@"; }
+buv_export_and_lock() {
+  zbuv_sentinel
 
-# Environment list validators
-buv_env_list_ipv4()          { buv_env_wrapper "buv_val_list_ipv4"        "$@"; }
-buv_env_list_cidr()          { buv_env_wrapper "buv_val_list_cidr"        "$@"; }
-buv_env_list_domain()        { buv_env_wrapper "buv_val_list_domain"      "$@"; }
+  local -r z_scope="${1:-}"
+  test -n "${z_scope}" || buc_die "buv_export_and_lock: scope required"
 
-# Optional validators
-buv_opt_bool()               { buv_opt_wrapper "buv_val_bool"             "$@"; }
-buv_opt_range()              { buv_opt_wrapper "buv_val_decimal"          "$@"; }
-buv_opt_ipv4()               { buv_opt_wrapper "buv_val_ipv4"             "$@"; }
-buv_opt_cidr()               { buv_opt_wrapper "buv_val_cidr"             "$@"; }
-buv_opt_domain()             { buv_opt_wrapper "buv_val_domain"           "$@"; }
-buv_opt_port()               { buv_opt_wrapper "buv_val_port"             "$@"; }
+  local z_i
+  for z_i in "${!z_buv_scope_roll[@]}"; do
+    test "${z_buv_scope_roll[$z_i]}" = "${z_scope}" || continue
+    export "${z_buv_varname_roll[$z_i]}"
+    readonly "${z_buv_varname_roll[$z_i]}"
+  done
+}
+
+# buv_report SCOPE "Label" — rich per-variable display; returns non-zero if any failed
+buv_report() {
+  zbuv_sentinel
+
+  local z_scope="${1:-}"
+  local z_label="${2:-}"
+  test -n "${z_scope}" || buc_die "buv_report: scope required"
+  test -n "${z_label}" || buc_die "buv_report: label required"
+
+  local z_any_failed=0
+
+  buc_step "${z_label}"
+
+  local z_i
+  for z_i in "${!z_buv_scope_roll[@]}"; do
+    test "${z_buv_scope_roll[$z_i]}" = "${z_scope}" || continue
+
+    local z_varname="${z_buv_varname_roll[$z_i]}"
+    local z_type="${z_buv_type_roll[$z_i]}"
+    local z_val="${!z_varname:-}"
+    local z_err
+
+    # Secret redaction — replace display value before PASS/FAIL output
+    local z_display_val="${z_val}"
+    if test "${z_type}" = "secret" && test -n "${z_val}"; then
+      z_display_val="(redacted — ${#z_val} chars)"
+    fi
+
+    z_err=$(zbuv_check_capture "${z_i}")
+    if test -z "${z_err}"; then
+      buc_step "  PASS  ${z_varname}=${z_display_val} [${z_type}]"
+    elif test "${z_err}" = "${BUV_check_gated}"; then
+      buc_step "  SKIP  ${z_varname} (gated)"
+    else
+      buc_step "  FAIL  ${z_varname}=${z_display_val} [${z_type}]: ${z_err#"${BUV_check_fail}"}"
+      z_any_failed=1
+    fi
+  done
+
+  return "${z_any_failed}"
+}
+
+# zbuv_group_gate_recite SCOPE TITLE — look up group gate from registry
+# Sets ZBUV_GRP_GATE_VAR and ZBUV_GRP_GATE_VAL (empty if ungated).
+zbuv_group_gate_recite() {
+  local z_scope="${1:-}"
+  local z_title="${2:-}"
+
+  ZBUV_GRP_GATE_VAR=""
+  ZBUV_GRP_GATE_VAL=""
+
+  local z_s
+  for z_s in "${!z_buv_grp_scope_roll[@]}"; do
+    if test "${z_buv_grp_scope_roll[$z_s]}" = "${z_scope}" \
+      && test "${z_buv_grp_title_roll[$z_s]}" = "${z_title}"; then
+      ZBUV_GRP_GATE_VAR="${z_buv_grp_gate_var_roll[$z_s]}"
+      ZBUV_GRP_GATE_VAL="${z_buv_grp_gate_val_roll[$z_s]}"
+      return 0
+    fi
+  done
+}
+
+# zbuv_req_status INDEX — derive req/opt/cond from enrollment data
+# Sets ZBUV_REQ_STATUS.
+zbuv_req_status() {
+  local z_idx="${1:-}"
+  local z_gate_var="${z_buv_gate_var_roll[$z_idx]}"
+  local z_p1="${z_buv_p1_roll[$z_idx]}"
+
+  if test -n "${z_gate_var}"; then
+    ZBUV_REQ_STATUS="cond"
+  elif test "${z_p1}" = "0"; then
+    ZBUV_REQ_STATUS="opt"
+  else
+    ZBUV_REQ_STATUS="req"
+  fi
+}
+
+# buv_render SCOPE "Label" [FILE_PATH] — render all enrolled vars via bupr_ presentation
+# Walks enrollment rolls grouped by group, applying group-level gates.
+# Optional FILE_PATH displays a gray "File: <path>" line under the title; empty/omitted skips it.
+# Requires bupr (PresentationRegime) to be kindled.
+buv_render() {
+  zbuv_sentinel
+  zbupr_sentinel
+
+  local z_scope="${1:-}"
+  local z_label="${2:-}"
+  local z_file_path="${3:-}"
+  test -n "${z_scope}" || buc_die "buv_render: scope required"
+  test -n "${z_label}" || buc_die "buv_render: label required"
+
+  local z_current_group=""
+  local z_i
+  local z_group=""
+  local z_varname=""
+  local z_type=""
+  local z_desc=""
+
+  echo ""
+  echo "${BUC_white}${z_label}${BUC_reset}"
+  if test -n "${z_file_path}"; then
+    echo "  ${BUC_gray}File: ${z_file_path}${BUC_reset}"
+  fi
+  echo ""
+
+  for z_i in "${!z_buv_scope_roll[@]}"; do
+    test "${z_buv_scope_roll[$z_i]}" = "${z_scope}" || continue
+
+    z_group="${z_buv_group_roll[$z_i]}"
+    z_varname="${z_buv_varname_roll[$z_i]}"
+    z_type="${z_buv_type_roll[$z_i]}"
+    z_desc="${z_buv_desc_roll[$z_i]}"
+
+    # Group transition — close previous, open new
+    if test "${z_group}" != "${z_current_group}"; then
+      if test -n "${z_current_group}"; then
+        bupr_section_end
+      fi
+      z_current_group="${z_group}"
+
+      zbuv_group_gate_recite "${z_scope}" "${z_group}"
+      if test -n "${ZBUV_GRP_GATE_VAR}"; then
+        bupr_section_begin "${z_group}" "${ZBUV_GRP_GATE_VAR}" "${ZBUV_GRP_GATE_VAL}"
+      else
+        bupr_section_begin "${z_group}"
+      fi
+    fi
+
+    zbuv_req_status "${z_i}"
+    bupr_section_item "${z_varname}" "${z_type}" "${ZBUV_REQ_STATUS}" "${z_desc}"
+  done
+
+  # Close final group
+  if test -n "${z_current_group}"; then
+    bupr_section_end
+  fi
+}
 
 # eof
 

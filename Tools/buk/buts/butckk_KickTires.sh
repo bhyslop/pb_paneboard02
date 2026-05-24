@@ -16,21 +16,21 @@
 #
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
-# VVB CLI - Command line interface for VVX binary execution
+# BUTCKK - Kick-tires test cases for BUK test framework self-test
 
 set -euo pipefail
 
-source "${BURD_BUK_DIR}/buc_command.sh"
-source "${BURD_TOOLS_DIR}/vvk/vvb_bash.sh"
+######################################################################
+# Kick-tires cases — trivial tests proving end-to-end framework works
 
-zvvb_furnish() {
-  buc_doc_env "BURD_BUK_DIR          " "BUK module directory (dispatch-provided)"
-  buc_doc_env "BURD_TOOLS_DIR        " "Project tools root directory (dispatch-provided)"
-  buc_doc_env_done || return 0
-
-  zvvb_kindle
+butckk_true_tcase() {
+  buto_trace "Kick-tires: verifying true returns success"
+  buto_unit_expect_ok true
 }
 
-buc_execute vvb_ "VVX Binary Execution" zvvb_furnish "$@"
+butckk_false_tcase() {
+  buto_trace "Kick-tires: verifying false returns failure"
+  buto_unit_expect_fatal false
+}
 
 # eof

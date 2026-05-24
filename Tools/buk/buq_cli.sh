@@ -16,21 +16,23 @@
 #
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
-# VVB CLI - Command line interface for VVX binary execution
+# BUQ CLI - BUK-level qualification operations
 
 set -euo pipefail
 
 source "${BURD_BUK_DIR}/buc_command.sh"
-source "${BURD_TOOLS_DIR}/vvk/vvb_bash.sh"
+source "${BURD_BUK_DIR}/buq_qualify.sh"
 
-zvvb_furnish() {
+######################################################################
+# Furnish and Main
+
+zbuq_furnish() {
   buc_doc_env "BURD_BUK_DIR          " "BUK module directory (dispatch-provided)"
   buc_doc_env "BURD_TOOLS_DIR        " "Project tools root directory (dispatch-provided)"
+  buc_doc_env "BURD_TEMP_DIR         " "Temporary file directory (dispatch-provided)"
   buc_doc_env_done || return 0
-
-  zvvb_kindle
 }
 
-buc_execute vvb_ "VVX Binary Execution" zvvb_furnish "$@"
+buc_execute buq_ "BUK Qualification" zbuq_furnish "$@"
 
 # eof

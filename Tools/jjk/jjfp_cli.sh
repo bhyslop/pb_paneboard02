@@ -16,21 +16,28 @@
 #
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
-# VVB CLI - Command line interface for VVX binary execution
+# JJFP CLI - Command line interface for fundus operations
 
 set -euo pipefail
 
 source "${BURD_BUK_DIR}/buc_command.sh"
-source "${BURD_TOOLS_DIR}/vvk/vvb_bash.sh"
 
-zvvb_furnish() {
+######################################################################
+# Furnish and Main
+
+zjjfp_furnish() {
   buc_doc_env "BURD_BUK_DIR          " "BUK module directory (dispatch-provided)"
   buc_doc_env "BURD_TOOLS_DIR        " "Project tools root directory (dispatch-provided)"
+  buc_doc_env "BURD_TEMP_DIR         " "Dispatch temp directory (dispatch-provided)"
+  buc_doc_env "BUZ_FOLIO             " "Target host (from zipper imprint channel)"
   buc_doc_env_done || return 0
 
-  zvvb_kindle
+  local -r z_jjk_dir="${BURD_TOOLS_DIR}/jjk"
+  source "${z_jjk_dir}/jjfp_fundus.sh"
+
+  zjjfp_kindle
 }
 
-buc_execute vvb_ "VVX Binary Execution" zvvb_furnish "$@"
+buc_execute jjfp_ "Fundus Operations" zjjfp_furnish "$@"
 
 # eof

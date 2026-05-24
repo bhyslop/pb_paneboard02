@@ -1,11 +1,11 @@
 {
-  "vvbc_commit": "6789c57cb94b9b3b13edf5783452f58f2fc668e4",
-  "vvbd_date": "260119-0923",
-  "vvbf_brand": 1010,
+  "vvbc_commit": "c15939df6132c786f1cdac009b0b940d1804814e",
+  "vvbd_date": "260524-0750",
+  "vvbf_brand": 1013,
   "vvbk_kits": [
     "buk",
     "jjk",
     "vvk"
   ],
-  "vvbs_sha": "f65f3d6f4f3bb393ec5813b7d0728b547daf836b396b5ce9ff0c985089e44329"
+  "vvbs_sha": "74df620f125fed34d50ef3b29c98a3e4843270f47c1fe25e9d116a39dc96b981"
 }
