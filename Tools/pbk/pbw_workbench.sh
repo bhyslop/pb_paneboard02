@@ -29,9 +29,9 @@ source "${PBW_SCRIPT_DIR}/../buk/buc_command.sh"
 # Show filename on each displayed line
 buc_context "${0##*/}"
 
-# Verbose output if BUD_VERBOSE is set
+# Verbose output if BURE_VERBOSE is set
 pbw_show() {
-  test "${BUD_VERBOSE:-0}" != "1" || echo "PBWSHOW: $*"
+  test "${BURE_VERBOSE:-0}" != "1" || echo "PBWSHOW: $*"
 }
 
 # Simple routing function
@@ -42,11 +42,11 @@ pbw_route() {
 
   pbw_show "Routing command: ${z_command} with args: ${z_args}"
 
-  # Verify BUD environment variables are present
-  test -n "${BUD_TEMP_DIR:-}" || buc_die "BUD_TEMP_DIR not set - must be called from BUD"
-  test -n "${BUD_NOW_STAMP:-}" || buc_die "BUD_NOW_STAMP not set - must be called from BUD"
+  # Verify BURD environment variables are present
+  test -n "${BURD_TEMP_DIR:-}" || buc_die "BURD_TEMP_DIR not set - must be called from BURD"
+  test -n "${BURD_NOW_STAMP:-}" || buc_die "BURD_NOW_STAMP not set - must be called from BURD"
 
-  pbw_show "BUD environment verified"
+  pbw_show "BURD environment verified"
 
   # Route based on command
   case "${z_command}" in
@@ -58,9 +58,9 @@ pbw_route() {
       cargo build "$@" && cargo run "$@"
       ;;
 
-    # Proof of Concept - timed run (BUD_TOKEN_3 = seconds)
+    # Proof of Concept - timed run (BURD_TOKEN_3 = seconds)
     pbw-t)
-      local z_timeout="${BUD_TOKEN_3:-10}"
+      local z_timeout="${BURD_TOKEN_3:-10}"
       echo "Building and running PaneBoard PoC (timeout=${z_timeout}s)..."
       cd poc
       cargo build "$@" && cargo run "$@" -- --timeout "${z_timeout}"
