@@ -759,6 +759,11 @@ public func pbmbo_show_characterization_windows(
         let contentView = CharacterizationContentView(frame: windowFrame)
         window.contentView = contentView
 
+        // windowFrame is global; the screen: initializer above treats contentRect as
+        // screen-local, double-counting the origin and throwing the box off secondary
+        // displays. setFrame takes true global coordinates, so it lands it correctly.
+        window.setFrame(windowFrame, display: false)
+
         characterizationWindows.append(window)
         window.orderFrontRegardless()
 
