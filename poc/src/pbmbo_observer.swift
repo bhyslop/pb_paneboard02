@@ -871,6 +871,11 @@ public func pbmbo_show_highlight_border(x: Double, y: Double, w: Double, h: Doub
         let contentView = HighlightBorderContentView(frame: windowFrame)
         window.contentView = contentView
 
+        // Same screen-local trap as the characterization window: the screen:
+        // initializer mis-places the first frame on secondary displays. Force the
+        // true global frame so there's no off-screen flash before the first reposition.
+        window.setFrame(windowFrame, display: false)
+
         highlightBorderWindow = window
     } else {
         // Reposition existing window
