@@ -257,6 +257,10 @@ class OverlayManager {
         window.level = .statusBar
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         window.ignoresMouseEvents = true
+        // Borderless windows inherit .default animationBehavior, which makes macOS
+        // fade them in/out on orderFront/orderOut. Suppress it so Alt-Tab appears
+        // and dismisses instantly.
+        window.animationBehavior = .none
 
         // Create content view
         let contentView = OverlayContentView(frame: overlayFrame)
@@ -867,6 +871,8 @@ public func pbmbo_show_highlight_border(x: Double, y: Double, w: Double, h: Doub
         window.level = .statusBar + 2  // Above Alt-Tab popup (which is at .statusBar)
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         window.ignoresMouseEvents = true
+        // Match the Alt-Tab overlay: no implicit fade on orderFront/orderOut.
+        window.animationBehavior = .none
 
         let contentView = HighlightBorderContentView(frame: windowFrame)
         window.contentView = contentView
