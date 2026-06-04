@@ -3,15 +3,17 @@
   <!--
     QUADRANT MODEL (home/pgup/end/pgdn keys)
 
-    Each key produces 11 panes in this sequence:
-    1. Full display
-    2. Top half (home|pgup) or bottom half (end|pgdn)
-    3. The target quadrant: TL (home), TR (pgup), BL (end), BR (pgdn)
-    4. Top half of that quadrant
-    5. Bottom half of that quadrant
-    6. Left half of that quadrant
-    7. Right half of that quadrant
-    8-11. Four sub-quadrants of that quadrant (TL, TR, BL, BR)
+    Each key produces a sequence of panes (auto-sorted by area, largest first):
+    - Full display
+    - Top half (home|pgup) or bottom half (end|pgdn)
+    - Side half: left (home|end) or right (pgup|pgdn)
+    - Side half cropped to top 7/8 (home|pgup) or bottom 7/8 (end|pgdn);
+      tuned for FlipGo panels rotated to portrait — hugs the long edge,
+      leaving a 1/8 gap at the far end
+    - The target quadrant: TL (home), TR (pgup), BL (end), BR (pgdn)
+    - Top/bottom halves of that quadrant
+    - Left/right halves of that quadrant
+    - Four sub-quadrants of that quadrant (TL, TR, BL, BR)
 
     Traversal order controlled by 'traverse' attribute on LayoutAction.
     This allows repeated presses to cycle through all 11 positions.
@@ -63,6 +65,11 @@
   <Frame name="halves-horizontal">
     <Pane x="0"   y="0" width="1/2" height="1"/>
     <Pane x="1/2" y="0" width="1/2" height="1"/>
+  </Frame>
+
+  <Frame name="halves-horizontal-78">
+    <Pane x="0"   y="0" width="1/2" height="7/8"/>  <!-- left half, top 7/8 -->
+    <Pane x="1/2" y="0" width="1/2" height="7/8"/>  <!-- right half, top 7/8 -->
   </Frame>
 
   <Frame name="quads">
@@ -142,16 +149,18 @@
 
   <!-- ========== QUADRANT LAYOUT ========== -->
 
-  <!-- Quadrant base layout: 11-pane compositional pattern
-       Defines geometry for TL quadrant; other quadrants generated via mirroring.
+  <!-- Quadrant base layout: compositional pattern, auto-sorted by area.
+       Defines geometry for the TL/keep corner; other corners generated via mirroring.
 
-       Pane sequence (sorted by area desc, then traverse):
-       1. Full display
-       2. Top half
-       3. TL quadrant
-       4-5. Top/bottom halves of TL quadrant
-       6-7. Left/right halves of TL quadrant
-       8-11. Four sub-quadrants of TL quadrant
+       Pane sequence:
+       - Full display
+       - Top half
+       - Side half (left; X-mirror -> right on pageup/pagedown)
+       - Side half cropped to top 7/8 (Y-mirror -> bottom on end/pagedown)
+       - TL quadrant
+       - Top/bottom halves of TL quadrant
+       - Left/right halves of TL quadrant
+       - Four sub-quadrants of TL quadrant
   -->
   <Layout name="quadrant-base">
     <!-- Pane 1: Full display -->
@@ -169,6 +178,18 @@
     <Shape frame="halves-vertical-75">
       <Include/>                         <!-- top half 75% -->
       <Include whenOrientation="never"/> <!-- bottom half (dropped) -->
+    </Shape>
+
+    <!-- Pane 2b: Side half (left; X-mirror yields right on pageup/pagedown) -->
+    <Shape frame="halves-horizontal">
+      <Include/>                         <!-- left half -->
+      <Include whenOrientation="never"/> <!-- right half (dropped) -->
+    </Shape>
+
+    <!-- Pane 2c: Side half cropped to top 7/8 (Y-mirror yields bottom on end/pagedown) -->
+    <Shape frame="halves-horizontal-78">
+      <Include/>                         <!-- left half, top 7/8 -->
+      <Include whenOrientation="never"/> <!-- right half (dropped) -->
     </Shape>
 
     <!-- Panes 3-11: TL quadrant and its refinements -->
