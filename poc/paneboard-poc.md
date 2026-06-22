@@ -1258,3 +1258,33 @@ The code in `pbgx_layout.rs` will be removed and replaced with a parser for the 
   <LayoutAction key="insert" layout="upper-left" traverse="xfyf" mirrorX="keep" mirrorY="keep"/>
 </Form>
 ```
+
+### Diagram Viewer — Rasterization Performance
+
+The standalone diagram viewer (`viewer/` crate) rasterizes SVG with
+`usvg` + `resvg` + `tiny-skia` — a **single-threaded CPU** rasterizer. The GPU
+(driven by egui/eframe via wgpu) only scales the finished bitmap; it does no SVG
+work. Deep-zoom feels sluggish because each settle re-renders the whole diagram
+into a 2×-Retina pixmap on the CPU.
+
+Two factors compound:
+- **CPU-bound by design.** This is the deliberate, portable, no-network-friendly
+  choice — not a bug. The crisp SVG re-raster is already debounced to fire only
+  when zoom settles (the existing texture GPU-scales during a gesture).
+- **ARM soft spot.** `tiny-skia` is documented to be notably slower on ARM than
+  on x86-64, so Apple Silicon hits its weakest case.
+
+**Upgrade path when speed is worth the work: Vello** (Linebender, the same group
+behind resvg). Via the `vello_svg` crate, keep `usvg` for parsing but rasterize
+the tree **on the GPU** instead of tiny-skia on the CPU — the order-of-magnitude
+headroom. Not a drop-in: Vello wants its own wgpu render pass, so integrating it
+into the egui scene needs an `egui_wgpu` paint callback. Their `vello-cpu` is
+also maturing into the fastest *CPU* renderer in Rust — a lighter (still
+non-trivial) swap that stays off the GPU.
+
+Cheap mitigations short of a renderer swap: cap the raster scale (~1.3× instead
+of 2×) or widen the re-raster threshold — both trade a little sharpness for speed.
+
+References: [resvg](https://github.com/linebender/resvg),
+[tiny-skia](https://lib.rs/crates/tiny-skia),
+[Vello](https://github.com/linebender/vello).
