@@ -1,0 +1,17 @@
+[package]
+name = "paneboard-viewer"
+version = "0.1.0"
+edition = "2021"
+
+# Standalone diagram viewer (SVG + raster) over a direct localhost-TCP socket.
+# Deliberately NOT part of the paneboard daemon crate (poc/): the daemon is the
+# sandboxed, network-denied keyboard utility; this is the non-sandboxed display
+# surface. Isolating the crate keeps egui/resvg/image out of the daemon's tree.
+
+[dependencies]
+eframe = "0.31"
+resvg = "0.44"
+image = "0.25"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "5.0"
