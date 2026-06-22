@@ -51,17 +51,19 @@ pbw_route() {
   # Route based on command
   case "${z_command}" in
 
-    # Proof of Concept - build and run
-    pbw-p)
-      echo "Building and running PaneBoard PoC..."
+    # Build both crates (viewer + PoC), then launch the standing PoC overlay
+    pbw-b)
+      echo "Building viewer + PaneBoard PoC, then launching..."
+      cargo build --manifest-path viewer/Cargo.toml "$@" || buc_die "viewer build failed"
       cd poc
       cargo build "$@" && cargo run "$@"
       ;;
 
-    # Proof of Concept - timed run (BURD_TOKEN_3 = seconds)
+    # Build both crates (viewer + PoC), then run the timed PoC overlay (BURD_TOKEN_3 = seconds)
     pbw-t)
       local z_timeout="${BURD_TOKEN_3:-10}"
-      echo "Building and running PaneBoard PoC (timeout=${z_timeout}s)..."
+      echo "Building viewer + PaneBoard PoC, then running timed (timeout=${z_timeout}s)..."
+      cargo build --manifest-path viewer/Cargo.toml "$@" || buc_die "viewer build failed"
       cd poc
       cargo build "$@" && cargo run "$@" -- --timeout "${z_timeout}"
       ;;
