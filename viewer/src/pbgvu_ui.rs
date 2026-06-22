@@ -45,6 +45,9 @@ struct ViewerApp {
     fit_requested: bool,
     /// Last panel size seen; a change triggers a re-fit so the scale tracks the window.
     last_size: egui::Vec2,
+    /// Zoom at the previous frame; used to detect a settled (non-moving) zoom so
+    /// the crisp SVG re-raster is debounced until a gesture stops.
+    last_zoom: f32,
 }
 
 pub fn run() -> Result<(), String> {
@@ -80,6 +83,7 @@ impl ViewerApp {
             tex_scale: 0.0,
             fit_requested: false,
             last_size: egui::Vec2::ZERO,
+            last_zoom: 1.0,
         }
     }
 
@@ -127,9 +131,13 @@ impl ViewerApp {
                 if self.texture.is_none() {
                     true
                 } else {
+                    // Debounce: re-raster only once the zoom has settled, so a
+                    // smooth-scroll gesture GPU-scales the existing texture
+                    // instead of re-rendering the whole SVG every frame.
+                    let settled = (self.zoom - self.last_zoom).abs() < 1e-3;
                     let desired = (self.zoom * ctx.pixels_per_point()).max(0.001);
                     let ratio = (desired / self.tex_scale).max(self.tex_scale / desired);
-                    ratio > RERASTER_RATIO
+                    settled && ratio > RERASTER_RATIO
                 }
             }
         };
@@ -247,6 +255,13 @@ impl eframe::App for ViewerApp {
             }
 
             self.ensure_texture(ctx);
+
+            // While the zoom is still moving, keep ticking so the debounced
+            // crisp re-raster fires on the frame the gesture settles.
+            if (self.zoom - self.last_zoom).abs() >= 1e-3 {
+                ctx.request_repaint();
+            }
+            self.last_zoom = self.zoom;
 
             if let Some(tex) = &self.texture {
                 let displayed = self.natural * self.zoom;
