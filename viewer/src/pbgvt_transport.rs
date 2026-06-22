@@ -1,16 +1,22 @@
 // pbgvt — transport: the localhost-TCP wire, the port-file discovery channel,
 // and the reference pusher client.
 //
-// Wire framing (the walking skeleton the protocol-freeze pace ratifies):
-//   one JSON control line terminated by '\n', then exactly `len` payload bytes.
-//   { "verb": "fresh" | "update", "id": <u64>, "len": <usize> }
-// A connection may carry one frame or many, back to back.
+// Wire framing (FROZEN — the contract is the "Diagram Viewer — Wire Protocol"
+// section of poc/paneboard-poc.md; this code is its reference implementation):
+//   one JSON control line terminated by '\n', then exactly `pbgvw_len` payload
+//   bytes. Control keys and the verb enum carry the `pbgvw_` sprue — one sprue
+//   per wire format, so `grep pbgvw_` is the whole census:
+//   { "pbgvw_verb": "pbgvw_fresh" | "pbgvw_update", "pbgvw_id": <u64>, "pbgvw_len": <usize> }
+// A connection may carry one frame or many, back to back. The payload is
+// self-describing (content-sniffed: SVG vs raster), never an out-of-band tag.
+// The operator-facing CLI verb (`push fresh|update`) is a plain ashlar; the
+// pusher maps it to the sprued wire value.
 //
 // Discovery: the viewer binds an ephemeral port and writes it to a fixed
 // port-file under ~/.config/paneboard/ (paneboard's per-user config home).
 // Pushers read that file to find the listener. The walking skeleton is a single
-// viewer instance, so one port-file suffices; per-`id` viewer instances are a
-// later conductor concern that would key the file by id.
+// viewer instance, so one port-file suffices; per-`pbgvw_id` viewer instances
+// are a later conductor concern that would key the file by id.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -40,9 +46,11 @@ pub struct Frame {
 
 #[derive(Deserialize)]
 struct Control {
+    #[serde(rename = "pbgvw_verb")]
     verb: String,
-    #[serde(default)]
+    #[serde(rename = "pbgvw_id", default)]
     id: u64,
+    #[serde(rename = "pbgvw_len")]
     len: usize,
 }
 
@@ -126,10 +134,10 @@ fn handle_conn(stream: TcpStream, tx: Sender<Frame>, ctx: egui::Context) {
             }
         };
         let verb = match ctrl.verb.as_str() {
-            "fresh" => Verb::Fresh,
-            "update" => Verb::Update,
+            "pbgvw_fresh" => Verb::Fresh,
+            "pbgvw_update" => Verb::Update,
             other => {
-                eprintln!("unknown verb: {other}");
+                eprintln!("unknown pbgvw_verb: {other}");
                 break;
             }
         };
@@ -176,7 +184,13 @@ pub fn push(verb: &str, file: &Path) -> Result<(), String> {
 
     let mut stream = TcpStream::connect(("127.0.0.1", port))
         .map_err(|e| format!("connect 127.0.0.1:{port}: {e}"))?;
-    let control = format!("{{\"verb\":\"{}\",\"id\":0,\"len\":{}}}\n", verb, bytes.len());
+    // CLI verb ("fresh"/"update") is the operator-facing ashlar; map it to the
+    // sprued wire value (`pbgvw_fresh`/`pbgvw_update`). Keys carry `pbgvw_` too.
+    let control = format!(
+        "{{\"pbgvw_verb\":\"pbgvw_{}\",\"pbgvw_id\":0,\"pbgvw_len\":{}}}\n",
+        verb,
+        bytes.len()
+    );
     stream
         .write_all(control.as_bytes())
         .map_err(|e| e.to_string())?;

@@ -1288,3 +1288,123 @@ of 2×) or widen the re-raster threshold — both trade a little sharpness for s
 References: [resvg](https://github.com/linebender/resvg),
 [tiny-skia](https://lib.rs/crates/tiny-skia),
 [Vello](https://github.com/linebender/vello).
+
+## Diagram Viewer — Wire Protocol (FROZEN)
+
+**Status:** FROZEN 2026-06-22. Reference implementation: `viewer/src/pbgvt_transport.rs`.
+
+The standalone viewer receives diagram bytes over a localhost TCP wire. The
+protocol is **connect-per-message, best-effort / fail-soft**: a pusher opens a
+connection, sends one or more frames back-to-back, and closes; a malformed frame
+drops the connection without disturbing the viewer.
+
+**Discovery.** The viewer binds an ephemeral port on `127.0.0.1` and atomically
+publishes it (write-temp-then-rename) to `~/.config/paneboard/viewer.port`
+(paneboard's per-user config home). Pushers read that file to find the listener.
+One viewer instance ⇒ one port-file; per-instance viewers are a later conductor
+concern that would key the port-file by id.
+
+**Frame.** One JSON control line terminated by `\n`, then exactly `pbgvw_len`
+payload bytes:
+
+```
+{"pbgvw_verb": "pbgvw_fresh" | "pbgvw_update", "pbgvw_id": <u64>, "pbgvw_len": <usize>}\n
+<pbgvw_len bytes of payload>
+```
+
+Control keys and the verb enum carry the **`pbgvw_` sprue** — one sprue per wire
+format, so `grep pbgvw_` (across this spec, the viewer crate, and any pusher) is
+the format's complete census, with no central registry to drift.
+
+| token | meaning |
+|---|---|
+| `pbgvw_verb` | frame verb (enum below) |
+| `pbgvw_fresh` | open/replace: fit-to-window, default view |
+| `pbgvw_update` | replace content at the held zoom + pan (SVG re-rasterized crisp; raster is native-limited) |
+| `pbgvw_id` | `u64`, reserved for future per-instance viewer routing; `0` in the single-viewer skeleton |
+| `pbgvw_len` | payload byte count |
+
+**Payload** is **self-describing by content sniff** — SVG (scan the head for
+`<svg`, tolerating a leading BOM, whitespace, an XML prolog, or a
+`<?plantuml … ?>` processing instruction) versus raster (PNG/JPEG/… decoded by
+the `image` crate). There is no out-of-band type tag.
+
+The operator-facing CLI verb (`push fresh|update`, e.g. the reference pusher) is
+a plain **ashlar** and stays unprefixed; the pusher maps it to the sprued wire
+value.
+
+## Emblem File Format (FROZEN)
+
+**Status:** STRUCTURE FROZEN 2026-06-22 (paneboard overlay-label feature, rbm
+heat ₣Bh). Region **structure** is frozen here; region **content** — which lines
+land in which band — is deliberately soft and config-tunable, **not** frozen.
+
+An *emblem* is the per-window overlay label paneboard paints (in the alt-tab
+list and on the selection box). Each label-writer (one `vvx` per Claude Code
+session) atomically writes its **own** window's emblem; paneboard reads them.
+
+**Lineage.** The emblem file is a **gazette cousin** — markdown-header-delimited
+in the spirit of JJK's gazette (header = a typed notice; body = its content) —
+but it is its **own** three-level grammar with a structured (brace) lede at the
+region rung, and it does **not** reuse the JJK gazette code: each side parses
+independently (the writer is rbm's `vvx`, the reader is paneboard, in separate
+repos). Every token carries the **`pbge_` sprue**; `grep pbge_` is the format's
+complete census.
+
+**File transport.** One atomic file per window (write-temp-then-rename), under a
+fixed paneboard-owned per-user root, scheme-qualified:
+
+```
+$HOME/.config/paneboard/emblems/<scheme>/<value>.emblem
+```
+
+- `<scheme>` is the typed window-reference scheme (e.g. `iterm-session`);
+  `<value>` is that scheme's key. The exact handle (the window-id directly, or a
+  UUID with a writer-written window-id index) is an open grooming point; **the
+  format does not depend on which.**
+- **Writers own their own file** and only ever replace it — no cross-writer
+  coordination. **Disk is the source of truth.** paneboard reads by the window-id
+  it already enumerates, holds a RAM working-model rebuilt from the directory,
+  and shows an emblem **only if its window is in the live set** (a leftover file
+  for a dead window is harmless, never displayed). Because the RAM model is just
+  a rebuilt cache, paneboard may be cycled freely (the dev debug loop) without
+  losing labels.
+- **Stale-file cleanup** is a manual `pbw-c*` clear colophon run by convention
+  between paneboard runs — there is no auto-reap.
+
+**Grammar (frozen).**
+
+```
+# pbge_emblem {pbge_stamp=2026-06-22T10:04:33Z}
+## pbge_pane iterm-session/<uuid>
+### pbge_region {pbge_location=pbge_top, pbge_color=#ffffff, pbge_size=14}
+line one of text
+line two of text
+### pbge_region {pbge_location=pbge_middle}
+repo / working directory
+```
+
+| rung | token | lede | body |
+|---|---|---|---|
+| H1 | `pbge_emblem` | optional brace attr-set: `pbge_stamp` = RFC-3339 UTC write time (optional; debugging + recycling-defense, **not** the correctness mechanism — live-set intersection is) | — |
+| H2 | `pbge_pane` | the scheme-qualified window reference, equal to the file's key | region notices |
+| H3 | `pbge_region` | brace attr-set (below) | the region's text lines |
+
+A per-window file carries exactly **one** `pbge_pane` block; the grammar admits
+N, so paneboard unions panes across files into the all-panes view and a future
+single consolidated file needs no grammar change.
+
+Region attributes (`pbge_region` lede):
+
+| attr | meaning |
+|---|---|
+| `pbge_location` | placement, **frozen enum**: `pbge_top` \| `pbge_middle` \| `pbge_bottom`. Placement is explicit, so region order in the file is not significant. |
+| `pbge_color` | hex color (optional; paneboard supplies a built-in default if absent) |
+| `pbge_size` | font size (optional; paneboard default if absent) |
+
+`pbge_color` / `pbge_size` are sourced from an rbm-side config the writer reads
+at write time, never compiled in.
+
+**Starting region content (soft, not frozen):** top = identity (coronet when
+mounted on a pace, else the heat firemark — full identity, never abbreviated) +
+pace name; middle = repo + working directory; bottom = reserved.
