@@ -18,6 +18,20 @@ const MAX_RASTER_EDGE: u32 = 8192;
 /// the texture's current scale, so small zoom nudges don't thrash the decoder.
 const RERASTER_RATIO: f32 = 1.25;
 
+/// Backing behind the image in dark mode. The dark variant is light ink on a
+/// transparent ground, so on the light backing it would be near-invisible;
+/// this near-black ground (GitHub's dark canvas) is what the README `<picture>`
+/// blocks composite onto in dark mode.
+const DARK_BACKING: egui::Color32 = egui::Color32::from_rgb(0x0d, 0x11, 0x17);
+
+/// Which variant of the light/dark pair the operator has selected. `d`/`l`
+/// switch it; the *effective* variant falls back to light when no dark is held.
+#[derive(Clone, Copy, PartialEq)]
+enum Theme {
+    Light,
+    Dark,
+}
+
 /// The live source, held UI-side so it can be re-rasterized on demand.
 enum Source {
     Svg(resvg::usvg::Tree),
@@ -28,8 +42,16 @@ struct ViewerApp {
     rx: Receiver<Frame>,
     port: u16,
 
+    /// The light variant — the always-present member of the pair.
     source: Option<Source>,
-    /// Natural source size in source pixels.
+    /// The optional dark variant. `None` for a single-variant push, in which
+    /// case the dark toggle falls back to `source`.
+    dark: Option<Source>,
+    /// The operator-selected variant; the effective one falls back to light
+    /// when `dark` is `None`.
+    theme: Theme,
+    /// Natural source size in source pixels (the light variant's; the dark
+    /// variant is the same diagram at the same size, so they share one viewport).
     natural: egui::Vec2,
     /// Screen points per source pixel.
     zoom: f32,
@@ -76,6 +98,8 @@ impl ViewerApp {
             rx,
             port,
             source: None,
+            dark: None,
+            theme: Theme::Light,
             natural: egui::vec2(1.0, 1.0),
             zoom: 1.0,
             pan: egui::Vec2::ZERO,
@@ -92,39 +116,80 @@ impl ViewerApp {
         // The skeleton is single-window: `id` selects which viewer instance a
         // conductor would target, logged here but not yet routed.
         eprintln!(
-            "frame: verb={} id={}",
+            "frame: verb={} id={} dark={}",
             if keep_view { "update" } else { "fresh" },
-            frame.id
+            frame.id,
+            frame.dark.is_some(),
         );
-        let source = match frame.decoded {
-            Decoded::Svg(bytes) => match parse_svg(&bytes) {
-                Ok((tree, size)) => {
-                    self.natural = size;
-                    Source::Svg(tree)
-                }
-                Err(e) => {
-                    eprintln!("svg parse failed: {e}");
-                    return;
-                }
-            },
-            Decoded::Raster { rgba, w, h } => {
-                self.natural = egui::vec2(w as f32, h as f32);
-                Source::Raster { rgba, w, h }
+        let (light, natural) = match Self::decoded_to_source(frame.decoded) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("svg parse failed (light): {e}");
+                return;
             }
         };
-        self.source = Some(source);
-        self.texture = None;
-        self.tex_scale = 0.0;
+        // The dark variant shares the light's natural size (same diagram); a
+        // dark parse failure drops only the dark, never the whole frame.
+        let dark = frame.dark.and_then(|d| match Self::decoded_to_source(d) {
+            Ok((s, _)) => Some(s),
+            Err(e) => {
+                eprintln!("svg parse failed (dark, light kept): {e}");
+                None
+            }
+        });
+
+        self.natural = natural;
+        self.source = Some(light);
+        self.dark = dark;
+        self.invalidate_texture();
         if !keep_view {
+            // fresh resets to the default (light) variant and refits; update
+            // retains the held variant and viewport.
+            self.theme = Theme::Light;
             self.fit_requested = true;
         }
         ctx.request_repaint();
     }
 
-    /// Build or rebuild the display texture if needed. Raster sources texture
-    /// once; SVG sources re-raster when the effective device scale has moved.
-    fn ensure_texture(&mut self, ctx: &egui::Context) {
-        let need = match &self.source {
+    /// Convert a transport `Decoded` into a UI `Source`, parsing SVG into a
+    /// usvg tree (raster is already RGBA). Returns the source and its natural
+    /// size in source pixels.
+    fn decoded_to_source(decoded: Decoded) -> Result<(Source, egui::Vec2), String> {
+        match decoded {
+            Decoded::Svg(bytes) => {
+                let (tree, size) = parse_svg(&bytes)?;
+                Ok((Source::Svg(tree), size))
+            }
+            Decoded::Raster { rgba, w, h } => {
+                Ok((Source::Raster { rgba, w, h }, egui::vec2(w as f32, h as f32)))
+            }
+        }
+    }
+
+    /// Drop the current texture so `ensure_texture` rebuilds it — used on a new
+    /// frame and on a variant switch (re-raster the other variant at the held
+    /// zoom, never a refit).
+    fn invalidate_texture(&mut self) {
+        self.texture = None;
+        self.tex_scale = 0.0;
+    }
+
+    /// The effective variant: dark only when selected *and* held; otherwise
+    /// light. This is the single fallback point for a single-variant push.
+    fn effective_dark(&self) -> bool {
+        matches!(self.theme, Theme::Dark) && self.dark.is_some()
+    }
+
+    /// Build or rebuild the display texture if needed, from the active variant
+    /// (`use_dark` picks dark vs light). Raster sources texture once; SVG
+    /// sources re-raster when the effective device scale has moved.
+    fn ensure_texture(&mut self, ctx: &egui::Context, use_dark: bool) {
+        let active = if use_dark {
+            self.dark.as_ref()
+        } else {
+            self.source.as_ref()
+        };
+        let need = match active {
             None => false,
             Some(Source::Raster { .. }) => self.texture.is_none(),
             Some(Source::Svg(_)) => {
@@ -145,7 +210,12 @@ impl ViewerApp {
             return;
         }
 
-        match &self.source {
+        let active = if use_dark {
+            self.dark.as_ref()
+        } else {
+            self.source.as_ref()
+        };
+        match active {
             Some(Source::Raster { rgba, w, h }) => {
                 let img =
                     egui::ColorImage::from_rgba_unmultiplied([*w as usize, *h as usize], rgba);
@@ -185,6 +255,31 @@ impl eframe::App for ViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         while let Ok(f) = self.rx.try_recv() {
             self.apply_frame(ctx, f);
+        }
+
+        // The viewer's first keystrokes: d/l switch the pair variant (retaining
+        // zoom+pan — a switch only invalidates the texture, never refits), f
+        // fits. Zoom/pan stay on scroll/drag, handled in-panel below.
+        let (press_d, press_l, press_f) = ctx.input(|i| {
+            (
+                i.key_pressed(egui::Key::D),
+                i.key_pressed(egui::Key::L),
+                i.key_pressed(egui::Key::F),
+            )
+        });
+        if press_d && self.theme != Theme::Dark {
+            self.theme = Theme::Dark;
+            self.invalidate_texture();
+            ctx.request_repaint();
+        }
+        if press_l && self.theme != Theme::Light {
+            self.theme = Theme::Light;
+            self.invalidate_texture();
+            ctx.request_repaint();
+        }
+        if press_f {
+            self.fit_requested = true;
+            ctx.request_repaint();
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -254,7 +349,8 @@ impl eframe::App for ViewerApp {
                 self.pan += response.drag_delta();
             }
 
-            self.ensure_texture(ctx);
+            let use_dark = self.effective_dark();
+            self.ensure_texture(ctx, use_dark);
 
             // While the zoom is still moving, keep ticking so the debounced
             // crisp re-raster fires on the frame the gesture settles.
@@ -266,9 +362,15 @@ impl eframe::App for ViewerApp {
             if let Some(tex) = &self.texture {
                 let displayed = self.natural * self.zoom;
                 let img_rect = egui::Rect::from_min_size(rect.min + self.pan, displayed);
-                // White backing so transparent SVGs (dark ink, no background)
-                // composite onto a defined surface, not the dark panel.
-                painter.rect_filled(img_rect, 0.0, egui::Color32::WHITE);
+                // Backing flips with the variant: white for light ink-on-nothing
+                // SVGs, near-black for the dark variant (light ink), so each
+                // composites onto the surface the README renders it against.
+                let backing = if use_dark {
+                    DARK_BACKING
+                } else {
+                    egui::Color32::WHITE
+                };
+                painter.rect_filled(img_rect, 0.0, backing);
                 painter.image(
                     tex.id(),
                     img_rect,
@@ -276,6 +378,27 @@ impl eframe::App for ViewerApp {
                     egui::Color32::WHITE,
                 );
             }
+
+            // Current-mode indicator: which variant is up (the effective one, so
+            // a dark request on a single-variant push reads "light"). A faint
+            // pill keeps it legible on either backing.
+            let label = if use_dark { "dark" } else { "light" };
+            let font = egui::FontId::monospace(12.0);
+            let text_size = ctx.fonts(|f| {
+                f.layout_no_wrap(label.to_owned(), font.clone(), egui::Color32::WHITE)
+                    .size()
+            });
+            let pad = egui::vec2(6.0, 3.0);
+            let origin = rect.left_top() + egui::vec2(8.0, 8.0);
+            let pill = egui::Rect::from_min_size(origin, text_size + pad * 2.0);
+            painter.rect_filled(pill, 4.0, egui::Color32::from_black_alpha(140));
+            painter.text(
+                origin + pad,
+                egui::Align2::LEFT_TOP,
+                label,
+                font,
+                egui::Color32::from_gray(220),
+            );
         });
     }
 }

@@ -1291,7 +1291,11 @@ References: [resvg](https://github.com/linebender/resvg),
 
 ## Diagram Viewer — Wire Protocol (FROZEN)
 
-**Status:** FROZEN 2026-06-22. Reference implementation: `viewer/src/pbgvt_transport.rs`.
+**Status:** FROZEN 2026-06-22; **re-frozen 2026-06-23** for the optional
+light/dark **pair** (the `pbgvw_dark_len` key and its appended payload). The
+revision is **additive** — a frame without `pbgvw_dark_len` is byte-identical to
+the 2026-06-22 single-payload frame — so the prior contract is a strict subset.
+Reference implementation: `viewer/src/pbgvt_transport.rs`.
 
 The standalone viewer receives diagram bytes over a localhost TCP wire. The
 protocol is **connect-per-message, best-effort / fail-soft**: a pusher opens a
@@ -1305,11 +1309,13 @@ One viewer instance ⇒ one port-file; per-instance viewers are a later conducto
 concern that would key the port-file by id.
 
 **Frame.** One JSON control line terminated by `\n`, then exactly `pbgvw_len`
-payload bytes:
+payload bytes, then — only when `pbgvw_dark_len` is present and non-zero —
+exactly `pbgvw_dark_len` further bytes (the dark variant):
 
 ```
-{"pbgvw_verb": "pbgvw_fresh" | "pbgvw_update", "pbgvw_id": <u64>, "pbgvw_len": <usize>}\n
-<pbgvw_len bytes of payload>
+{"pbgvw_verb": "pbgvw_fresh" | "pbgvw_update", "pbgvw_id": <u64>, "pbgvw_len": <usize>, "pbgvw_dark_len": <usize>?}\n
+<pbgvw_len bytes: the (light) payload>
+<pbgvw_dark_len bytes: the dark payload — present iff pbgvw_dark_len is>
 ```
 
 Control keys and the verb enum carry the **`pbgvw_` sprue** — one sprue per wire
@@ -1322,12 +1328,24 @@ the format's complete census, with no central registry to drift.
 | `pbgvw_fresh` | open/replace: fit-to-window, default view |
 | `pbgvw_update` | replace content at the held zoom + pan (SVG re-rasterized crisp; raster is native-limited) |
 | `pbgvw_id` | `u64`, reserved for future per-instance viewer routing; `0` in the single-viewer skeleton |
-| `pbgvw_len` | payload byte count |
+| `pbgvw_len` | the (light) payload byte count |
+| `pbgvw_dark_len` | **optional** `usize`; byte count of the appended dark-variant payload. **Absent or `0` ⇒ no dark variant** (today's single-payload frame). When present and non-zero, that many bytes follow the light payload. |
 
 **Payload** is **self-describing by content sniff** — SVG (scan the head for
 `<svg`, tolerating a leading BOM, whitespace, an XML prolog, or a
 `<?plantuml … ?>` processing instruction) versus raster (PNG/JPEG/… decoded by
-the `image` crate). There is no out-of-band type tag.
+the `image` crate). There is no out-of-band type tag. Each payload of a pair is
+sniffed independently.
+
+**The light/dark pair.** A producer that holds two renders of one diagram (a
+light render and a dark recolor — e.g. rbm's README `<picture>` SVGs) sends both
+in one frame: the light variant as the `pbgvw_len` payload, the dark variant as
+the `pbgvw_dark_len` payload. The two are paired **positionally within the
+frame**, never by `pbgvw_id` (which stays reserved for per-instance routing).
+The viewer holds both and toggles between them at the held zoom + pan; it never
+derives one from the other (the recolor palette is the producer's, never
+compiled into the format-agnostic viewer). A single-variant push omits
+`pbgvw_dark_len` and the viewer's dark-toggle falls back to the light variant.
 
 The operator-facing CLI verb (`push fresh|update`, e.g. the reference pusher) is
 a plain **ashlar** and stays unprefixed; the pusher maps it to the sprued wire

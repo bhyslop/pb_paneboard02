@@ -4,13 +4,19 @@
 // Wire framing (FROZEN — the contract is the "Diagram Viewer — Wire Protocol"
 // section of poc/paneboard-poc.md; this code is its reference implementation):
 //   one JSON control line terminated by '\n', then exactly `pbgvw_len` payload
-//   bytes. Control keys and the verb enum carry the `pbgvw_` sprue — one sprue
-//   per wire format, so `grep pbgvw_` is the whole census:
-//   { "pbgvw_verb": "pbgvw_fresh" | "pbgvw_update", "pbgvw_id": <u64>, "pbgvw_len": <usize> }
-// A connection may carry one frame or many, back to back. The payload is
-// self-describing (content-sniffed: SVG vs raster), never an out-of-band tag.
-// The operator-facing CLI verb (`push fresh|update`) is a plain ashlar; the
-// pusher maps it to the sprued wire value.
+//   bytes, then — only when `pbgvw_dark_len` is present and non-zero — exactly
+//   `pbgvw_dark_len` further bytes (the dark variant). Control keys and the verb
+//   enum carry the `pbgvw_` sprue — one sprue per wire format, so `grep pbgvw_`
+//   is the whole census:
+//   { "pbgvw_verb": "pbgvw_fresh" | "pbgvw_update", "pbgvw_id": <u64>,
+//     "pbgvw_len": <usize>, "pbgvw_dark_len": <usize>? }
+// `pbgvw_dark_len` is the additive 2026-06-23 pair revision: absent or 0 ⇒ a
+// single-payload frame, byte-identical to the prior contract. A connection may
+// carry one frame or many, back to back. Each payload is self-describing
+// (content-sniffed: SVG vs raster), never an out-of-band tag; the pair is joined
+// positionally within the frame, never by `pbgvw_id`. The operator-facing CLI
+// verb (`push fresh|update`) is a plain ashlar; the pusher maps it to the sprued
+// wire value.
 //
 // Discovery: the viewer binds an ephemeral port and writes it to a fixed
 // port-file under ~/.config/paneboard/ (paneboard's per-user config home).
@@ -38,10 +44,13 @@ pub enum Verb {
 }
 
 /// One received, decoded frame, handed to the UI thread over the channel.
+/// `dark` is the optional second variant of the light/dark pair — `None` for a
+/// single-payload frame (the dark-toggle then falls back to `decoded`).
 pub struct Frame {
     pub verb: Verb,
     pub id: u64,
     pub decoded: Decoded,
+    pub dark: Option<Decoded>,
 }
 
 #[derive(Deserialize)]
@@ -52,6 +61,10 @@ struct Control {
     id: u64,
     #[serde(rename = "pbgvw_len")]
     len: usize,
+    /// Optional dark-variant byte count (the additive pair revision). Absent or
+    /// 0 ⇒ no dark payload follows.
+    #[serde(rename = "pbgvw_dark_len", default)]
+    dark_len: usize,
 }
 
 /// The fixed discovery path: `~/.config/paneboard/viewer.port`.
@@ -148,27 +161,56 @@ fn handle_conn(stream: TcpStream, tx: Sender<Frame>, ctx: egui::Context) {
             break;
         }
 
-        match pbgvd_decode::sniff_and_decode(payload) {
-            Ok(decoded) => {
-                if tx
-                    .send(Frame {
-                        verb,
-                        id: ctrl.id,
-                        decoded,
-                    })
-                    .is_err()
-                {
-                    break; // UI gone
-                }
-                ctx.request_repaint();
+        // The optional dark variant. Consume its bytes off the wire FIRST, so a
+        // later decode failure cannot desync framing for the next frame.
+        let dark_payload = if ctrl.dark_len > 0 {
+            let mut d = vec![0u8; ctrl.dark_len];
+            if let Err(e) = reader.read_exact(&mut d) {
+                eprintln!("dark payload read error ({} bytes): {e}", ctrl.dark_len);
+                break;
             }
-            Err(e) => eprintln!("decode error: {e}"),
+            Some(d)
+        } else {
+            None
+        };
+
+        let decoded = match pbgvd_decode::sniff_and_decode(payload) {
+            Ok(d) => d,
+            Err(e) => {
+                // Framing is intact (both payloads already consumed); skip just
+                // this frame and keep the connection for the next.
+                eprintln!("decode error: {e}");
+                continue;
+            }
+        };
+        // A dark variant that fails to decode falls back to light-only — never
+        // drop the whole frame for a bad second payload.
+        let dark = dark_payload.and_then(|d| match pbgvd_decode::sniff_and_decode(d) {
+            Ok(d) => Some(d),
+            Err(e) => {
+                eprintln!("dark decode error (light kept): {e}");
+                None
+            }
+        });
+
+        if tx
+            .send(Frame {
+                verb,
+                id: ctrl.id,
+                decoded,
+                dark,
+            })
+            .is_err()
+        {
+            break; // UI gone
         }
+        ctx.request_repaint();
     }
 }
 
-/// Reference pusher: read the port-file, connect, and send one framed payload.
-pub fn push(verb: &str, file: &Path) -> Result<(), String> {
+/// Reference pusher: read the port-file, connect, and send one framed payload,
+/// plus the optional dark variant of the light/dark pair.
+pub fn push(verb: &str, file: &Path, dark: Option<&Path>) -> Result<(), String> {
     if verb != "fresh" && verb != "update" {
         return Err(format!("verb must be fresh or update, got {verb}"));
     }
@@ -181,26 +223,50 @@ pub fn push(verb: &str, file: &Path) -> Result<(), String> {
         .map_err(|e| format!("bad port in {}: {e}", path.display()))?;
 
     let bytes = std::fs::read(file).map_err(|e| format!("read {}: {e}", file.display()))?;
+    let dark_bytes = match dark {
+        Some(d) => Some(std::fs::read(d).map_err(|e| format!("read {}: {e}", d.display()))?),
+        None => None,
+    };
+    let dark_len = dark_bytes.as_ref().map_or(0, Vec::len);
 
     let mut stream = TcpStream::connect(("127.0.0.1", port))
         .map_err(|e| format!("connect 127.0.0.1:{port}: {e}"))?;
     // CLI verb ("fresh"/"update") is the operator-facing ashlar; map it to the
     // sprued wire value (`pbgvw_fresh`/`pbgvw_update`). Keys carry `pbgvw_` too.
-    let control = format!(
-        "{{\"pbgvw_verb\":\"pbgvw_{}\",\"pbgvw_id\":0,\"pbgvw_len\":{}}}\n",
-        verb,
-        bytes.len()
-    );
+    // `pbgvw_dark_len` rides only when a dark variant is present, so a single
+    // push stays byte-identical to the pre-pair frame.
+    let control = if dark_len > 0 {
+        format!(
+            "{{\"pbgvw_verb\":\"pbgvw_{}\",\"pbgvw_id\":0,\"pbgvw_len\":{},\"pbgvw_dark_len\":{}}}\n",
+            verb,
+            bytes.len(),
+            dark_len
+        )
+    } else {
+        format!(
+            "{{\"pbgvw_verb\":\"pbgvw_{}\",\"pbgvw_id\":0,\"pbgvw_len\":{}}}\n",
+            verb,
+            bytes.len()
+        )
+    };
     stream
         .write_all(control.as_bytes())
         .map_err(|e| e.to_string())?;
     stream.write_all(&bytes).map_err(|e| e.to_string())?;
+    if let Some(d) = &dark_bytes {
+        stream.write_all(d).map_err(|e| e.to_string())?;
+    }
     stream.flush().map_err(|e| e.to_string())?;
 
     eprintln!(
-        "pushed {} ({} bytes, verb {}) to 127.0.0.1:{port}",
+        "pushed {} ({} bytes{}, verb {}) to 127.0.0.1:{port}",
         file.display(),
         bytes.len(),
+        if dark_len > 0 {
+            format!(" + dark {dark_len} bytes")
+        } else {
+            String::new()
+        },
         verb
     );
     Ok(())
