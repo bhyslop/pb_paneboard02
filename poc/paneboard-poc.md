@@ -1407,4 +1407,6 @@ at write time, never compiled in.
 
 **Starting region content (soft, not frozen):** top = identity (coronet when
 mounted on a pace, else the heat firemark — full identity, never abbreviated) +
-pace name; middle = repo + working directory; bottom = reserved.
+pace name; middle = repo + working directory; bottom = identity (mirrors top, so
+the identity reads from all four corners — paneboard paints top into both top
+corners and bottom into both bottom corners).

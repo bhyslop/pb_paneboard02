@@ -784,6 +784,219 @@ public func pbmbo_show_characterization_windows(
     }
 }
 
+// MARK: - Emblem rendering (pbge_ grammar reader)
+
+// Reader half of the FROZEN pbge_ emblem grammar (see paneboard-poc.md
+// "Emblem File Format"). The writer is rbm's vvx, in a separate repo; each side
+// parses independently. paneboard reads by the window-id it already enumerates.
+// The one supported scheme today is iterm-session (the single resolver); the
+// typed namespace generalizes later.
+
+private let kPbgeEmblemRoot = ".config/paneboard/emblems"
+private let kPbgeScheme = "iterm-session"
+
+// Built-in per-location defaults for any absent style field (the writer config
+// supplies the rest at write time; paneboard compiles in fallbacks only, never
+// content). The corners (top/bottom) read as glanceable identity badges; the
+// middle reads as the centered, highlighted repo/path line.
+private let kEmblemCornerColor = NSColor.white
+private let kEmblemCornerSize: CGFloat = 84
+private let kEmblemMiddleColor = NSColor.yellow
+private let kEmblemMiddleSize: CGFloat = 28
+
+// Pill geometry, shared by every placement.
+private let kEmblemInset: CGFloat = 14       // from the box edge (clears the 6px border)
+private let kEmblemPillPadX: CGFloat = 8
+private let kEmblemPillPadY: CGFloat = 5
+private let kEmblemLineGap: CGFloat = 2
+private let kEmblemCornerRadius: CGFloat = 6
+
+/// Where a region paints on the box. Placement is paneboard's policy keyed by the
+/// frozen pbge_location enum — the grammar carries the location, not the geometry.
+private enum EmblemPlacement { case topCorners, middleCenter, bottomCorners }
+
+/// One parsed pbge_region: its placement, text lines, and any explicit style.
+/// Nil style fields fall back to the per-placement defaults above at draw time.
+private struct EmblemRegion {
+    var placement: EmblemPlacement
+    var lines: [String]
+    var color: NSColor?
+    var size: CGFloat?
+}
+
+/// Resolve a region's color and font size, applying per-placement defaults for
+/// any field the file left unset.
+private func emblemStyle(for region: EmblemRegion) -> (NSColor, CGFloat) {
+    switch region.placement {
+    case .middleCenter:
+        return (region.color ?? kEmblemMiddleColor, region.size ?? kEmblemMiddleSize)
+    case .topCorners, .bottomCorners:
+        return (region.color ?? kEmblemCornerColor, region.size ?? kEmblemCornerSize)
+    }
+}
+
+/// Parse a `### pbge_region { ... }` brace attr-set into key=value pairs.
+private func pbgeParseBrace(_ line: String) -> [String: String] {
+    guard let open = line.firstIndex(of: "{"),
+          let close = line.lastIndex(of: "}"),
+          open < close else { return [:] }
+    let inner = line[line.index(after: open)..<close]
+    var out: [String: String] = [:]
+    for pair in inner.split(separator: ",") {
+        let kv = pair.split(separator: "=", maxSplits: 1)
+        if kv.count == 2 {
+            let k = kv[0].trimmingCharacters(in: .whitespaces)
+            let v = kv[1].trimmingCharacters(in: .whitespaces)
+            out[k] = v
+        }
+    }
+    return out
+}
+
+/// Parse a `#rrggbb` hex color; nil on absence or malformed input (caller defaults).
+private func pbgeParseColor(_ s: String?) -> NSColor? {
+    guard var hex = s else { return nil }
+    if hex.hasPrefix("#") { hex.removeFirst() }
+    guard hex.count == 6, let v = Int(hex, radix: 16) else { return nil }
+    let r = CGFloat((v >> 16) & 0xff) / 255.0
+    let g = CGFloat((v >> 8) & 0xff) / 255.0
+    let b = CGFloat(v & 0xff) / 255.0
+    return NSColor(red: r, green: g, blue: b, alpha: 1.0)
+}
+
+private func pbgeLocationPlacement(_ loc: String) -> EmblemPlacement {
+    switch loc {
+    case "pbge_middle": return .middleCenter
+    case "pbge_bottom": return .bottomCorners
+    default: return .topCorners  // pbge_top and unknown
+    }
+}
+
+/// Read and parse the emblem file for one window-id, returning regions in
+/// placement order (top, middle, bottom). Empty array = no emblem (absent file,
+/// empty file, or no populated regions) — the box then paints exactly as today.
+private func pbgeLoadRegions(windowId: UInt32) -> [EmblemRegion] {
+    let url = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(kPbgeEmblemRoot)
+        .appendingPathComponent(kPbgeScheme)
+        .appendingPathComponent("\(windowId).emblem")
+
+    guard let content = try? String(contentsOf: url, encoding: .utf8),
+          !content.isEmpty else {
+        return []
+    }
+
+    var regions: [EmblemRegion] = []
+    var current: EmblemRegion?
+
+    func flush() {
+        if let c = current { regions.append(c) }
+        current = nil
+    }
+
+    for rawLine in content.split(separator: "\n", omittingEmptySubsequences: false) {
+        let line = String(rawLine)
+        if line.hasPrefix("### pbge_region") {
+            flush()
+            let attrs = pbgeParseBrace(line)
+            current = EmblemRegion(
+                placement: pbgeLocationPlacement(attrs["pbge_location"] ?? "pbge_top"),
+                lines: [],
+                color: pbgeParseColor(attrs["pbge_color"]),
+                size: attrs["pbge_size"].flatMap { Double($0) }.map { CGFloat($0) }
+            )
+        } else if line.hasPrefix("#") {
+            // H1 (pbge_emblem) / H2 (pbge_pane) close any open region's content.
+            flush()
+        } else {
+            let text = line.trimmingCharacters(in: .whitespaces)
+            if !text.isEmpty {
+                current?.lines.append(text)
+            }
+        }
+    }
+    flush()
+
+    // Order is irrelevant: each placement paints an independent, non-overlapping
+    // region of the box.
+    return regions.filter { !$0.lines.isEmpty }
+}
+
+/// The emblem-drawing surface: a transparent overlay sitting on top of the
+/// outline-only highlight border view (which it never modifies). Draws the
+/// stacked regions as black backing pills of multi-line text when an emblem is
+/// present, and nothing at all when absent — so the box is unchanged from today.
+class EmblemContentView: NSView {
+    var windowId: UInt32 = 0 {
+        didSet { needsDisplay = true }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        let regions = pbgeLoadRegions(windowId: windowId)
+        guard !regions.isEmpty else {
+            return  // absent → paint nothing; the box looks exactly like today
+        }
+
+        for region in regions {
+            let (color, size) = emblemStyle(for: region)
+            let font = NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+            let block = blockSize(lines: region.lines, font: font)
+
+            switch region.placement {
+            case .topCorners:
+                let y = bounds.height - kEmblemInset - block.height
+                drawBlock(region.lines, font: font, color: color, centered: false,
+                          at: NSRect(x: kEmblemInset, y: y, width: block.width, height: block.height))
+                drawBlock(region.lines, font: font, color: color, centered: false,
+                          at: NSRect(x: bounds.width - kEmblemInset - block.width, y: y, width: block.width, height: block.height))
+            case .bottomCorners:
+                let y = kEmblemInset
+                drawBlock(region.lines, font: font, color: color, centered: false,
+                          at: NSRect(x: kEmblemInset, y: y, width: block.width, height: block.height))
+                drawBlock(region.lines, font: font, color: color, centered: false,
+                          at: NSRect(x: bounds.width - kEmblemInset - block.width, y: y, width: block.width, height: block.height))
+            case .middleCenter:
+                drawBlock(region.lines, font: font, color: color, centered: true,
+                          at: NSRect(x: bounds.midX - block.width / 2, y: bounds.midY - block.height / 2, width: block.width, height: block.height))
+            }
+        }
+    }
+
+    /// Measure the pill footprint (text extent + padding) for a set of lines.
+    private func blockSize(lines: [String], font: NSFont) -> NSSize {
+        let attrs: [NSAttributedString.Key: Any] = [.font: font]
+        var maxW: CGFloat = 0
+        var sumH: CGFloat = 0
+        for line in lines {
+            let sz = (line as NSString).size(withAttributes: attrs)
+            maxW = max(maxW, sz.width)
+            sumH += sz.height
+        }
+        let w = maxW + 2 * kEmblemPillPadX
+        let h = sumH + CGFloat(max(0, lines.count - 1)) * kEmblemLineGap + 2 * kEmblemPillPadY
+        return NSSize(width: w, height: h)
+    }
+
+    /// Draw one black backing pill with its text lines, top-to-bottom; left-aligned
+    /// in the pill, or horizontally centered when `centered`.
+    private func drawBlock(_ lines: [String], font: NSFont, color: NSColor, centered: Bool, at pillRect: NSRect) {
+        NSColor.black.withAlphaComponent(0.8).setFill()
+        NSBezierPath(roundedRect: pillRect, xRadius: kEmblemCornerRadius, yRadius: kEmblemCornerRadius).fill()
+
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+        var lineY = pillRect.maxY - kEmblemPillPadY
+        for line in lines {
+            let sz = (line as NSString).size(withAttributes: attrs)
+            lineY -= sz.height
+            let x = centered ? pillRect.midX - sz.width / 2 : pillRect.minX + kEmblemPillPadX
+            (line as NSString).draw(at: NSPoint(x: x, y: lineY), withAttributes: attrs)
+            lineY -= kEmblemLineGap
+        }
+    }
+}
+
 // MARK: - Highlight Border Window
 
 /// Highlight border window with parameterized color and 6px border
@@ -825,9 +1038,13 @@ class HighlightBorderContentView: NSView {
 /// Global highlight border window instance (single persistent window)
 private var highlightBorderWindow: HighlightBorderWindow?
 
-/// Show or create highlight border at specified rect with given color
+/// Emblem overlay riding on top of the highlight border view (created with it).
+private var highlightEmblemView: EmblemContentView?
+
+/// Show or create highlight border at specified rect with given color.
+/// window_id keys the emblem read at the draw site (see EmblemContentView).
 @_cdecl("pbmbo_show_highlight_border")
-public func pbmbo_show_highlight_border(x: Double, y: Double, w: Double, h: Double, r: Double, g: Double, b: Double) {
+public func pbmbo_show_highlight_border(x: Double, y: Double, w: Double, h: Double, r: Double, g: Double, b: Double, window_id: UInt32) {
     let screens = NSScreen.screens
     guard !screens.isEmpty else {
         print("HIGHLIGHT: No screens available")
@@ -877,6 +1094,13 @@ public func pbmbo_show_highlight_border(x: Double, y: Double, w: Double, h: Doub
         let contentView = HighlightBorderContentView(frame: windowFrame)
         window.contentView = contentView
 
+        // Emblem surface rides on top of the outline-only border view, never
+        // altering it; autoresizes with the box as it repositions per tab-press.
+        let emblemView = EmblemContentView(frame: contentView.bounds)
+        emblemView.autoresizingMask = [.width, .height]
+        contentView.addSubview(emblemView)
+        highlightEmblemView = emblemView
+
         // Same screen-local trap as the characterization window: the screen:
         // initializer mis-places the first frame on secondary displays. Force the
         // true global frame so there's no off-screen flash before the first reposition.
@@ -893,15 +1117,18 @@ public func pbmbo_show_highlight_border(x: Double, y: Double, w: Double, h: Doub
         contentView.setColor(r: r, g: g, b: b)
     }
 
+    // Point the emblem surface at the selected window; it re-reads at paint time.
+    highlightEmblemView?.windowId = window_id
+
     // Show window
     highlightBorderWindow?.orderFrontRegardless()
 
-    print("HIGHLIGHT: Border shown at (\(x), \(y), \(w), \(h)) color=(\(r), \(g), \(b))")
+    print("HIGHLIGHT: Border shown at (\(x), \(y), \(w), \(h)) color=(\(r), \(g), \(b)) window_id=\(window_id)")
 }
 
 /// Reposition existing highlight border window
 @_cdecl("pbmbo_reposition_highlight_border")
-public func pbmbo_reposition_highlight_border(x: Double, y: Double, w: Double, h: Double) {
+public func pbmbo_reposition_highlight_border(x: Double, y: Double, w: Double, h: Double, window_id: UInt32) {
     guard let window = highlightBorderWindow else {
         return  // No-op if not shown
     }
@@ -939,7 +1166,10 @@ public func pbmbo_reposition_highlight_border(x: Double, y: Double, w: Double, h
         contentView.needsDisplay = true
     }
 
-    print("HIGHLIGHT: Border repositioned to (\(x), \(y), \(w), \(h))")
+    // Re-point the emblem surface; it re-reads at paint time.
+    highlightEmblemView?.windowId = window_id
+
+    print("HIGHLIGHT: Border repositioned to (\(x), \(y), \(w), \(h)) window_id=\(window_id)")
 }
 
 /// Hide highlight border window

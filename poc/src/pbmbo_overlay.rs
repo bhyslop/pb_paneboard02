@@ -74,7 +74,8 @@ extern "C" {
     pub fn pbmbo_hide_clipboard_overlay();
 
     // Highlight border functions
-    pub fn pbmbo_show_highlight_border(x: f64, y: f64, w: f64, h: f64, r: f64, g: f64, b: f64);
-    pub fn pbmbo_reposition_highlight_border(x: f64, y: f64, w: f64, h: f64);
+    // window_id keys the emblem read at the Swift draw site (CGWindowID).
+    pub fn pbmbo_show_highlight_border(x: f64, y: f64, w: f64, h: f64, r: f64, g: f64, b: f64, window_id: u32);
+    pub fn pbmbo_reposition_highlight_border(x: f64, y: f64, w: f64, h: f64, window_id: u32);
     pub fn pbmbo_hide_highlight_border();
 }
