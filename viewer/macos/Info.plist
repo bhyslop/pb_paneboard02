@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Info.plist for the launchd-launchable Paneboard Viewer .app bundle.
+
+  Why a bundle at all: paneboard hard-applies a (deny network*) seatbelt
+  sandbox and refuses to run without it. A process spawned DIRECTLY by
+  paneboard (posix_spawn/exec) inherits that sandbox and is network-denied,
+  so it could never listen on the viewer's advertised port. Launching the
+  viewer through launchd instead -- NSWorkspace.openApplication / `open` of
+  this bundle -- makes launchd the parent, so the viewer escapes the sandbox
+  and gets full networking. launchd cannot `open` a bare executable, hence
+  this minimal bundle. Verified 2026-06-23; see paneboard-poc.md and the rbm
+  heat paddock "Paneboard internals".
+
+  The pbw workbench assembles target/<profile>/PaneboardViewer.app from this
+  plist plus the freshly built `paneboard-viewer` binary on every build.
+-->
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key><string>paneboard-viewer</string>
+  <key>CFBundleIdentifier</key><string>org.scaleinvariant.paneboard-viewer</string>
+  <key>CFBundleName</key><string>Paneboard Viewer</string>
+  <key>CFBundleDisplayName</key><string>Paneboard Viewer</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleVersion</key><string>0.1.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+</dict>
+</plist>

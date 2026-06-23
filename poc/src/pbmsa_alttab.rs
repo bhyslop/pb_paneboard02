@@ -105,6 +105,11 @@ pub unsafe fn show_alt_tab_overlay(highlight_index: usize) {
     use std::rc::Rc;
     use block2::StackBlock;
 
+    // Re-ensure the conducted viewer on the window-switch event (no new poll):
+    // a closed or dead viewer reappears at the next alt-tab. Fires once per
+    // gesture (here, at session start), not per Tab navigation.
+    crate::pbmv_viewer::ensure_viewer();
+
     let snapshot = get_mru_snapshot();
 
     // Convert to FFI-compatible format (separate arrays) using new helper

@@ -34,6 +34,28 @@ pbw_show() {
   test "${BURE_VERBOSE:-0}" != "1" || echo "PBWSHOW: $*"
 }
 
+# Assemble the launchd-launchable .app bundle around the freshly built viewer
+# binary, then export its absolute path for the PoC conductor to open.
+#
+# The viewer must be launched via launchd (NSWorkspace/open of a bundle) so it
+# escapes paneboard's (deny network*) seatbelt sandbox and can listen on its
+# advertised port; a direct child would inherit the sandbox and be network-
+# denied (verified 2026-06-23). launchd cannot open a bare binary, hence the
+# bundle. The conductor reads PBGV_VIEWER_APP from its environment.
+pbw_bundle_viewer() {
+  local z_profile="debug"
+  case " $* " in *" --release "*) z_profile="release" ;; esac
+  local z_bin="viewer/target/${z_profile}/paneboard-viewer"
+  test -x "${z_bin}" || buc_die "viewer binary not found at ${z_bin}"
+  local z_app="viewer/target/${z_profile}/PaneboardViewer.app"
+  rm -rf "${z_app}"
+  mkdir -p "${z_app}/Contents/MacOS"
+  cp "${z_bin}"              "${z_app}/Contents/MacOS/paneboard-viewer"
+  cp viewer/macos/Info.plist "${z_app}/Contents/Info.plist"
+  export PBGV_VIEWER_APP="${PWD}/${z_app}"
+  echo "Viewer bundle: ${PBGV_VIEWER_APP}"
+}
+
 # Simple routing function
 pbw_route() {
   local z_command="$1"
@@ -55,6 +77,7 @@ pbw_route() {
     pbw-b)
       echo "Building viewer + PaneBoard PoC, then launching..."
       cargo build --manifest-path viewer/Cargo.toml "$@" || buc_die "viewer build failed"
+      pbw_bundle_viewer "$@"
       cd poc
       cargo build "$@" && cargo run "$@"
       ;;
@@ -64,6 +87,7 @@ pbw_route() {
       local z_timeout="${BURD_TOKEN_3:-10}"
       echo "Building viewer + PaneBoard PoC, then running timed (timeout=${z_timeout}s)..."
       cargo build --manifest-path viewer/Cargo.toml "$@" || buc_die "viewer build failed"
+      pbw_bundle_viewer "$@"
       cd poc
       cargo build "$@" && cargo run "$@" -- --timeout "${z_timeout}"
       ;;

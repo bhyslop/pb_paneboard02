@@ -29,6 +29,9 @@ mod pbgfc_config;
 // macOS pane modules
 #[cfg(target_os = "macos")] mod pbmp_pane;
 
+// macOS viewer conductor (launchd-routed lifecycle owner of the diagram viewer)
+#[cfg(target_os = "macos")] mod pbmv_viewer;
+
 // macOS sandbox module
 #[cfg(target_os = "macos")] mod pbmbs_sandbox;
 
