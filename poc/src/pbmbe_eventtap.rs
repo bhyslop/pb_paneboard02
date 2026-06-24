@@ -496,6 +496,11 @@ pub unsafe fn run_quadrant_poc() -> ! {
     // This function never returns (runs CFRunLoop), so leak is intentional
     std::mem::forget(instance_guard);
 
+    // Clear the viewer port-file at startup: a viewer from a prior run polls it
+    // (~2s) and self-closes when it goes missing, so a paneboard restart retires
+    // the stale viewer. The freshly spawned viewer re-publishes its own port.
+    crate::pbmv_viewer::clear_viewer_port_file();
+
     // Parse command-line arguments for --timeout flag
     let args: Vec<String> = std::env::args().collect();
     let timeout_seconds: Option<f64> = {

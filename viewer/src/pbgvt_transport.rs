@@ -28,6 +28,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
+use std::time::Duration;
 
 use eframe::egui;
 use serde::Deserialize;
@@ -72,10 +73,22 @@ pub fn port_file() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(".config/paneboard/viewer.port"))
 }
 
+/// How often the lifetime watch checks the port-file. "~2s" per the cinched
+/// close protocol — immediate enough to feel responsive, idle-cheap.
+const WATCH_POLL: Duration = Duration::from_secs(2);
+
 /// Bind an ephemeral localhost port, publish it to the port-file, and spawn the
 /// accept loop. Returns the bound port (for display). Frames flow to `tx`; each
 /// arrival wakes the UI via `ctx.request_repaint()`.
+///
+/// Cinched close protocol: we clear any stale port-file at our own startup, bind,
+/// then publish our bound port; a background watch (`spawn_port_watch`) then polls
+/// the file and closes the viewer if it ever goes missing. Paneboard clears the
+/// file at its own startup, which is how a paneboard restart retires us; with no
+/// paneboard the file is never cleared, so the standalone viewer just keeps running.
 pub fn serve(ctx: egui::Context, tx: Sender<Frame>) -> std::io::Result<u16> {
+    clear_port_file();
+
     let listener = TcpListener::bind(("127.0.0.1", 0))?;
     let port = listener.local_addr()?.port();
     write_port_file(port);
@@ -93,7 +106,37 @@ pub fn serve(ctx: egui::Context, tx: Sender<Frame>) -> std::io::Result<u16> {
         }
     });
 
+    spawn_port_watch();
+
     Ok(port)
+}
+
+/// Remove the port-file. Called at our own startup, before we re-publish our
+/// bound port — the cinched "the viewer clears the file at its own startup". An
+/// already-absent file is the normal case; any remove error is non-fatal.
+fn clear_port_file() {
+    if let Some(path) = port_file() {
+        let _ = std::fs::remove_file(&path);
+    }
+}
+
+/// The lifetime watch: poll the port-file and exit the process when it goes
+/// missing — the cinched close signal. We published the file ourselves just
+/// before this spawns, so steady-state (and the no-paneboard standalone case)
+/// sees it present and keeps running; paneboard clearing it at its own startup
+/// is what trips the close. If the home dir cannot be resolved we never published
+/// a file, so there is nothing to watch — stay alive (conservative).
+fn spawn_port_watch() {
+    let Some(path) = port_file() else {
+        return;
+    };
+    std::thread::spawn(move || loop {
+        std::thread::sleep(WATCH_POLL);
+        if !path.exists() {
+            eprintln!("viewer: port-file {} gone; closing", path.display());
+            std::process::exit(0);
+        }
+    });
 }
 
 fn write_port_file(port: u16) {

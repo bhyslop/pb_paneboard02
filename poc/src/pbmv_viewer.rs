@@ -34,6 +34,19 @@
 //! Absent that variable (paneboard launched outside the workbench), the
 //! conductor disables itself with a one-time notice and the standalone viewer
 //! still works on its own.
+//!
+//! Close signal: because the viewer is launchd-parented (not a paneboard
+//! child), paneboard's death does NOT take it down — so a viewer from a prior
+//! run would linger, listening on a stale port. The bind is a one-rule poll, not
+//! a parentage or a per-spawn signal (the seatbelt sandbox strips both argv and
+//! env from an `open` launch, so the conductor cannot tell the viewer anything
+//! through the spawn): paneboard `clear_viewer_port_file()`s the canonical
+//! port-file at its own STARTUP, and every viewer polls that file (~2s) and
+//! self-closes when it goes missing. So a paneboard restart retires the prior
+//! viewer within one poll; the freshly spawned viewer re-publishes its own port.
+//! Death therefore triggers on paneboard's startup, not its death — the
+//! kill-without-restart window is knowingly accepted. (This replaced an flock
+//! liveness leash, which the sandbox defeated.)
 
 #![cfg(target_os = "macos")]
 
@@ -54,6 +67,36 @@ static NO_BUNDLE_WARNED: AtomicBool = AtomicBool::new(false);
 /// Absolute path to the viewer .app bundle, from the build-time env export.
 fn viewer_app_path() -> Option<String> {
     std::env::var("PBGV_VIEWER_APP").ok().filter(|s| !s.is_empty())
+}
+
+/// The canonical viewer port-file: `~/.config/paneboard/viewer.port`, in
+/// paneboard's per-user config home. The viewer crate publishes its bound port
+/// here; paneboard clears it. Kept as a by-convention literal (paneboard's PoC
+/// spec is its authority), matching the config-home rendezvous paneboard already
+/// uses — not a symbol shared across the two crates.
+fn viewer_port_file() -> Option<std::path::PathBuf> {
+    dirs::home_dir().map(|h| h.join(".config/paneboard/viewer.port"))
+}
+
+/// Clear the viewer port-file at paneboard startup — the cinched viewer-close
+/// signal. A viewer from a prior run polls this path (~2s) and self-closes when
+/// it goes missing, so a paneboard restart retires the stale viewer; the freshly
+/// spawned viewer then re-publishes its own port. Best-effort: an already-absent
+/// file is the normal first-run case, and any other error is non-fatal (the worst
+/// outcome is a viewer that does not auto-close, today's pre-leash behavior).
+pub fn clear_viewer_port_file() {
+    let Some(path) = viewer_port_file() else {
+        eprintln!("VIEWER: cannot resolve home dir to clear port-file; prior viewer may linger");
+        return;
+    };
+    match std::fs::remove_file(&path) {
+        Ok(()) => println!(
+            "VIEWER: cleared port-file {} at startup (retires any prior viewer)",
+            path.display()
+        ),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {} // already absent — normal
+        Err(e) => eprintln!("VIEWER: port-file clear failed: {e}"),
+    }
 }
 
 /// Ensure the viewer is running. Rides the alt-tab window-switch event; safe to
