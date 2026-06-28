@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "vvx": {
-      "command": "./Tools/vvk/bin/vvx",
+      "command": "./Tools/vvk/bin/vvx-darwin-arm64",
       "args": ["mcp"]
     }
   }
