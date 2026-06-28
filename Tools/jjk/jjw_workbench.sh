@@ -30,6 +30,7 @@ source "${BURD_BUK_DIR}/buc_command.sh"
 source "${BURD_BUK_DIR}/buv_validation.sh"
 source "${BURD_BUK_DIR}/burd_regime.sh"
 source "${BURD_BUK_DIR}/buz_zipper.sh"
+source "${BURD_BUK_DIR}/buym_yelp.sh"
 source "${JJW_SCRIPT_DIR}/jjz_zipper.sh"
 
 # Show filename on each displayed line

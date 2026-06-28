@@ -2,9 +2,11 @@
 
 - **BCG**  → `buk/vov_veiled/BCG-BashConsoleGuide.md` (Bash Console Guide - enterprise bash patterns)
 - **WSG**  → `buk/vov_veiled/WSG-WindowsScriptingGuide.md` (Windows Scripting Guide - ssh-to-Windows transport discipline; extends BCG into the wsl.exe / cygwin / PowerShell stack)
+- **HCG**  → `buk/vov_veiled/HCG-HandbookCurationGuide.md` (Handbook Curation Guide - authoring durable operator-facing procedures: single-path, verification-when-uncertain, intent-over-mechanics, guillemet substitution. Generic procedure craft, moved into the kit from the retired cnmp PCG lens.)
 - **BUS0** → `buk/vov_veiled/BUS0-BashUtilitiesSpec.adoc` (Bash Utilities Specification - tabtarget dispatch vocabulary)
 - **BUC**  → `buk/buc_command.sh` (command utilities, buc_* functions)
 - **BUD**  → `buk/bud_dispatch.sh` (dispatch utilities, zbud_* functions)
+- **BUG**  → `buk/bug_git.sh` (bash git utilities, bug_* functions — home of the "tools never commit, gate on a clean tree" gate `bug_require_clean_tree`)
 - **BUH**  → `buk/buh_handbook.sh` (handbook utilities, buh_* functions - always-visible user interaction)
 - **BUT**  → `buk/but_test.sh` (test utilities, but_* functions)
 - **BUYM** → `buk/buym_yelp.sh` (yelp module — diastema wire format, yawp functions, format resolver, legacy captures)
@@ -14,7 +16,6 @@
 - **BURC** → `buk/burc_cli.sh`, `buk/burc_regime.sh` (regime configuration)
 - **BURS** → `buk/burs_cli.sh`, `buk/burs_regime.sh` (regime station)
 - **BUJP** → `buk/bujp_preflight.sh` (garrison step-1 preflight gate)
-- **`buml_`** → BUK moorings-launcher sprue namespace (not a `Tools/buk/` file). The `tt/z-launcher.sh` dispatch token for every non-RBK kit's launcher (`buml_buw`, `buml_jjw`, `buml_cmw`, `buml_vow`, `buml_vvw`, `buml_vslw`, `buml_apcw`, `buml_study`). Ownership-semantic, not a path — launchers co-locate in `rbmm_moorings/rbml_launchers/`; parallel to RBK's `rbml_`. A kit that later earns its own moorings migrates its sprue `buml_X` → `Xml_X`. See BCG "Tabtarget Path Indirection".
 
 ## Bash Utility Kit (BUK) Concepts
 
@@ -73,6 +74,10 @@ The working directory persists between Bash tool calls. A single `cd` corrupts A
 
 **There is no safe cd.** Do not reason that "I'll cd back" — the next tool call may be yours or another Claude Code session's, and it will break.
 
+## Tool Git Discipline
+
+Tools never commit in the consumer's codebase. A tool MAY presume git and refuse downstream steps on a dirty tree, but it never stages or commits — the operator commits with their usual workflow. The uniform gate is `bug_require_clean_tree "<operation>"` (BUG module); a verb that installs into tracked config calls it first, so an install-then-forgot-to-commit cannot silently ride into a later build.
+
 ## TabTarget Invocation Discipline
 
 **Never wrap tabtarget invocations with `tee`, `tail`, `head`, `grep`, `2>&1`, or any other pipe — NO exceptions.**
@@ -90,13 +95,13 @@ Both stdout and stderr are captured. Adding your own `tee` or `2>&1` duplicates 
 
 ```
 # Wrong — exit code is from `tail`, not the tabtarget; failures masked
-./tt/rbw-tP.QualifyPristine.sh 2>&1 | tee /tmp/log | tail -80
+./tt/rbw-ts.TestSuite.gauntlet.sh 2>&1 | tee /tmp/log | tail -80
 
 # Wrong — even a bare `| head` discards the real signal
-./tt/rbtd-s.TestSuite.fast.sh | head -50
+./tt/rbw-ts.TestSuite.reveille.sh | head -50
 
 # Right — separate commands; exit code preserved
-./tt/rbw-tP.QualifyPristine.sh
+./tt/rbw-ts.TestSuite.gauntlet.sh
 tail -80 ../logs-buk/last.txt
 ```
 

@@ -101,6 +101,7 @@ zbuym_kindle() {
     readonly BUYC_HREF="${ZBUYM_ESC}[34;4m"
     readonly BUYC_GREEN="${ZBUYM_ESC}[32m"
     readonly BUYC_ORANGE="${ZBUYM_ESC}[33m"
+    readonly BUYC_GRAY="${ZBUYM_ESC}[90m"
   else
     readonly BUYC_RESET=""
     readonly BUYC_CYAN=""
@@ -112,6 +113,7 @@ zbuym_kindle() {
     readonly BUYC_HREF=""
     readonly BUYC_GREEN=""
     readonly BUYC_ORANGE=""
+    readonly BUYC_GRAY=""
   fi
 
   # --- Hyperlink mode ---
@@ -141,6 +143,7 @@ zbuym_kindle() {
   # --- Mutable kindle state for yawp groups ---
   z_buym_yelp=""
   z_buym_format=""
+  z_buym_tt_path=""
 
   readonly ZBUYM_KINDLED=1
 }
@@ -183,17 +186,29 @@ buyy_link_yawp() {
   z_buym_yelp="${ZBUYM_DIASTEMA_LINK_URL}${z_url}${ZBUYM_DIASTEMA_LINK_TEXT}${z_display}${ZBUYM_DIASTEMA_END}"
 }
 
+# zbuym_tt_path colophon [imprint];  matched path -> z_buym_tt_path (empty on no match)
+# The single colophon->tabtarget-filename glob for the kit.  Callers own the
+# no-match policy (placeholder vs die) by inspecting the empty result.
+zbuym_tt_path() {
+  zbuym_sentinel
+  local -r z_colophon="${1:-}"
+  local z_matches
+  if test -n "${2:-}"; then
+    z_matches=("${BURD_TABTARGET_DIR}/${z_colophon}."*".${2}.sh")
+  else
+    z_matches=("${BURD_TABTARGET_DIR}/${z_colophon}."*)
+  fi
+  test -e "${z_matches[0]}" && z_buym_tt_path="${z_matches[0]}" || z_buym_tt_path=""
+}
+
 # buyy_tt_yawp colophon [imprint] [args];  local -r z_tt="${z_buym_yelp}"
 buyy_tt_yawp() {
   zbuym_sentinel
   local -r z_colophon="${1:-}"
-  local z_path=""
-  if test -n "${2:-}"; then
-    local z_matches=("${BURD_TABTARGET_DIR}"/${z_colophon}.*.${2}.sh)
-    test -e "${z_matches[0]}" && z_path="${z_matches[0]}" || z_path="??${z_colophon}.${2}??"
-  else
-    local z_matches=("${BURD_TABTARGET_DIR}"/${z_colophon}.*)
-    test -e "${z_matches[0]}" && z_path="${z_matches[0]}" || z_path="??${z_colophon}??"
+  zbuym_tt_path "${z_colophon}" "${2:-}"
+  local z_path="${z_buym_tt_path}"
+  if test -z "${z_path}"; then
+    test -n "${2:-}" && z_path="??${z_colophon}.${2}??" || z_path="??${z_colophon}??"
   fi
   z_buym_yelp="${ZBUYM_DIASTEMA_TT}${z_path}${3:-}${ZBUYM_DIASTEMA_END}"
 }
@@ -292,6 +307,59 @@ buyf_format_yawp() {
   z_str="${z_str//${ZBUYM_DIASTEMA_END}/${z_ambient}}"
 
   z_buym_format="${z_ambient}${z_str}${BUYC_RESET}"
+}
+
+# buyf_strip_yawp string
+#   Plain-text sibling of buyf_format_yawp.  Takes a diastema-marked
+#   string and resolves it to bare text — no ANSI color, no OSC-8
+#   hyperlinks.  HREF and LINK degrade to "text <url>"; all other
+#   markers vanish.  Independent of terminal mode (the kindle's color
+#   decision does not gate this path), so a transcript carries neither
+#   ANSI nor diastema bytes regardless of TERM.  Sets z_buym_format.
+
+buyf_strip_yawp() {
+  zbuym_sentinel
+  local z_str="${1:-}"
+
+  # If string has no diastema markers, fast path
+  case "${z_str}" in
+    *$'\x02'*) ;;
+    *)
+      z_buym_format="${z_str}"
+      return 0
+      ;;
+  esac
+
+  # --- Resolve structured markers first (HREF and LINK) ---
+  # Degrade to "text <url>" — same regex extraction as the color path,
+  # but no ANSI bracketing around the result.
+
+  local z_href_pattern="${ZBUYM_DIASTEMA_HREF_URL}([^${ZBUYM_DIASTEMA_HREF_TEXT}]*)${ZBUYM_DIASTEMA_HREF_TEXT}([^${ZBUYM_DIASTEMA_END}]*)${ZBUYM_DIASTEMA_END}"
+  while [[ "${z_str}" =~ ${z_href_pattern} ]]; do
+    local z_href_url="${BASH_REMATCH[1]}"
+    local z_href_text="${BASH_REMATCH[2]}"
+    local z_href_full="${BASH_REMATCH[0]}"
+    z_str="${z_str/${z_href_full}/${z_href_text} <${z_href_url}>}"
+  done
+
+  local z_link_pattern="${ZBUYM_DIASTEMA_LINK_URL}([^${ZBUYM_DIASTEMA_LINK_TEXT}]*)${ZBUYM_DIASTEMA_LINK_TEXT}([^${ZBUYM_DIASTEMA_END}]*)${ZBUYM_DIASTEMA_END}"
+  while [[ "${z_str}" =~ ${z_link_pattern} ]]; do
+    local z_link_url="${BASH_REMATCH[1]}"
+    local z_link_text="${BASH_REMATCH[2]}"
+    local z_link_full="${BASH_REMATCH[0]}"
+    z_str="${z_str/${z_link_full}/${z_link_text} <${z_link_url}>}"
+  done
+
+  # --- Strip simple markers and ambient-restore markers to nothing ---
+  z_str="${z_str//${ZBUYM_DIASTEMA_CMD}/}"
+  z_str="${z_str//${ZBUYM_DIASTEMA_UI}/}"
+  z_str="${z_str//${ZBUYM_DIASTEMA_TT}/}"
+  z_str="${z_str//${ZBUYM_DIASTEMA_PASS}/}"
+  z_str="${z_str//${ZBUYM_DIASTEMA_WARN}/}"
+  z_str="${z_str//${ZBUYM_DIASTEMA_FAIL}/}"
+  z_str="${z_str//${ZBUYM_DIASTEMA_END}/}"
+
+  z_buym_format="${z_str}"
 }
 
 # eof

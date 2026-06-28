@@ -21,6 +21,7 @@
 set -euo pipefail
 
 source "${BURD_BUK_DIR}/buc_command.sh"
+source "${BURD_BUK_DIR}/buym_yelp.sh"
 
 ######################################################################
 # Command Functions
@@ -51,7 +52,7 @@ zburs_furnish() {
   source "${BURD_BUK_DIR}/buv_validation.sh"
   source "${BURD_BUK_DIR}/burd_regime.sh"
   source "${BURD_BUK_DIR}/burs_regime.sh"
-  source "${BURD_BUK_DIR}/bupr_PresentationRegime.sh"
+  source "${BURD_BUK_DIR}/bupr_regime.sh"
 
   zbuv_kindle
   zburd_kindle

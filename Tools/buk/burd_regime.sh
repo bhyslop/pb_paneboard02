@@ -33,12 +33,6 @@ ZBURD_SOURCED=1
 zburd_kindle() {
   test -z "${ZBURD_KINDLED:-}" || buc_die "Module burd already kindled"
 
-  # Kindle the BUBC layout constants this module's enroll descriptions reference.
-  # BURD_BUK_DIR is the dispatch-provided anchor already used to locate this file;
-  # bubc_constants.sh guards against multiple inclusion, so the re-source is a no-op
-  # for callers that furnished it earlier.
-  source "${BURD_BUK_DIR}/bubc_constants.sh" || buc_die "Failed to source bubc_constants.sh"
-
   # No defaults set — buv uses ${!varname:-} for safe indirect expansion under set -u.
   # Unset variables are detected distinctly from empty by zbuv_check_capture.
 
@@ -47,11 +41,12 @@ zburd_kindle() {
   buv_regime_enroll BURD
 
   buv_group_enroll "Launcher Configuration"
-  buv_string_enroll  BURD_CONFIG_DIR            1  256  "Path to the ${BUBC_moorings_dir}/ configuration directory"
+  buv_string_enroll  BURD_CONFIG_DIR            1  256  "Path to the ${BURD_MOORINGS_DIR}/ configuration directory"
+  buv_string_enroll  BURD_MOORINGS_DIR          1  256  "Basename of the config directory (repo-root-relative, for operator-facing display)"
   buv_string_enroll  BURD_REGIME_FILE           1  256  "Path to the BURC regime configuration file"
   buv_string_enroll  BURD_STATION_FILE          1  256  "Path to the developer's BURS station file"
   buv_string_enroll  BURD_COORDINATOR_SCRIPT    1  256  "Path to the coordinator script for this tabtarget"
-  buv_string_enroll  BURD_LAUNCHER              1  256  "Path to the tabtarget launcher script"
+  buv_string_enroll  BURD_LAUNCHER              1  256  "Launcher basename (e.g. launcher.rbw_workbench.sh), set by the tabtarget"
   buv_string_enroll  BURD_TERM_COLS             1    8  "Terminal column width at dispatch time"
 
   buv_group_enroll "Directory Paths"
@@ -63,9 +58,11 @@ zburd_kindle() {
   buv_string_enroll  BURD_NOW_STAMP             1   64  "Timestamp string computed at dispatch time"
   buv_string_enroll  BURD_NOW_EPOCH             1   16  "UTC epoch seconds from same date invocation as BURD_NOW_STAMP"
   buv_string_enroll  BURD_TEMP_DIR              1  256  "Temporary directory for this invocation"
-  buv_string_enroll  BURD_OUTPUT_DIR            1  256  "Output directory for this invocation"
+  buv_string_enroll  BURD_OUTPUT_DIR            1  256  "Output directory for this invocation (current/)"
+  buv_string_enroll  BURD_PREVIOUS_DIR          1  256  "Prior dispatch's output directory (previous/), promoted from current/ at dispatch start"
   buv_string_enroll  BURD_TRANSCRIPT            1  256  "Path to transcript file for this invocation"
   buv_string_enroll  BURD_GIT_CONTEXT           1  128  "Git context string at dispatch time"
+  buv_string_enroll  BURD_OSTYPE                1   32  "Operating-system type at dispatch time (e.g. cygwin, linux-gnu, darwin) — lets native binaries learn the platform bash already knows"
 
   buv_group_enroll "Parsed Tabtarget"
   buv_string_enroll  BURD_TARGET                1  256  "Target parsed from tabtarget filename"

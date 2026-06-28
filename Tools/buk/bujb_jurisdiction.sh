@@ -191,11 +191,14 @@ PermitEmptyPasswords no'
 BUJB_useradd_workload_args="--create-home --shell ${BUJB_shell_bash}"
 BUJB_netuser_add_args='/add /passwordreq:no /active:yes'
 
-# ssh-keygen invocation prefix for emitting the public key derived from a
-# private key under empty-passphrase dry-load. Idiom used for admin-key
+# ssh-keygen argv prefix for emitting the public key derived from a private
+# key under empty-passphrase dry-load. Idiom used for admin-key
 # resolve-investiture validation and for workload/admin pubkey emission in
 # garrison step4, w-lockdown, and caparison-windows phase 1.
-BUJB_sshkeygen_emit_pubkey="ssh-keygen -y -P '' -f"
+# Array, not string: word-splitting a string form would pass the literal
+# token '' to -P rather than an empty passphrase; the array carries -P ''
+# as a genuine empty-string argument. Expanded "${...[@]}" at every site.
+BUJB_sshkeygen_emit_pubkey=(ssh-keygen -y -P '' -f)
 
 # SSH option values used inline at every ssh call alongside
 # ZBUJB_SSH_BASE_ARGS. BatchMode=yes / ConnectTimeout=15 is the dominant
@@ -376,7 +379,7 @@ zbujb_check_key_file() {
   test "${z_mode}" = "600" \
     || buc_die "${z_varname}: mode must be 0600, got ${z_mode}: ${z_path}"
 
-  ${BUJB_sshkeygen_emit_pubkey} "${z_path}" \
+  "${BUJB_sshkeygen_emit_pubkey[@]}" "${z_path}" \
       > "${z_dry_stdout}" \
       2> "${z_dry_stderr}" \
     || buc_die "${z_varname}: ssh-keygen -y dry-load failed (passphrase-protected or malformed): ${z_path} — see ${z_dry_stderr}"
@@ -727,11 +730,17 @@ zbujb_diag_dump_pair() {
   local -r z_label="${1:-}"
   local -r z_stdout="${2:-}"
   local -r z_stderr="${3:-}"
-  local z_out_bytes z_err_bytes z_out_preview z_err_preview
-  z_out_bytes=$(wc -c < "${z_stdout}" | tr -d ' ')
-  z_err_bytes=$(wc -c < "${z_stderr}" | tr -d ' ')
-  z_out_preview=$(head -c 240 < "${z_stdout}" | tr -d '\r' | tr '\n' '|')
-  z_err_preview=$(head -c 240 < "${z_stderr}" | tr -d '\r' | tr '\n' '|')
+  local z_out_content z_err_content z_out_bytes z_err_bytes z_out_preview z_err_preview
+  z_out_content=$(<"${z_stdout}")
+  z_err_content=$(<"${z_stderr}")
+  z_out_bytes=${#z_out_content}
+  z_err_bytes=${#z_err_content}
+  z_out_preview="${z_out_content:0:240}"
+  z_out_preview="${z_out_preview//$'\r'/}"
+  z_out_preview="${z_out_preview//$'\n'/|}"
+  z_err_preview="${z_err_content:0:240}"
+  z_err_preview="${z_err_preview//$'\r'/}"
+  z_err_preview="${z_err_preview//$'\n'/|}"
   buc_step "      [diag/${z_label}] stdout (${z_out_bytes}B): ${z_out_preview}"
   buc_step "      [diag/${z_label}] stderr (${z_err_bytes}B): ${z_err_preview}"
 }
@@ -1176,7 +1185,7 @@ zbujb_garrison_step4_place_trust() {
   z_command_directive=$(bujb_command_for_capture "${z_letter}") \
     || buc_die "step4: bujb_command_for_capture failed for letter='${z_letter}'"
 
-  ${BUJB_sshkeygen_emit_pubkey} "${BURP_WORKLOAD_KEY_FILE}" \
+  "${BUJB_sshkeygen_emit_pubkey[@]}" "${BURP_WORKLOAD_KEY_FILE}" \
       > "${ZBUJB_PUBKEY_STDOUT_WORK}" \
       2> "${ZBUJB_PUBKEY_STDERR_WORK}" \
     || buc_die "ssh-keygen -y failed for workload key: ${BURP_WORKLOAD_KEY_FILE} — see ${ZBUJB_PUBKEY_STDERR_WORK}"
@@ -1299,7 +1308,7 @@ zbujb_garrison_w_place_bare_trust() {
   zbujb_sentinel
   buc_step "  [w-place-bare-trust] Write bare workload pubkey to absolute-path authorized_keys"
 
-  ${BUJB_sshkeygen_emit_pubkey} "${BURP_WORKLOAD_KEY_FILE}" \
+  "${BUJB_sshkeygen_emit_pubkey[@]}" "${BURP_WORKLOAD_KEY_FILE}" \
       > "${ZBUJB_PUBKEY_STDOUT_WORK}" \
       2> "${ZBUJB_PUBKEY_STDERR_WORK}" \
     || buc_die "w-place-bare-trust: ssh-keygen -y failed — see ${ZBUJB_PUBKEY_STDERR_WORK}"
@@ -1413,7 +1422,7 @@ zbujb_garrison_w_lockdown_rewrite() {
   z_command_directive=$(bujb_command_for_capture w) \
     || buc_die "w-lockdown-rewrite: bujb_command_for_capture failed for letter='w'"
 
-  ${BUJB_sshkeygen_emit_pubkey} "${BURP_WORKLOAD_KEY_FILE}" \
+  "${BUJB_sshkeygen_emit_pubkey[@]}" "${BURP_WORKLOAD_KEY_FILE}" \
       > "${ZBUJB_PUBKEY_STDOUT_WORK}" \
       2> "${ZBUJB_PUBKEY_STDERR_WORK}" \
     || buc_die "w-lockdown-rewrite: ssh-keygen -y failed — see ${ZBUJB_PUBKEY_STDERR_WORK}"
@@ -1662,7 +1671,7 @@ zbujb_caparison_windows_phase1() {
   zbujb_sentinel
 
   buc_step "  [Phase 1] [Step 1/13] Derive admin pubkey"
-  ${BUJB_sshkeygen_emit_pubkey} "${BURP_PRIVILEGED_KEY_FILE}" \
+  "${BUJB_sshkeygen_emit_pubkey[@]}" "${BURP_PRIVILEGED_KEY_FILE}" \
       > "${ZBUJB_PUBKEY_STDOUT_PRIV}" \
       2> "${ZBUJB_PUBKEY_STDERR_PRIV}" \
     || buc_die "Phase 1 step 1: ssh-keygen -y failed for admin key: ${BURP_PRIVILEGED_KEY_FILE} — see ${ZBUJB_PUBKEY_STDERR_PRIV}"
@@ -1962,12 +1971,12 @@ zbujb_caparison_windows_stage_wsl() {
   local z_wsl_list=""
   z_wsl_list=$(zbujb_powershell_capture zbujb_privileged "wsl.exe --list --quiet") \
     || z_wsl_list=""
-  if grep -qFx "${BUJB_wsl_distribution}" <<<"${z_wsl_list}"; then
+  if [[ $'\n'"${z_wsl_list}"$'\n' == *$'\n'"${BUJB_wsl_distribution}"$'\n'* ]]; then
     zbujb_admin_powershell "${ZBUJB_CHIT_stage_wsl}unregister-dist-" \
         "wsl.exe --unregister ${BUJB_wsl_distribution}" \
       || buc_die "Failed to unregister prior ${BUJB_wsl_distribution}"
   fi
-  if grep -qFx "${BUJB_wsl_seed_distribution}" <<<"${z_wsl_list}"; then
+  if [[ $'\n'"${z_wsl_list}"$'\n' == *$'\n'"${BUJB_wsl_seed_distribution}"$'\n'* ]]; then
     zbujb_admin_powershell "${ZBUJB_CHIT_stage_wsl}unregister-seed-" \
         "wsl.exe --unregister ${BUJB_wsl_seed_distribution}" \
       || buc_die "Failed to unregister prior ${BUJB_wsl_seed_distribution}"
@@ -2267,10 +2276,16 @@ bujb_invigilate_macos() {
   buc_step "  Fact: pmset sleep=0, displaysleep=0, hibernatemode=0"
   zbujb_admin_exec_native "${ZBUJB_CHIT_invigilate}pmset-" 'pmset -g' \
     || buc_die "pmset -g failed on ${BURN_HOST} (see ${ZBUJB_LAST_AP_STDERR})"
-  local z_pmset z_pm_field z_pm_val
+  local z_pmset z_pm_field z_pm_val z_pm_key z_pm_rest
   z_pmset=$(<"${ZBUJB_LAST_AP_STDOUT}")
   for z_pm_field in sleep displaysleep hibernatemode; do
-    z_pm_val=$(printf '%s\n' "${z_pmset}" | awk -v f="${z_pm_field}" '$1==f { print $2; exit }')
+    z_pm_val=""
+    while read -r z_pm_key z_pm_rest; do
+      if [[ "${z_pm_key}" == "${z_pm_field}" ]]; then
+        z_pm_val="${z_pm_rest%% *}"
+        break
+      fi
+    done <<<"${z_pmset}"
     test "${z_pm_val}" = "0" \
       || buc_die "pmset ${z_pm_field}: expected 0, got '${z_pm_val:-<not reported>}' — caparison-macos (BUSJCM) — pmset -a ${z_pm_field} 0"
   done
@@ -2279,14 +2294,19 @@ bujb_invigilate_macos() {
   zbujb_admin_exec_native "${ZBUJB_CHIT_invigilate}launchctl-list-" 'launchctl list' \
     || buc_die "launchctl list failed on ${BURN_HOST} (see ${ZBUJB_LAST_AP_STDERR})"
   local -r z_launchctl_stdout="${ZBUJB_LAST_AP_STDOUT}"
-  local z_ts_line
-  z_ts_line=$(grep -i 'tailscale' "${z_launchctl_stdout}" || true)
+  local z_ts_line="" z_ll_line z_ll_lower
+  while IFS= read -r z_ll_line; do
+    z_ll_lower="${z_ll_line,,}"
+    if [[ "${z_ll_lower}" == *tailscale* ]]; then
+      z_ts_line="${z_ll_line}"
+      break
+    fi
+  done < "${z_launchctl_stdout}"
   test -n "${z_ts_line}" \
     || buc_die "tailscaled launchd label: expected non-empty match for 'tailscale' in launchctl list, got <absent> — operator handbook BUSJHM (install + first auth)"
 
   buc_step "  Fact: tailscaled PID live (not '-')"
-  local z_pid
-  z_pid=$(printf '%s\n' "${z_ts_line}" | awk 'NR==1 { print $1 }')
+  local z_pid="${z_ts_line%% *}"
   test -n "${z_pid}" -a "${z_pid}" != "-" \
     || buc_die "tailscaled PID: expected live PID (not '-'), got '${z_pid:-<empty>}' — caparison-macos (BUSJCM) — Tailscale launchd auto-start"
 
@@ -2328,7 +2348,10 @@ bujb_invigilate_linux() {
   z_stderr="${ZBUJB_LAST_AP_STDERR}"
   z_val=$(<"${z_stdout}")
   z_val="${z_val//$'\n'/}"
-  if grep -qiE 'no such|not found|not-found' "${z_stderr}"; then
+  local z_err_lower
+  z_err_lower="$(<"${z_stderr}")"
+  z_err_lower="${z_err_lower,,}"
+  if [[ "${z_err_lower}" == *"no such"* || "${z_err_lower}" == *"not found"* || "${z_err_lower}" == *"not-found"* ]]; then
     buc_die "sshd unit enablement: <unit not found> — operator handbook BUSJHL (apt install openssh-server)"
   fi
   test "${z_val}" = "enabled" \
@@ -2362,7 +2385,10 @@ bujb_invigilate_linux() {
   z_stderr="${ZBUJB_LAST_AP_STDERR}"
   z_val=$(<"${z_stdout}")
   z_val="${z_val//$'\n'/}"
-  if grep -qiE 'no such|not found|not-found' "${z_stderr}"; then
+  local z_err_lower
+  z_err_lower="$(<"${z_stderr}")"
+  z_err_lower="${z_err_lower,,}"
+  if [[ "${z_err_lower}" == *"no such"* || "${z_err_lower}" == *"not found"* || "${z_err_lower}" == *"not-found"* ]]; then
     buc_die "tailscaled unit enablement: <unit not found> — operator handbook BUSJHL (install + first auth)"
   fi
   test "${z_val}" = "enabled" \

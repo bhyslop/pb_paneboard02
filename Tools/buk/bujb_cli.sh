@@ -236,7 +236,7 @@ zbujb_furnish() {
   source "${BURD_BUK_DIR}/bubc_constants.sh"
   source "${BURD_BUK_DIR}/burn_regime.sh"
   source "${BURD_BUK_DIR}/burp_regime.sh"
-  source "${BURD_BUK_DIR}/bupr_PresentationRegime.sh"
+  source "${BURD_BUK_DIR}/bupr_regime.sh"
   source "${BURD_BUK_DIR}/buym_yelp.sh"
   source "${BURD_BUK_DIR}/buh_handbook.sh"
   source "${BURD_BUK_DIR}/buz_zipper.sh"

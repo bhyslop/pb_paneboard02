@@ -23,17 +23,11 @@ set -euo pipefail
 test -z "${ZBUC_INCLUDED:-}" || return 0
 ZBUC_INCLUDED=1
 
-# Color tinder constants (pure ANSI-C quoted literals — no computation, no $())
-BUC_black=$'\033[1;30m'
-BUC_red=$'\033[1;31m'
-BUC_green=$'\033[1;32m'
-BUC_yellow=$'\033[1;33m'
-BUC_blue=$'\033[1;34m'
-BUC_magenta=$'\033[1;35m'
-BUC_cyan=$'\033[1;36m'
-BUC_white=$'\033[1;37m'
-BUC_gray=$'\033[90m'
-BUC_reset=$'\033[0m'
+# Color is no longer buc's own concern.  Every display path renders through
+# the buym core (buyf_format_yawp over the kindle-time BUYC_* palette), which
+# owns the single terminal-capability decision and honors NO_COLOR/TERM=dumb.
+# Semantic ambients flow in by BUYC_* name (resolved after kindle); colored
+# prefixes ride buym's WARN/FAIL span markers.
 
 # Global context variable for info and error messages
 ZBUC_CONTEXT=""
@@ -74,7 +68,11 @@ zbuc_tag_args() {
   local z_label="${1:-}"
   shift
   zbuc_make_tag "${z_d}" "${z_label}"
-  printf '%s\n' "$@" | zbuc_log "${ZBUC_TAG}" " ---- "
+  local z_arg
+  for z_arg in "$@"; do
+    buyf_strip_yawp "${z_arg}"
+    printf '%s\n' "${z_buym_format}"
+  done | zbuc_log "${ZBUC_TAG}" " ---- "
 }
 
 ######################################################################
@@ -83,21 +81,62 @@ zbuc_tag_args() {
 buc_log_args() { zbuc_tag_args 3 "buc_log_args " "$@"; }
 buc_log_pipe() { zbuc_make_tag 3 "buc_log_pipe "; zbuc_log "${ZBUC_TAG}" " ---- "; }
 
-buc_step()     { zbuc_tag_args 3 "buc_step     " "$@"; zbuc_print 0 "${BUC_white}$*${BUC_reset}"; }
-buc_code()     { zbuc_tag_args 3 "buc_code     " "$@"; zbuc_print 0 "${BUC_cyan}$*${BUC_reset}"; }
-buc_info()     { zbuc_tag_args 3 "buc_info     " "$@"; zbuc_print 0 "$@"; }
-buc_debug()    { zbuc_tag_args 3 "buc_debug    " "$@"; zbuc_print 2 "$@"; }
-buc_trace()    { zbuc_tag_args 3 "buc_trace    " "$@"; zbuc_print 3 "$@"; }
-buc_warn()     { zbuc_tag_args 3 "buc_warn     " "$@"; zbuc_print 0 "${BUC_yellow}WARNING:${BUC_reset} $*"; }
-buc_success()  { zbuc_tag_args 3 "buc_success  " "$@"; printf '%b\n' "${BUC_green}$*${BUC_reset}" >&2 || buc_die; }
+buc_step()     { zbuc_tag_args 3 "buc_step     " "$@"; zbuc_print 0 BUYC_BRIGHT_WHITE "$*"; }
+buc_code()     { zbuc_tag_args 3 "buc_code     " "$@"; zbuc_print 0 BUYC_CYAN         "$*"; }
+buc_info()     { zbuc_tag_args 3 "buc_info     " "$@"; zbuc_print 0 ""                "$@"; }
+buc_debug()    { zbuc_tag_args 3 "buc_debug    " "$@"; zbuc_print 2 ""                "$@"; }
+buc_trace()    { zbuc_tag_args 3 "buc_trace    " "$@"; zbuc_print 3 ""                "$@"; }
+buc_warn() {
+  zbuc_tag_args 3 "buc_warn     " "$@"
+  buyy_warn_yawp "WARNING:"; local z_pfx="${z_buym_yelp}"
+  zbuc_print 0 "" "${z_pfx} $*"
+}
+buc_success() {
+  zbuc_tag_args 3 "buc_success  " "$@"
+  zbuc_tint BUYC_GREEN "$*"
+  printf '%s\n' "${z_buym_format}" >&2 || buc_die
+}
+# Band membrane: $? captured before any command so a `cmd || buc_die` chain
+# whose cmd exited with a precision-band code (bubc band tinder) re-exits
+# that code instead of laundering it to 1. Everything else — including a
+# cold caller before bubc is sourced — stays exit 1, "imprecise death".
 buc_die() {
-  zbuc_tag_args                3 "buc_die      " "ERROR: [${ZBUC_CONTEXT:-}] $*"
-  zbuc_print -1          "${BUC_red}ERROR:${BUC_reset} [${ZBUC_CONTEXT:-}] $*"
+  local z_status=$?
+  zbuc_tag_args 3 "buc_die      " "ERROR: [${ZBUC_CONTEXT:-}] $*"
+  buyy_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
+  zbuc_print -1 "" "${z_pfx} [${ZBUC_CONTEXT:-}] $*"
+  if test -n "${BUBC_band_base:-}"                                \
+     && test "${z_status}" -ge "${BUBC_band_base}"                \
+     && test "${z_status}" -lt "$((BUBC_band_base + BUBC_band_width))"; then
+    exit "${z_status}"
+  fi
   exit 1
 }
 
-# Display unprefixed cyan text for typeable guidance (commands, config values)
-buc_bare() { zbuc_tag_args 3 "buc_bare     " "$@"; printf '%b\n' "${BUC_cyan}$*${BUC_reset}" >&2; }
+# Deliberate rejection origin. Exits with an in-band code from the bubc band
+# tinder block so a negative test can assert WHICH gate fired; buc_die
+# wrappers upstream propagate the code unchanged through the band membrane.
+# An out-of-band argument is a programming error and dies imprecisely.
+buc_reject() {
+  local z_code="${1:-}"
+  shift || true
+  test -n "${BUBC_band_base:-}" || buc_die "buc_reject: band tinder not sourced (bubc_constants.sh)"
+  test -n "${z_code}"           || buc_die "buc_reject: band code required"
+  test "${z_code}" -ge "${BUBC_band_base}" 2>/dev/null || buc_die "buc_reject: code '${z_code}' below band"
+  test "${z_code}" -lt "$((BUBC_band_base + BUBC_band_width))" || buc_die "buc_reject: code '${z_code}' above band"
+  zbuc_tag_args 3 "buc_reject   " "ERROR: [${ZBUC_CONTEXT:-}] $*"
+  buyy_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
+  zbuc_print -1 "" "${z_pfx} [${ZBUC_CONTEXT:-}] $*"
+  exit "${z_code}"
+}
+
+# Display unprefixed cyan text for typeable guidance (commands, config values).
+# Sigil-less by design — routes color through the core but skips the context tag.
+buc_bare() {
+  zbuc_tag_args 3 "buc_bare     " "$@"
+  zbuc_tint BUYC_CYAN "$*"
+  printf '%s\n' "${z_buym_format}" >&2
+}
 
 # Display tabtarget hint: resolves colophon to tabtarget filename
 # Args: colophon [extra_args...]
@@ -105,9 +144,9 @@ buc_tabtarget() {
   local z_colophon="$1"
   shift
   local z_extra="${*:+ $*}"
-  local z_matches=("${BURD_TABTARGET_DIR}"/${z_colophon}.*)
-  test -e "${z_matches[0]}" || buc_die "buc_tabtarget: no tabtarget found for colophon '${z_colophon}'"
-  buc_bare "        ${z_matches[0]}${z_extra}"
+  zbuym_tt_path "${z_colophon}"
+  test -n "${z_buym_tt_path}" || buc_die "buc_tabtarget: no tabtarget found for colophon '${z_colophon}'"
+  buc_bare "        ${z_buym_tt_path}${z_extra}"
 }
 
 buc_context() {
@@ -143,7 +182,8 @@ buc_doc_env() {
 
   # In doc mode, show documentation only (no validation — env vars may not be set)
   if zbuc_doc_mode_predicate; then
-    echo "  ${BUC_magenta}${1}${BUC_reset}:  ${env_var_info}"
+    zbuc_tint BUYC_MAGENTA "${1}"
+    echo "  ${z_buym_format}:  ${env_var_info}"
     return 0
   fi
 
@@ -167,7 +207,8 @@ buc_doc_brief() {
   ZBUC_USAGE_STRING="${ZBUC_CONTEXT}"
   zbuc_doc_mode_predicate || return 0
   echo
-  echo "  ${BUC_white}${ZBUC_CONTEXT}${BUC_reset}"
+  zbuc_tint BUYC_BRIGHT_WHITE "${ZBUC_CONTEXT}"
+  echo "  ${z_buym_format}"
   echo "    brief: $1"
 }
 
@@ -192,7 +233,8 @@ buc_doc_oparm() {
 }
 
 zbuc_usage() {
-  printf '%b\n' "    usage: ${BUC_cyan}${ZBUC_USAGE_STRING}${BUC_reset}"
+  zbuc_tint BUYC_CYAN "${ZBUC_USAGE_STRING}"
+  printf '    usage: %s\n' "${z_buym_format}"
 }
 
 # Idiomatic last step of documentation in the bash api.
@@ -210,25 +252,45 @@ buc_set_doc_mode() {
 
 buc_usage_die() {
   set -e
-  local context="${ZBUC_CONTEXT:-}"
-  local usage=$(zbuc_usage)
-  printf '%b\n' "${BUC_red}ERROR:${BUC_reset} ${usage}"
+  local usage; usage=$(zbuc_usage)
+  buyy_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
+  zbuc_tint "" "${z_pfx} ${usage}"
+  printf '%s\n' "${z_buym_format}"
   exit 1
 }
 
-# Multi-line print function with verbosity control
-# Sends output to stderr to avoid interfering with stdout returns
+# Tint <text> through the buym core with the ambient named by <BUYC_name>
+# (empty name => default/no ambient).  Sentinel-guarded and name-indirect so
+# every BUYC_* dereference happens after kindle — a cold caller (doc-mode,
+# pre-kindle buc_die) is set -u safe.  Resolved string lands in z_buym_format.
+zbuc_tint() {
+  zbuym_sentinel
+  local z_name="${1:-}"
+  local z_ambient=""
+  test -z "${z_name}" || z_ambient="${!z_name}"
+  buyf_format_yawp "${z_ambient}" "${2:-}"
+}
+
+# Multi-line print function with verbosity control.
+# Usage: zbuc_print <min_verbosity> <BUYC_ambient_name> [message...]
+# Sends output to stderr to avoid interfering with stdout returns.  Each
+# message renders through the shared buym resolver (via zbuc_tint), so inline
+# yawp spans resolve, the named ambient and gray operation sigil are
+# terminal-aware, and a cold display does not trip set -u.
 zbuc_print() {
   local min_verbosity="$1"
-  shift
+  local ambient_name="$2"
+  shift 2
 
   # Always print if min_verbosity is -1, otherwise check BURE_VERBOSE
   if test "${min_verbosity}" -eq -1 || test "${BURE_VERBOSE:-0}" -ge "${min_verbosity}"; then
+    zbuym_sentinel
     while test $# -gt 0; do
+      zbuc_tint "${ambient_name}" "$1"
       if test -n "${ZBUC_CONTEXT}"; then
-        printf '%b%s%b %s\n' "${BUC_gray}" "${ZBUC_CONTEXT}" "${BUC_reset}" "$1" >&2
+        printf '%s%s%s %s\n' "${BUYC_GRAY}" "${ZBUC_CONTEXT}" "${BUYC_RESET}" "${z_buym_format}" >&2
       else
-        echo "$1" >&2
+        printf '%s\n' "${z_buym_format}" >&2
       fi
       shift
     done
@@ -260,9 +322,10 @@ buc_die_if() {
 
   set -e
   local context="${ZBUC_CONTEXT:-}"
-  zbuc_print -1 "${BUC_red}ERROR:${BUC_reset} [$context] $1"
+  buyy_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
+  zbuc_print -1 "" "${z_pfx} [$context] $1"
   shift
-  zbuc_print -1 "$@"
+  zbuc_print -1 "" "$@"
   exit 1
 }
 
@@ -276,9 +339,10 @@ buc_die_unless() {
 
   set -e
   local context="${ZBUC_CONTEXT:-}"
-  zbuc_print -1 "${BUC_red}ERROR:${BUC_reset} [$context] $1"
+  buyy_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
+  zbuc_print -1 "" "${z_pfx} [$context] $1"
   shift
-  zbuc_print -1 "$@"
+  zbuc_print -1 "" "$@"
   exit 1
 }
 
@@ -319,7 +383,8 @@ buc_countdown() {
 
   buc_step "Countdown: ${z_seconds}s to cancel (Ctrl-C)"
   sleep 1
-  printf '%b ' "${BUC_yellow}${z_prompt}${BUC_reset}" >/dev/tty
+  zbuc_tint BUYC_BRIGHT_YELLOW "${z_prompt}"
+  printf '%s ' "${z_buym_format}" >/dev/tty
   local z_i
   for (( z_i=z_seconds; z_i>=1; z_i-- )); do
     printf '%d... ' "$z_i" >/dev/tty
@@ -340,7 +405,8 @@ buc_require() {
   test -z "${BURE_CONFIRM:-}" || buc_die "BURE_CONFIRM must be 'skip' or unset, got '${BURE_CONFIRM}'"
 
   sleep 1
-  printf '%b\n' "${BUC_yellow}${z_prompt}${BUC_reset}" >&2
+  zbuc_tint BUYC_BRIGHT_YELLOW "${z_prompt}"
+  printf '%s\n' "${z_buym_format}" >&2
   printf 'Type %s to confirm: ' "${z_required_value}" >&2
   local z_input
   read -r z_input </dev/tty
@@ -419,6 +485,46 @@ buc_link() {
     zbuc_hyperlink "${z_text}" "${z_url}" >&2
     echo >&2
   fi
+}
+
+# --- Native path translation (Cygwin -> Windows-native) ---
+#
+# Normalize a path argument for a Windows-native tool (docker, cargo, ...)
+# invoked from Cygwin bash. A Windows-native binary reads a Cygwin /cygdrive/X/...
+# path as a literal Windows path and reports "does not exist"; hand it the
+# drive-letter form (X:/... — forward slashes, which Windows accepts). Pure
+# /cygdrive parameter expansion, no cygpath subshell, mirroring RBTDRX's Rust
+# fast path. Gated on BURD_OSTYPE (the dispatch-synthesized platform fact): off
+# Cygwin every path is emitted unchanged. A relative or already-native path
+# passes through; a bare-absolute POSIX path (leading / but not /cygdrive) is an
+# unsurveyed shape and returns 1 so the caller dies. Reads only its argument and
+# BURD_OSTYPE — no kindle state — so it stays unit-testable in isolation.
+#
+# This is the single home for the transform: it folds the formerly-duplicated
+# per-module copies (zrbfc/zrbndb/zrbob_native_path_capture) into one (heat ₣BV).
+# Retire when the Windows-native tools build/run as true Cygwin binaries.
+buc_native_path_capture() {
+  local -r z_path="${1:?buc_native_path_capture: path required}"
+
+  if test "${BURD_OSTYPE:-}" != "cygwin"; then
+    printf '%s\n' "${z_path}"
+    return 0
+  fi
+
+  case "${z_path}" in
+    /cygdrive/?/*)
+      local -r z_drive_rest="${z_path#/cygdrive/}"
+      local -r z_drive="${z_drive_rest%%/*}"
+      local -r z_drive_tail="${z_drive_rest#"${z_drive}/"}"
+      printf '%s\n' "${z_drive}:/${z_drive_tail}"
+      ;;
+    /*)
+      return 1
+      ;;
+    *)
+      printf '%s\n' "${z_path}"
+      ;;
+  esac
 }
 
 # eof

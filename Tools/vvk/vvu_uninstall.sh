@@ -27,8 +27,12 @@ set -euo pipefail
 
 ######################################################################
 # Constants
+#
+# This bootstrap runs standalone (no BUK dispatch), with cwd = repo root
+# (see Usage above). Both paths below are therefore repo-root-relative.
 
 readonly ZVVU_BURC_RELPATH="rbmm_moorings/burc.env"
+readonly ZVVU_BIN_RELDIR="Tools/vvk/bin"
 
 ######################################################################
 # Local BCG-style functions
@@ -77,7 +81,7 @@ zvvu_main() {
   local z_platform
   z_platform=$(zvvu_platform_capture) || zvvu_die "Unsupported platform: $(uname -s)-$(uname -m)"
 
-  local z_binary="Tools/vvk/bin/vvx-${z_platform}"
+  local z_binary="${ZVVU_BIN_RELDIR}/vvx-${z_platform}"
   test -f "${z_binary}" || zvvu_die "VVX binary not found: ${z_binary}"
   test -x "${z_binary}" || zvvu_die "VVX binary not executable: ${z_binary}"
 

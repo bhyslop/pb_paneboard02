@@ -149,14 +149,17 @@ zbuto_invoke() {
     mkdir -p "${z_burv_output}" "${z_burv_temp}"
   fi
 
+  # The invoked argv gets its own nested subshell so a function that exits
+  # (buc_die, buc_reject) lands there instead of killing the capture shell
+  # before the status line is written — exit codes report faithfully rather
+  # than masking to 127.
   ZBUTO_STATUS=$( (
       set +e
       if test -n "${z_burv_output}"; then
-        BURV_OUTPUT_ROOT_DIR="${z_burv_output}" \
-        BURV_TEMP_ROOT_DIR="${z_burv_temp}" \
-          "$@" >"${z_tmp_stdout}" 2>"${z_tmp_stderr}"
+        ( export BURV_OUTPUT_ROOT_DIR="${z_burv_output}" BURV_TEMP_ROOT_DIR="${z_burv_temp}"
+          "$@" >"${z_tmp_stdout}" 2>"${z_tmp_stderr}" )
       else
-        "$@" >"${z_tmp_stdout}" 2>"${z_tmp_stderr}"
+        ( "$@" >"${z_tmp_stdout}" 2>"${z_tmp_stderr}" )
       fi
       printf '%s' "$?"
       exit 0
@@ -218,6 +221,25 @@ buto_unit_expect_fatal() {
                                           "STDERR: ${ZBUTO_STDERR}"
 }
 
+# Assert the command exits with one specific code — closes the wrong-reason
+# hole in expect_fatal, where any nonzero (harness breakage included) passes.
+buto_unit_expect_code() {
+  set -e
+
+  local z_expected="${1:-}"
+  test -n "${z_expected}" || buto_fatal "buto_unit_expect_code: expected code required"
+  shift
+
+  zbuto_invoke "$@"
+
+  test "${ZBUTO_STATUS}" = "${z_expected}" || buto_fatal "Exit code mismatch"          \
+                                                         "Command: $*"                 \
+                                                         "Expected: ${z_expected}"     \
+                                                         "Got:      ${ZBUTO_STATUS}"   \
+                                                         "STDOUT: ${ZBUTO_STDOUT}"     \
+                                                         "STDERR: ${ZBUTO_STDERR}"
+}
+
 ######################################################################
 # buto_tt_* - Tabtarget file invocation (requires tabtarget exists)
 #
@@ -256,6 +278,31 @@ buto_tt_expect_ok() {
                                         "Colophon: ${z_colophon}"                      \
                                         "Tabtarget: ${z_tabtarget}"                    \
                                         "STDERR: ${ZBUTO_STDERR}"
+}
+
+# Assert the tabtarget exits with one specific code through the full
+# tabtarget/launcher/dispatch exec path — see buto_unit_expect_code.
+buto_tt_expect_code() {
+  set -e
+
+  local z_expected="${1:-}"
+  local z_colophon="${2:-}"
+  test -n "${z_expected}" || buto_fatal "buto_tt_expect_code: expected code required"
+  test -n "${z_colophon}" || buto_fatal "buto_tt_expect_code: colophon required"
+  shift 2
+
+  local z_tabtarget
+  z_tabtarget=$(zbuto_resolve_tabtarget "${z_colophon}")
+
+  zbuto_invoke "${z_tabtarget}" "$@"
+
+  test "${ZBUTO_STATUS}" = "${z_expected}" || buto_fatal "Exit code mismatch"          \
+                                                         "Colophon: ${z_colophon}"     \
+                                                         "Tabtarget: ${z_tabtarget}"   \
+                                                         "Expected: ${z_expected}"     \
+                                                         "Got:      ${ZBUTO_STATUS}"   \
+                                                         "STDOUT: ${ZBUTO_STDOUT}"     \
+                                                         "STDERR: ${ZBUTO_STDERR}"
 }
 
 buto_tt_previous_output_capture() {

@@ -88,6 +88,69 @@ zbutcym_plain_mode() {
   printf '%b' "${z_buym_format}" >&2
 }
 
+zbutcym_gray_color() {
+  buyc_unconditional
+  zbuym_kindle
+  printf '%b' "[${BUYC_GRAY}]" >&2
+}
+
+zbutcym_gray_plain() {
+  buyc_plain
+  zbuym_kindle
+  printf '%b' "[${BUYC_GRAY}]" >&2
+}
+
+zbutcym_strip_cmd() {
+  # color ON — strip must ignore terminal mode
+  buyc_unconditional
+  zbuym_kindle
+  buyy_cmd_yawp "git status"
+  buyf_strip_yawp "Run ${z_buym_yelp} now"
+  printf '%b' "${z_buym_format}" >&2
+}
+
+zbutcym_strip_link() {
+  buyc_unconditional
+  zbuym_kindle
+  buyy_link_yawp "https://example.com" "Depot"
+  buyf_strip_yawp "See ${z_buym_yelp}."
+  printf '%b' "${z_buym_format}" >&2
+}
+
+zbutcym_strip_href() {
+  buyc_unconditional
+  zbuym_kindle
+  buyy_href_yawp "https://example.com" "Docs"
+  buyf_strip_yawp "${z_buym_yelp}"
+  printf '%b' "${z_buym_format}" >&2
+}
+
+zbutcym_strip_fast_path() {
+  buyc_unconditional
+  zbuym_kindle
+  buyf_strip_yawp "plain text no markers"
+  printf '%b' "${z_buym_format}" >&2
+}
+
+# Cold buc_die: buym sourced (by butt_testbench) but NOT kindled here.
+# buc_die must kindle buym lazily via the zbuc_print sentinel, render the
+# gray operation sigil, and never dereference an unset BUYC_* readonly
+# under set -u.  The nested subshell contains buc_die's exit 1 so the
+# helper returns normally and zbuto_invoke captures the rendered stderr.
+zbutcym_cold_die() {
+  buyc_unconditional
+  buc_context "cold-ctx"
+  ( buc_die "cold boom" ) || true
+  printf 'survived\n' >&2
+}
+
+zbutcym_cold_die_plain() {
+  buyc_plain
+  buc_context "cold-ctx"
+  ( buc_die "cold boom" ) || true
+  printf 'survived\n' >&2
+}
+
 ######################################################################
 # Test cases
 
@@ -213,6 +276,143 @@ butcym_plain_mode_tcase() {
   esac
   case "${ZBUTO_STDERR}" in
     *$'\x02'*) buto_fatal "Diastema byte survived in plain mode" ;;
+    *) ;;
+  esac
+}
+
+butcym_gray_color_tcase() {
+  buto_trace "BUYC_GRAY: resolves to ANSI gray in color mode"
+  zbuto_invoke zbutcym_gray_color
+  buto_fatal_on_error "${ZBUTO_STATUS}" "gray color failed" "STDERR: ${ZBUTO_STDERR}"
+  local z_gray
+  z_gray=$(printf '\033[90m')
+  case "${ZBUTO_STDERR}" in
+    *"[${z_gray}]"*) ;;
+    *) buto_fatal "Gray ANSI not found" "Got: ${ZBUTO_STDERR}" ;;
+  esac
+}
+
+butcym_gray_plain_tcase() {
+  buto_trace "BUYC_GRAY: empty when color is off"
+  zbuto_invoke zbutcym_gray_plain
+  buto_fatal_on_error "${ZBUTO_STATUS}" "gray plain failed" "STDERR: ${ZBUTO_STDERR}"
+  case "${ZBUTO_STDERR}" in
+    *"[]"*) ;;
+    *) buto_fatal "Gray should be empty in plain mode" "Got: ${ZBUTO_STDERR}" ;;
+  esac
+  case "${ZBUTO_STDERR}" in
+    *$'\033'*) buto_fatal "ESC byte in plain-mode gray" "Got: ${ZBUTO_STDERR}" ;;
+    *) ;;
+  esac
+}
+
+butcym_strip_cmd_tcase() {
+  buto_trace "buyf_strip_yawp: CMD marker strips to bare text, ignores color mode"
+  zbuto_invoke zbutcym_strip_cmd
+  buto_fatal_on_error "${ZBUTO_STATUS}" "strip cmd failed" "STDERR: ${ZBUTO_STDERR}"
+  case "${ZBUTO_STDERR}" in
+    *"Run git status now"*) ;;
+    *) buto_fatal "Stripped text not found" "Got: ${ZBUTO_STDERR}" ;;
+  esac
+  case "${ZBUTO_STDERR}" in
+    *$'\033'*) buto_fatal "ESC byte in stripped output (must ignore color mode)" "Got: ${ZBUTO_STDERR}" ;;
+    *) ;;
+  esac
+  case "${ZBUTO_STDERR}" in
+    *$'\x02'*) buto_fatal "Diastema byte survived strip" "Got: ${ZBUTO_STDERR}" ;;
+    *) ;;
+  esac
+}
+
+butcym_strip_link_tcase() {
+  buto_trace "buyf_strip_yawp: LINK degrades to 'text <url>' with no ANSI/OSC-8"
+  zbuto_invoke zbutcym_strip_link
+  buto_fatal_on_error "${ZBUTO_STATUS}" "strip link failed" "STDERR: ${ZBUTO_STDERR}"
+  case "${ZBUTO_STDERR}" in
+    *"See Depot <https://example.com#Depot>."*) ;;
+    *) buto_fatal "Stripped link form not found" "Got: ${ZBUTO_STDERR}" ;;
+  esac
+  local z_osc
+  z_osc=$(printf '\033]8;;')
+  case "${ZBUTO_STDERR}" in
+    *"${z_osc}"*) buto_fatal "OSC-8 should not appear in strip" "Got: ${ZBUTO_STDERR}" ;;
+    *) ;;
+  esac
+  case "${ZBUTO_STDERR}" in
+    *$'\033'*) buto_fatal "ESC byte in stripped link output" "Got: ${ZBUTO_STDERR}" ;;
+    *) ;;
+  esac
+}
+
+butcym_strip_href_tcase() {
+  buto_trace "buyf_strip_yawp: HREF degrades to 'text <url>'"
+  zbuto_invoke zbutcym_strip_href
+  buto_fatal_on_error "${ZBUTO_STATUS}" "strip href failed" "STDERR: ${ZBUTO_STDERR}"
+  case "${ZBUTO_STDERR}" in
+    *"Docs <https://example.com>"*) ;;
+    *) buto_fatal "Stripped href form not found" "Got: ${ZBUTO_STDERR}" ;;
+  esac
+  case "${ZBUTO_STDERR}" in
+    *$'\033'*) buto_fatal "ESC byte in stripped href output" "Got: ${ZBUTO_STDERR}" ;;
+    *) ;;
+  esac
+}
+
+butcym_strip_fast_path_tcase() {
+  buto_trace "buyf_strip_yawp: no diastema markers takes fast path"
+  zbuto_invoke zbutcym_strip_fast_path
+  buto_fatal_on_error "${ZBUTO_STATUS}" "strip fast path failed" "STDERR: ${ZBUTO_STDERR}"
+  case "${ZBUTO_STDERR}" in
+    *"plain text no markers"*) ;;
+    *) buto_fatal "Plain text not found" "Got: ${ZBUTO_STDERR}" ;;
+  esac
+}
+
+butcym_cold_die_tcase() {
+  buto_trace "buc_die cold path: lazy-kindles buym, renders gray sigil, no unbound crash"
+  zbuto_invoke zbutcym_cold_die
+  buto_fatal_on_error "${ZBUTO_STATUS}" "cold die helper did not survive" "STDERR: ${ZBUTO_STDERR}"
+  # Helper reached its marker — buc_die's exit was contained, no shell crash
+  case "${ZBUTO_STDERR}" in
+    *"survived"*) ;;
+    *) buto_fatal "Helper did not survive buc_die" "Got: ${ZBUTO_STDERR}" ;;
+  esac
+  # The cold BUYC_* dereference did not trip set -u
+  case "${ZBUTO_STDERR}" in
+    *"unbound variable"*) buto_fatal "Cold buc_die threw unbound variable" "Got: ${ZBUTO_STDERR}" ;;
+    *) ;;
+  esac
+  # Error body rendered
+  case "${ZBUTO_STDERR}" in
+    *"ERROR:"*"cold boom"*) ;;
+    *) buto_fatal "buc_die error body not rendered" "Got: ${ZBUTO_STDERR}" ;;
+  esac
+  # Gray operation sigil resolved from the lazy kindle (BUYC_GRAY -> \033[90m)
+  local z_gray
+  z_gray=$(printf '\033[90m')
+  case "${ZBUTO_STDERR}" in
+    *"${z_gray}cold-ctx"*) ;;
+    *) buto_fatal "Gray context sigil not rendered from cold kindle" "Got: ${ZBUTO_STDERR}" ;;
+  esac
+}
+
+butcym_cold_die_plain_tcase() {
+  buto_trace "buc_die cold path under buyc_plain: gray sigil suppressed (NO_COLOR-aware)"
+  zbuto_invoke zbutcym_cold_die_plain
+  buto_fatal_on_error "${ZBUTO_STATUS}" "cold die plain helper did not survive" "STDERR: ${ZBUTO_STDERR}"
+  case "${ZBUTO_STDERR}" in
+    *"survived"*) ;;
+    *) buto_fatal "Helper did not survive buc_die (plain)" "Got: ${ZBUTO_STDERR}" ;;
+  esac
+  case "${ZBUTO_STDERR}" in
+    *"ERROR:"*"cold boom"*) ;;
+    *) buto_fatal "buc_die error body not rendered (plain)" "Got: ${ZBUTO_STDERR}" ;;
+  esac
+  # Gray sigil must be absent in plain mode — the terminal-awareness fix
+  local z_gray
+  z_gray=$(printf '\033[90m')
+  case "${ZBUTO_STDERR}" in
+    *"${z_gray}"*) buto_fatal "Gray sigil ANSI present under buyc_plain" "Got: ${ZBUTO_STDERR}" ;;
     *) ;;
   esac
 }

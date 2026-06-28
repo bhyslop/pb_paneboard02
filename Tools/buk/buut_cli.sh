@@ -21,6 +21,7 @@
 set -euo pipefail
 
 source "${BASH_SOURCE[0]%/*}/buc_command.sh"
+source "${BASH_SOURCE[0]%/*}/buym_yelp.sh"
 
 zbuut_furnish() {
   buc_doc_env "BURD_BUK_DIR          " "BUK module directory (dispatch-provided)"

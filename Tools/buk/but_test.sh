@@ -1,5 +1,4 @@
 #!/bin/bash
-# shellcheck disable=SC2153  # kindle chain - per BCG
 #
 # Copyright 2025 Scale Invariant, Inc.
 #

@@ -21,6 +21,7 @@
 set -euo pipefail
 
 source "${BURD_BUK_DIR}/buc_command.sh"
+source "${BURD_BUK_DIR}/buym_yelp.sh"
 source "${BURD_TOOLS_DIR}/vvk/vvb_bash.sh"
 
 zvvb_furnish() {

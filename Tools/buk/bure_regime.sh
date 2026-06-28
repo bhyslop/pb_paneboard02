@@ -53,7 +53,7 @@ zbure_kindle() {
   buv_enum_enroll    BURE_COLOR       "Color mode" auto 0 1
 
   buv_group_enroll "Tweak Mechanism"
-  buv_string_enroll  BURE_TWEAK_NAME  0  64   "Tweak name (consumer-interpreted)"
+  buv_string_enroll  BURE_TWEAK_NAME  0  64   "Tweak name (buo-sprued; consumer-interpreted)"
   buv_string_enroll  BURE_TWEAK_VALUE 0  256  "Tweak value (consumer-interpreted)"
 
   buv_group_enroll "Exchange Labels"
@@ -82,6 +82,21 @@ zbure_enforce() {
   if test -n "${BURE_COUNTDOWN}"; then
     test "${BURE_COUNTDOWN}" = "skip" \
       || buc_die "BURE_COUNTDOWN must be 'skip' or empty, got '${BURE_COUNTDOWN}'"
+  fi
+
+  # Custom enforce: BURE_TWEAK_NAME, when set, must carry the buo tweak sprue —
+  # a `buo<segment>_` prefix. BUK validates the SHAPE only (the virtual registry
+  # of tweaks is `grep buo`); it never enumerates consumer names, so this stays
+  # generic. An unregistered or mistyped tweak name fails loud here rather than
+  # silently no-op'ing at the consumer.
+  # Doctrine (BUS0 "Tweak Mechanism"): a tweak forces one hard-to-produce
+  # condition for a test to observe handled correctly; one tweak at a time per
+  # test/fixture/suite, by design; a suite may reserve the slot for a standing guard.
+  if test -n "${BURE_TWEAK_NAME}"; then
+    case "${BURE_TWEAK_NAME}" in
+      buo[a-z]*_*) : ;;
+      *) buc_die "BURE_TWEAK_NAME must carry the buo sprue (buo<segment>_<name>), got '${BURE_TWEAK_NAME}'" ;;
+    esac
   fi
 }
 

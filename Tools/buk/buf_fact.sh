@@ -16,11 +16,19 @@
 #
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
-# BUF Fact - Dual-write fact-file primitives
+# BUF Fact - Fact-file primitives (produce + consume)
 #
-# Writes fact-files to both BURD_OUTPUT_DIR and BURD_TEMP_DIR.
-# BURD_OUTPUT_DIR is cleared on next dispatch (latest-command convenience).
-# BURD_TEMP_DIR is durable (addressable by remote consumers).
+# Produce side (buf_write_fact_*): writes fact-files to both BURD_OUTPUT_DIR
+# and BURD_TEMP_DIR. BURD_OUTPUT_DIR (current/) is promoted to BURD_PREVIOUS_DIR
+# (previous/) on next dispatch; BURD_TEMP_DIR is durable.
+#
+# Consume side (buf_read_fact_capture, buf_elect_fact_capture, buf_relay): a
+# downstream tabtarget reads the prior tabtarget's facts from BURD_PREVIOUS_DIR —
+# the depth-1 cross-tabtarget chain. buf_relay forwards the prior baton into
+# current/ so it survives one more hop; buf_read_fact_capture reads one named
+# fact and fails hard if it is absent; buf_elect_fact_capture prefers an express
+# value and falls back to the chained fact (express-or-chain). The two reads are
+# _capture-suffixed: stdout-once-or-return-1, the caller guards with || buc_die.
 
 set -euo pipefail
 
@@ -65,6 +73,53 @@ buf_write_fact_multi() {
   test ! -f "${z_temp_path}"   || { echo "FATAL: buf_write_fact_multi: preexists in temp dir: ${z_temp_path}" >&2; return 1; }
   printf '%s\n' "${z_value}" > "${z_output_path}"
   printf '%s\n' "${z_value}" > "${z_temp_path}"
+}
+
+# Forward the prior dispatch's facts (BURD_PREVIOUS_DIR) into this dispatch's
+# output (BURD_OUTPUT_DIR) — the baton forward, so a multi-hop chain survives
+# past one tabtarget. No-op when there is no prior dispatch (first run). Files
+# already present in current/ are preserved, never clobbered — this keeps the
+# current dispatch's own reserved files (e.g. burx.env) and any fact already
+# written. Per the install ordering invariant, buf_relay runs FIRST, before
+# any buf_read_fact_capture / buf_write_fact in the consuming tabtarget.
+buf_relay() {
+  test -d "${BURD_PREVIOUS_DIR}" || return 0
+  mkdir -p "${BURD_OUTPUT_DIR}" || { echo "FATAL: buf_relay: cannot create output dir: ${BURD_OUTPUT_DIR}" >&2; return 1; }
+  local z_src z_dst
+  for z_src in "${BURD_PREVIOUS_DIR}"/*; do
+    test -f "${z_src}" || continue
+    z_dst="${BURD_OUTPUT_DIR}/${z_src##*/}"
+    test ! -e "${z_dst}" || continue
+    cp "${z_src}" "${z_dst}" || { echo "FATAL: buf_relay: copy failed: ${z_src} -> ${z_dst}" >&2; return 1; }
+  done
+}
+
+# Read a single named fact from the prior dispatch (BURD_PREVIOUS_DIR), emitting
+# its bare value (trailing newline stripped) on stdout. Fails hard if the fact
+# is absent — a missing upstream fact is a broken chain, not a default-to-empty.
+# Single-form only: the value is an opaque singular string, never parsed here.
+# _capture shape: stdout once or return 1; the caller guards with || buc_die.
+# Args: <filename>
+buf_read_fact_capture() {
+  local -r z_filename="$1"
+  local -r z_path="${BURD_PREVIOUS_DIR}/${z_filename}"
+  test -f "${z_path}" || { echo "FATAL: buf_read_fact_capture: fact absent in previous dir: ${z_path}" >&2; return 1; }
+  printf '%s' "$(<"${z_path}")"
+}
+
+# Resolve a value express-or-chain: emit the express value if it is non-empty,
+# otherwise fall through to the chained fact (buf_read_fact_capture). Fails (the
+# read returns 1) only when express is empty AND the chained fact is absent — a
+# broken chain. Generic over any fact constant: the express value and the fact
+# filename are both arguments, so each verb stays its own caller. NEVER relays —
+# the chain is depth-1 and terminally consumed, the leak-elimination invariant.
+# _capture shape: stdout once or return 1; the caller guards with || buc_die.
+# Args: <express_value> <fact_filename>
+buf_elect_fact_capture() {
+  local -r z_express="$1"
+  local -r z_filename="$2"
+  test -z "${z_express}" || { printf '%s' "${z_express}"; return 0; }
+  buf_read_fact_capture "${z_filename}"
 }
 
 # eof

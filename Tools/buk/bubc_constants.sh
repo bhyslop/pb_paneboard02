@@ -25,12 +25,6 @@ test -z "${ZBUBC_SOURCED:-}" || return 0
 ZBUBC_SOURCED=1
 
 # Source-time literal constants.
-#
-# BUBC_moorings_dir is the basename of the project's config dir. The
-# project-intimate trampoline (z-launcher) is the sole authority for the name;
-# it exports BURD_CONFIG_DIR (absolute), and we derive the basename here so
-# tooling (qualify, tabtarget creation) refers to it without re-literaling.
-BUBC_moorings_dir="${BURD_CONFIG_DIR##*/}"
 BUBC_launchers_subdir="rbml_launchers"
 BUBC_rbmn_nodes_subdir="rbmn_nodes"
 BUBC_rbmu_users_subdir="rbmu_users"
@@ -52,6 +46,53 @@ BUBC_windows_admin_auth_keys='C:/ProgramData/ssh/administrators_authorized_keys'
 BUBC_windows_ssh_port="22"
 BUBC_windows_fw_rule_name="sshd"
 BUBC_windows_fw_display_name="OpenSSH Server"
+
+# Precision exit-code band — deliberate-rejection gate codes.
+# Design position, allocation rule, and the rejected stderr-sentinel
+# alternative: BCG "Precision Exit-Code Band". This block is the sole mint —
+# no band code is defined anywhere else.
+# An in-band exit status means a named rejection gate fired on purpose;
+# exit 1 stays "imprecise death" (buc_die default). buc_die propagates
+# in-band $? values unchanged (the band membrane), so existing
+# `cmd || buc_die` chains carry these codes to the dispatch boundary where
+# the test orchestrator asserts them in negative cases.
+# Placement: clear of shell-reserved codes (2, 126, 127, 128+n signals),
+# the sysexits.h range (64-78), curl's exit codes (1-92), and
+# timeout(1)/container-runtime reserved codes (124-125).
+# Allocation rule: one code per rejection GATE, never per validation rule.
+# Gates may share a code only if they never co-occur in one test case's
+# spawn path — share across alternatives, never along a pipeline.
+# No band code is minted outside this block.
+BUBC_band_base=100
+BUBC_band_width=16
+# Gate codes, allocated upward from base. The regime-load pipeline crosses
+# two gates in one spawn path — the buv layer (vet value checks + scope
+# sentinel) and the regime module's own custom enforce rules — so per the
+# allocation rule they carry distinct codes:
+BUBC_band_regime=100    # regime-module custom enforce rejection (cross-field, format regex, existence)
+BUBC_band_enroll=101    # buv enrollment-validation rejection (buv_vet, buv_scope_sentinel)
+BUBC_band_recipe=102    # recipe validation rejection
+BUBC_band_hygiene=103   # Dockerfile FROM-line hygiene rejection (rbfh)
+BUBC_band_credless=104  # credless guard at token mint (reveille-tier suite invariant)
+BUBC_band_chain=105     # chaining-fact resolution rejection (broken express-or-chain, or wrong-kind touchmark) — one gate, alternative firings never co-occur in a spawn path
+# Foedus test-bed cardinality verbs (descry/instate). Distinct codes per the
+# allocation rule: descry (pool-health probe) and instate (active-foedus
+# selector rewrite) co-occur in the reuse-or-establish fixture's spawn path,
+# so they may not share a code. Neither is the chaining band (105) — neither
+# resolves an express-or-chain fact.
+BUBC_band_descry=106    # foedus descry rejection (unresolvable foedus name, broken pool read)
+BUBC_band_instate=107   # foedus instate rejection (missing/unresolvable foedus identity)
+# Self-test probe pins the band top, proving full-width propagation:
+BUBC_band_selftest=115  # BUK self-test deliberate rejection (buw-xb fixture)
+
+# Regime-poison tweak (BUS0 Tweak Mechanism; buost_ is BUK's reserved buo
+# segment). The seam is one membrane in buv_regime_enroll — the single buv
+# entry every regime kindle crosses, post-source pre-validate. Under this
+# tweak name, BURE_TWEAK_VALUE names one variable to corrupt: "VAR=value"
+# sets, bare "VAR" unsets. The seam applies only when VAR carries the
+# enrolling scope's prefix, so a poison rides inert through the host
+# regimes of a dispatch and lands exactly once, on its target.
+BUBC_tweak_regime_poison="buost_regime_poison"
 
 # Windows registry preconditions for unattended power-on posture.
 # Operator-handbook step (BUSJHW Windows: Host Availability) sets these;

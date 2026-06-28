@@ -26,7 +26,20 @@ ZBUQ_INCLUDED=1
 # Source the console utility library + moorings-layout names (launcher subdir)
 ZBUQ_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
 source "${ZBUQ_SCRIPT_DIR}/buc_command.sh"
+source "${ZBUQ_SCRIPT_DIR}/buym_yelp.sh"
 source "${ZBUQ_SCRIPT_DIR}/bubc_constants.sh"
+
+# Pinned shellcheck version. The shellcheck gate hard-fails if the running
+# binary differs, locking every station to one version. The pin is exact, not a
+# floor, for two reasons:
+#   1. --rcfile (used by buq_shellcheck) did not exist before 0.10.0; an older
+#      binary silently rejects the flag and runs rule-less — a false pass.
+#   2. Check coverage and severity defaults drift across versions, so the same
+#      tree can pass on one station and fail on another. The pin converts that
+#      silent cross-station divergence into an immediate, actionable failure.
+# Bump deliberately and in lockstep across all stations (linux/cerebro,
+# macos/pym): install the matching binary everywhere, then change this constant.
+readonly BUQ_SHELLCHECK_VERSION="0.11.0"
 
 ######################################################################
 # Tabtarget structural qualification
@@ -50,14 +63,16 @@ buq_tabtargets() {
   local z_exempt_count=0
 
   # Prescribed tabtarget form (from buut_tabtarget.sh generator):
-  #   Line 1:      #!/bin/bash
-  #   Lines 2..N-1: optional export BURD_*=* flag lines
-  #   Last line:   exec "${BASH_SOURCE[0]%/*}/z-launcher.sh" <sprue> "${0##*/}" "${@}"
-  # The <sprue> is a minted moorings-launcher token {owner}ml_{launcher-id};
-  # z-launcher.sh recovers the launcher-id by stripping the *ml_ prefix.
+  #   Line 1:       #!/bin/bash
+  #   Line 2:       export BURD_LAUNCHER=launcher.<id>_workbench.sh
+  #   Lines 3..N-1: optional export BURD_*=* flag lines
+  #   Last line:    exec "${BASH_SOURCE[0]%/*}/z-launcher.sh" "${0##*/}" "${@}"
+  # BURD_LAUNCHER names the moorings launcher as a bare basename; z-launcher.sh
+  # resolves it directly under the launcher dir. The exec line is a byte-
+  # identical constant in every tabtarget.
   local z_prescribed_shebang='#!/bin/bash'
-  local z_exec_prefix='exec "${BASH_SOURCE[0]%/*}/z-launcher.sh" '
-  local z_exec_suffix=' "${0##*/}" "${@}"'
+  local z_launcher_prefix='export BURD_LAUNCHER='
+  local z_prescribed_exec='exec "${BASH_SOURCE[0]%/*}/z-launcher.sh" "${0##*/}" "${@}"'
 
   local z_file=""
   for z_file in "${z_tt_dir}"/*.sh; do
@@ -88,10 +103,10 @@ buq_tabtargets() {
 
     local z_num_lines=${#z_lines[@]}
 
-    # Must have at least 2 lines: shebang, exec
-    test "${z_num_lines}" -ge 2 || {
+    # Must have at least 3 lines: shebang, BURD_LAUNCHER, exec
+    test "${z_num_lines}" -ge 3 || {
       z_fail_files+=("${z_basename}")
-      z_fail_reasons+=("too few lines: ${z_num_lines} (minimum 2)")
+      z_fail_reasons+=("too few lines: ${z_num_lines} (minimum 3)")
       continue
     }
 
@@ -102,9 +117,27 @@ buq_tabtargets() {
       continue
     }
 
-    # Middle lines (2..N-1): must be export BURD_*=*
+    # Line 2: export BURD_LAUNCHER=<basename> resolving to a moorings launcher.
+    local z_launcher_line="${z_lines[1]}"
+    case "${z_launcher_line}" in
+      "${z_launcher_prefix}"launcher.*_workbench.sh) ;;
+      *)
+        z_fail_files+=("${z_basename}")
+        z_fail_reasons+=("line 2: expected '${z_launcher_prefix}launcher.<id>_workbench.sh', got '${z_launcher_line}'")
+        continue
+        ;;
+    esac
+    local z_launcher_basename="${z_launcher_line#"${z_launcher_prefix}"}"
+    local z_launcher_path="${BURD_MOORINGS_DIR}/${BUBC_launchers_subdir}/${z_launcher_basename}"
+    test -f "${z_project_root}/${z_launcher_path}" || {
+      z_fail_files+=("${z_basename}")
+      z_fail_reasons+=("launcher not found: ${z_launcher_path}")
+      continue
+    }
+
+    # Middle lines (3..N-1): must be export BURD_*=*
     local z_middle_ok=1
-    local z_i=1
+    local z_i=2
     local z_last_idx=$((z_num_lines - 1))
     while test "${z_i}" -lt "${z_last_idx}"; do
       case "${z_lines[$z_i]}" in
@@ -120,39 +153,10 @@ buq_tabtargets() {
     done
     test "${z_middle_ok}" = "1" || continue
 
-    # Last line: prescribed exec through the z-launcher trampoline.
-    # Shape: <prefix><sprue><suffix>; extract and validate the sprue.
-    local z_exec_line="${z_lines[$z_last_idx]}"
-    case "${z_exec_line}" in
-      "${z_exec_prefix}"*"${z_exec_suffix}") ;;
-      *)
-        z_fail_files+=("${z_basename}")
-        z_fail_reasons+=("last line: expected z-launcher exec, got '${z_exec_line}'")
-        continue
-        ;;
-    esac
-    local z_sprue="${z_exec_line#"${z_exec_prefix}"}"
-    z_sprue="${z_sprue%"${z_exec_suffix}"}"
-
-    # Sprue must be a single {owner}ml_{id} token and resolve to a launcher.
-    case "${z_sprue}" in
-      ''|*' '*)
-        z_fail_files+=("${z_basename}")
-        z_fail_reasons+=("malformed sprue: '${z_sprue}'")
-        continue
-        ;;
-      *ml_*) ;;
-      *)
-        z_fail_files+=("${z_basename}")
-        z_fail_reasons+=("sprue missing ml_ marker: '${z_sprue}'")
-        continue
-        ;;
-    esac
-    local z_launcher_id="${z_sprue#*ml_}"
-    local z_launcher_path="${BUBC_moorings_dir}/${BUBC_launchers_subdir}/launcher.${z_launcher_id}_workbench.sh"
-    test -f "${z_project_root}/${z_launcher_path}" || {
+    # Last line: the byte-identical constant exec through the z-launcher trampoline.
+    test "${z_lines[$z_last_idx]}" = "${z_prescribed_exec}" || {
       z_fail_files+=("${z_basename}")
-      z_fail_reasons+=("launcher not found for sprue '${z_sprue}': ${z_launcher_path}")
+      z_fail_reasons+=("last line: expected '${z_prescribed_exec}', got '${z_lines[$z_last_idx]}'")
       continue
     }
   done
@@ -184,12 +188,31 @@ buq_shellcheck() {
   test -n "${z_rcfile}"      || buc_die "buq_shellcheck: rcfile path required"
   test -n "${z_result_file}" || buc_die "buq_shellcheck: result file path required"
 
+  # Args beyond the third are explicit extra .sh files to lint alongside the
+  # tree under z_tools_dir — a consumer with load-bearing shell scripts outside
+  # its tools dir (vessel/jailer context, charge hooks) enumerates them here.
+  # Each must exist: a moved or renamed extra fails loud rather than silently
+  # dropping out of coverage.
+  local z_extra_files=()
+  if (( $# > 3 )); then
+    z_extra_files=("${@:4}")
+  fi
+
   buc_step "Running shellcheck qualification"
 
   test -f "${z_rcfile}"    || buc_die "Shellcheck rcfile not found: ${z_rcfile}"
   test -d "${z_tools_dir}" || buc_die "Tools directory not found: ${z_tools_dir}"
 
   command -v shellcheck >/dev/null 2>&1 || buc_die "shellcheck not found — install from https://www.shellcheck.net"
+
+  # Hard version pin — fail instantly if this station's shellcheck is not the
+  # pinned version, before any check runs. Prevents silent cross-station
+  # divergence (e.g. a pre-0.10.0 binary that rejects --rcfile). Keep stations
+  # in lockstep; bump BUQ_SHELLCHECK_VERSION only after upgrading all of them.
+  local z_sc_version=""
+  z_sc_version="$(shellcheck --version | awk '/^version:/ {print $2}')"
+  test "${z_sc_version}" = "${BUQ_SHELLCHECK_VERSION}" || buc_die \
+    "shellcheck version mismatch: found '${z_sc_version}', require '${BUQ_SHELLCHECK_VERSION}'. Install the pinned version ahead of the system binary on PATH — static release: https://github.com/koalaman/shellcheck/releases/tag/v${BUQ_SHELLCHECK_VERSION}"
 
   # Collect .sh files (load-then-iterate per BCG)
   local z_files=()
@@ -198,8 +221,19 @@ buq_shellcheck() {
     z_files+=("${z_file}")
   done < <(find "${z_tools_dir}" -name '*.sh' -type f | sort)
 
+  local -r z_tree_count=${#z_files[@]}
+
+  # Append the validated extra files after the tree set
+  if (( ${#z_extra_files[@]} > 0 )); then
+    local z_extra=""
+    for z_extra in "${z_extra_files[@]}"; do
+      test -f "${z_extra}" || buc_die "buq_shellcheck: extra file not found: ${z_extra}"
+      z_files+=("${z_extra}")
+    done
+  fi
+
   local -r z_file_count=${#z_files[@]}
-  buc_log_args "Found ${z_file_count} shell files under ${z_tools_dir}"
+  buc_log_args "Found ${z_tree_count} shell files under ${z_tools_dir}; ${#z_extra_files[@]} explicit extra files"
 
   test "${z_file_count}" -gt 0 || buc_die "No .sh files found under ${z_tools_dir}"
 

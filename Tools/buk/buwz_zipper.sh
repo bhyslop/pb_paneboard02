@@ -33,6 +33,12 @@ zbuwz_kindle() {
   # Verify buz zipper is kindled (CLI furnish must kindle buz first)
   zbuz_sentinel
 
+  # Open the BUK tome: this zipper's run projects to BUWGC_ consts (BUWZ_ stem).
+  # Must precede the first enroll so the run begins at the roll's current head —
+  # which, when RB is kindled first (the theurge build and rbq), lands the BUK
+  # run after the RB run, keeping the RBTDGC_ block byte-stable.
+  buz_tome "buwz" "BUWGC_" "BUWZ_"
+
   # TabTarget subsystem (buut_cli.sh)
   local z_mod="buut_cli.sh"
   buz_enroll BUWZ_TT_LIST_LAUNCHERS      "buw-tt-ll"  "${z_mod}" "buut_list_launchers"               ""  "List all registered launchers"
@@ -69,13 +75,10 @@ zbuwz_kindle() {
   buz_enroll BUWZ_RP_RENDER   "buw-rpr" "${z_mod}" "burp_render"   "param1" "Render BURP profile"
   buz_enroll BUWZ_RP_LIST     "buw-rpl" "${z_mod}" "burp_list"     ""       "List BURP profiles"
 
-  # Qualification subsystem (buq_cli.sh)
-  z_mod="buq_cli.sh"
-  buz_enroll BUWZ_QUALIFY_SHELLCHECK "buw-qsc" "${z_mod}" "buq_shellcheck"  ""  "Run shellcheck on all tools"
-
   # Test fixtures (bux_cli.sh)
   z_mod="bux_cli.sh"
-  buz_enroll BUWZ_DELAY "buw-xd" "${z_mod}" "bux_delay"  ""  "Sleep 20 seconds (timing fixture)"
+  buz_enroll BUWZ_DELAY      "buw-xd" "${z_mod}" "bux_delay"       ""  "Sleep 20 seconds (timing fixture)"
+  buz_enroll BUWZ_BAND_CHAIN "buw-xb" "${z_mod}" "bux_band_chain"  ""  "Raise a band rejection beneath a die chain (self-test survival fixture)"
 
   # Self-test (butt_testbench.sh)
   z_mod="butt_testbench.sh"

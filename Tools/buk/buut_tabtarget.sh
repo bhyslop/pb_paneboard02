@@ -69,28 +69,20 @@ zbuut_write_tabtarget() {
 
   zbuut_show "Writing tabtarget: ${z_tabtarget_file}"
 
-  # Derive the dispatch sprue from the launcher path. Tabtargets route through
-  # tt/z-launcher.sh with a minted {owner}ml_{launcher-id} sprue, never a bare
-  # launcher path. Ownership prefix: RBK-authored launchers (rbw, rbtw) take
-  # rbml_; every other launcher takes the BUK-hosted buml_. (Transitional
-  # convention — a kit that earns its own moorings migrates its sprue prefix.)
-  local z_lid="${z_launcher_path##*/launcher.}"
-  z_lid="${z_lid%_workbench.sh}"
-  local z_sprue=""
-  case "${z_lid}" in
-    rbw|rbtw) z_sprue="rbml_${z_lid}" ;;
-    *)        z_sprue="buml_${z_lid}" ;;
-  esac
-
-  # Build the tabtarget content
+  # Build the tabtarget content. The launcher is named in the BURD_LAUNCHER
+  # config line as a bare basename (launcher.<id>_workbench.sh); z-launcher.sh
+  # reads it from the environment and resolves it directly under the moorings
+  # launcher dir. The exec line carries no launcher token and is byte-identical
+  # in every tabtarget.
   echo '#!/bin/bash' > "${z_tabtarget_file}"
+  echo "export BURD_LAUNCHER=${z_launcher_path##*/}" >> "${z_tabtarget_file}"
 
   # Add flag lines if provided
   if test -n "${z_flag_lines}"; then
     echo "${z_flag_lines}" >> "${z_tabtarget_file}"
   fi
 
-  echo "exec \"\${BASH_SOURCE[0]%/*}/z-launcher.sh\" ${z_sprue} \"\${0##*/}\" \"\${@}\"" >> "${z_tabtarget_file}"
+  echo "exec \"\${BASH_SOURCE[0]%/*}/z-launcher.sh\" \"\${0##*/}\" \"\${@}\"" >> "${z_tabtarget_file}"
 
   chmod +x "${z_tabtarget_file}" || buc_die "Failed to make tabtarget executable: ${z_tabtarget_file}"
 }

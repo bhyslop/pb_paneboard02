@@ -101,14 +101,14 @@ burp_emit_available_investitures() {
   zburs_sentinel
   local z_aliases=""
   if z_aliases=$(burp_list_capture 2>/dev/null); then
-    buc_step "Available investitures under ${BUBC_moorings_dir}/${BUBC_rbmu_users_subdir}/${BURS_USER}/:"
+    buc_step "Available investitures under ${BURD_MOORINGS_DIR}/${BUBC_rbmu_users_subdir}/${BURS_USER}/:"
     local z_v=""
     for z_v in ${z_aliases}; do
       buc_bare "        ${z_v}"
     done
   else
-    buc_step "No profiles found under ${BUBC_moorings_dir}/${BUBC_rbmu_users_subdir}/${BURS_USER}/."
-    buc_bare "        Author one at ${BUBC_moorings_dir}/${BUBC_rbmu_users_subdir}/${BURS_USER}/<investiture>/burp.env"
+    buc_step "No profiles found under ${BURD_MOORINGS_DIR}/${BUBC_rbmu_users_subdir}/${BURS_USER}/."
+    buc_bare "        Author one at ${BURD_MOORINGS_DIR}/${BUBC_rbmu_users_subdir}/${BURS_USER}/<investiture>/burp.env"
   fi
   buyy_tt_yawp "${BUWZ_RN_LIST}";  local -r z_rnl="${z_buym_yelp}"
   buh_line "Investiture names come from BURN — run ${z_rnl} for the registered list."

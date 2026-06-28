@@ -27,6 +27,7 @@ BUW_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
 
 # Source dependencies
 source "${BUW_SCRIPT_DIR}/buc_command.sh"
+source "${BUW_SCRIPT_DIR}/buym_yelp.sh"
 source "${BUW_SCRIPT_DIR}/buv_validation.sh"
 source "${BURD_BUK_DIR}/burd_regime.sh"
 source "${BUW_SCRIPT_DIR}/buz_zipper.sh"

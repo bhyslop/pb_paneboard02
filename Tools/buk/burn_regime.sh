@@ -99,15 +99,15 @@ burn_die_no_folio() {
   local z_aliases=""
   if z_aliases=$(burn_list_capture 2>/dev/null); then
     buc_warn "BURN investiture required as first argument."
-    buc_step "Available investitures under ${BUBC_moorings_dir}/${BUBC_rbmn_nodes_subdir}/:"
+    buc_step "Available investitures under ${BURD_MOORINGS_DIR}/${BUBC_rbmn_nodes_subdir}/:"
     local z_v=""
     for z_v in ${z_aliases}; do
       buc_bare "        ${z_v}"
     done
   else
     buc_warn "BURN investiture required as first argument."
-    buc_step "No profiles found under ${BUBC_moorings_dir}/${BUBC_rbmn_nodes_subdir}/."
-    buc_bare "        Author one at ${BUBC_moorings_dir}/${BUBC_rbmn_nodes_subdir}/<investiture>/burn.env"
+    buc_step "No profiles found under ${BURD_MOORINGS_DIR}/${BUBC_rbmn_nodes_subdir}/."
+    buc_bare "        Author one at ${BURD_MOORINGS_DIR}/${BUBC_rbmn_nodes_subdir}/<investiture>/burn.env"
   fi
   buc_die "No BURN investiture supplied."
 }

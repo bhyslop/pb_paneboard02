@@ -134,7 +134,7 @@ zjjfp_delete_account() {
       userdel -r "${z_user}" 2>"${z_stderr}" \
         || buc_die "Failed to delete Linux account: ${z_user} — see ${z_stderr}"
       if test -d "/home/${z_user}"; then
-        rm -rf "/home/${z_user}" \
+        rm -rf "/home/${z_user:?}" \
           || buc_die "Failed to remove residual home dir: /home/${z_user}"
       fi
       ;;

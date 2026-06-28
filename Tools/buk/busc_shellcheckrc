@@ -66,3 +66,20 @@ disable=SC2254
 #   (e.g., z_row_fmt) used across header, separator, and data rows.
 #   The variable is always a locally-defined constant, never user input.
 disable=SC2059
+
+# ─── Site-specific false positives (verified, not BCG-structural) ───
+# Isolated single-site false positives confirmed by reading the code.
+# Disabling tree-wide is the accepted cost of the no-inline-directives policy.
+
+# SC2088: Tilde does not expand in quotes.
+#   jjfp_fundus.sh zjjfp_double_hop_pipe passes "~/.ssh/authorized_keys" through a
+#   double-hop ssh pipe; the tilde stays literal locally and on the middle hop and
+#   expands on the final remote shell to the target account's home. Local expansion
+#   (curia operator's home) would be wrong — the quoting is correct.
+disable=SC2088
+
+# SC1003: Want to escape a single quote?
+#   rbfh_hygiene.sh Rule 3 uses the case glob *'\') to match a FROM line
+#   ending in a literal backslash (Dockerfile line-continuation). The single-quoted
+#   backslash is genuinely literal; no single-quote escaping is intended.
+disable=SC1003

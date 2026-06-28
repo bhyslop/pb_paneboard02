@@ -33,14 +33,14 @@ zbutcbe_tweak_empty() {
 }
 
 zbutcbe_tweak_both_set() {
-  export BURE_TWEAK_NAME="graft_image"
+  export BURE_TWEAK_NAME="buost_example"
   export BURE_TWEAK_VALUE="us-docker.pkg.dev/proj/repo/img:latest"
   zbure_kindle
   zbure_enforce
 }
 
 zbutcbe_tweak_name_only() {
-  export BURE_TWEAK_NAME="graft_image"
+  export BURE_TWEAK_NAME="buost_example"
   zbure_kindle
   zbure_enforce
 }

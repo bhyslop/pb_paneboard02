@@ -1,5 +1,4 @@
 #!/bin/bash
-# shellcheck disable=SC2153  # kindle chain - per BCG
 #
 # Copyright 2025 Scale Invariant, Inc.
 #
@@ -111,21 +110,41 @@ zbud_setup() {
   # Setup transcript file path
   BURD_TRANSCRIPT="${BURD_TEMP_DIR}/transcript.txt"
 
-  # Setup output directory (fixed location, cleared on each run)
+  # Setup output directories under the output root (both fixed locations).
+  #   current/  = this dispatch's outputs (fresh each run).
+  #   previous/ = the prior dispatch's current/, promoted here at dispatch
+  #               start. Promotion is EXIT-STATUS-INDEPENDENT — it runs before
+  #               this dispatch does any work, so the prior run's outputs are
+  #               forwarded regardless of how it exited (fail-after-forward
+  #               still passes the baton). The current/+previous/ pair is the
+  #               depth-1 cross-tabtarget chain; no deeper history is kept.
   BURD_OUTPUT_DIR="${BURC_OUTPUT_ROOT_DIR}/current"
+  BURD_PREVIOUS_DIR="${BURC_OUTPUT_ROOT_DIR}/previous"
   case "${BURD_OUTPUT_DIR}" in
     /*) ;;
     *)  BURD_OUTPUT_DIR="${PWD}/${BURD_OUTPUT_DIR}" ;;
   esac
+  case "${BURD_PREVIOUS_DIR}" in
+    /*) ;;
+    *)  BURD_PREVIOUS_DIR="${PWD}/${BURD_PREVIOUS_DIR}" ;;
+  esac
 
-  # Clear if exists, then create fresh
+  # Promote prior current/ -> previous/, then create a fresh empty current/.
+  # current/ and previous/ are siblings under one root, so mv is always an
+  # atomic same-filesystem rename — never a byte copy. It relocates the prior
+  # outputs (replacing the old unconditional rm of current/) rather than
+  # destroying them. First drop the generation older than one, then promote.
+  if test -d "${BURD_PREVIOUS_DIR}"; then
+    zbud_show "Dropping stale previous directory: ${BURD_PREVIOUS_DIR}"
+    rm -rf "${BURD_PREVIOUS_DIR}" || zbud_die "Failed to remove previous directory: ${BURD_PREVIOUS_DIR}"
+  fi
   if test -d "${BURD_OUTPUT_DIR}"; then
-    zbud_show "Clearing existing output directory: ${BURD_OUTPUT_DIR}"
-    rm -rf "${BURD_OUTPUT_DIR}" || zbud_die "Failed to remove output directory: ${BURD_OUTPUT_DIR}"
+    zbud_show "Promoting prior output to previous: ${BURD_OUTPUT_DIR} -> ${BURD_PREVIOUS_DIR}"
+    mv "${BURD_OUTPUT_DIR}" "${BURD_PREVIOUS_DIR}" || zbud_die "Failed to promote output directory to previous: ${BURD_OUTPUT_DIR}"
   fi
   mkdir -p "${BURD_OUTPUT_DIR}" || zbud_die "Failed to create output directory: ${BURD_OUTPUT_DIR}"
 
-  zbud_show "Output directory ready: ${BURD_OUTPUT_DIR}"
+  zbud_show "Output directory ready: ${BURD_OUTPUT_DIR} (previous: ${BURD_PREVIOUS_DIR})"
 
   # Get Git context
   local -r z_git_context_file="${BURD_TEMP_DIR}/bud_git_context.txt"
@@ -137,13 +156,22 @@ zbud_setup() {
   fi
   zbud_show "Git context: ${BURD_GIT_CONTEXT}"
 
+  # Platform fact for native binaries (e.g. theurge) that cannot inherit bash's
+  # own $OSTYPE across the process boundary — synthesized live each dispatch and
+  # delivered through the exported BURD_ channel. The native bash path is derived
+  # inside theurge via cygpath, keeping cygpath out of kit bash.
+  BURD_OSTYPE="${OSTYPE}"
+  zbud_show "Platform: ${BURD_OSTYPE}"
+
   # Export for child processes
   export BURD_TEMP_DIR
   export BURD_OUTPUT_DIR
+  export BURD_PREVIOUS_DIR
   export BURD_NOW_STAMP
   export BURD_NOW_EPOCH
   export BURD_TRANSCRIPT
   export BURD_GIT_CONTEXT
+  export BURD_OSTYPE
 
   return 0
 }
@@ -250,14 +278,12 @@ zbud_resolve_color() {
   esac
 }
 
-# Write nanosecond-precision timestamp to the file specified by $1
+# Write a fixed-width timestamp (YYYYMMDD-HHMMSS.NNNNNNNNN) to the file at $1.
+# Sub-second precision is not load-bearing — the nanosecond field is always
+# zero — but the fixed width is preserved for stable downstream BURX parsing.
 zbud_nanosecond_timestamp() {
   local -r z_output_file="${1}"
-  if command -v gdate >/dev/null 2>&1; then
-    gdate +'%Y%m%d-%H%M%S.%N' > "${z_output_file}" || zbud_die "gdate failed"
-  else
-    date +'%Y%m%d-%H%M%S.000000000' > "${z_output_file}" || zbud_die "date failed"
-  fi
+  date +'%Y%m%d-%H%M%S.000000000' > "${z_output_file}" || zbud_die "date failed"
 }
 
 zbud_write_burx_initial() {
@@ -309,7 +335,7 @@ zbud_main() {
   zbud_write_burx_initial
 
   # Detect unexpected BURD_ variables
-  local -r z_known="BURD_CONFIG_DIR BURD_REGIME_FILE BURD_NO_LOG BURD_INTERACTIVE BURD_COORDINATOR_SCRIPT BURD_LAUNCHER BURD_STATION_FILE BURD_TERM_COLS BURD_NOW_STAMP BURD_NOW_EPOCH BURD_TEMP_DIR BURD_OUTPUT_DIR BURD_TRANSCRIPT BURD_GIT_CONTEXT BURD_LOG_LAST BURD_LOG_SAME BURD_LOG_HIST BURD_COMMAND BURD_TARGET BURD_CLI_ARGS BURD_TOKEN_1 BURD_TOKEN_2 BURD_TOKEN_3 BURD_TOKEN_4 BURD_TOKEN_5 BURD_TOOLS_DIR BURD_BUK_DIR BURD_TABTARGET_DIR"
+  local -r z_known="BURD_CONFIG_DIR BURD_MOORINGS_DIR BURD_REGIME_FILE BURD_NO_LOG BURD_INTERACTIVE BURD_COORDINATOR_SCRIPT BURD_LAUNCHER BURD_STATION_FILE BURD_TERM_COLS BURD_NOW_STAMP BURD_NOW_EPOCH BURD_TEMP_DIR BURD_OUTPUT_DIR BURD_PREVIOUS_DIR BURD_TRANSCRIPT BURD_GIT_CONTEXT BURD_LOG_LAST BURD_LOG_SAME BURD_LOG_HIST BURD_COMMAND BURD_TARGET BURD_CLI_ARGS BURD_TOKEN_1 BURD_TOKEN_2 BURD_TOKEN_3 BURD_TOKEN_4 BURD_TOKEN_5 BURD_TOOLS_DIR BURD_BUK_DIR BURD_TABTARGET_DIR BURD_OSTYPE"
   ZBURD_UNEXPECTED=()
   local z_var
   for z_var in $(compgen -v BURD_); do
@@ -381,7 +407,7 @@ zbud_main() {
       done
   fi
 
-  zBURD_EXIT_STATUS=$(cat "${zBURD_STATUS_FILE}")
+  zBURD_EXIT_STATUS=$(<"${zBURD_STATUS_FILE}")
   rm                     "${zBURD_STATUS_FILE}"
 
   # Write BURX completion state

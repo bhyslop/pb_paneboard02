@@ -1,5 +1,4 @@
 #!/bin/bash
-# shellcheck disable=SC2153  # kindle chain - per BCG
 #
 # Copyright 2026 Scale Invariant, Inc.
 #
@@ -37,13 +36,21 @@ ZBUL_PROJECT_ROOT="${PWD}"
 # Config directory is supplied by the project-intimate trampoline (z-launcher),
 # the SOLE file that knows this project's moorings/config dir name. The shared
 # kit no longer hardcodes the name — it consumes the exported absolute path, so
-# one kit serves every consumer (.buk, rbmm_moorings, …). bubc derives
-# BUBC_moorings_dir from this for non-bootstrap consumers.
+# one kit serves every consumer (.buk, rbmm_moorings, …). The basename is
+# derived below as BURD_MOORINGS_DIR for operator-facing display.
 test -n "${BURD_CONFIG_DIR:-}" || {
   echo "bul_launcher: BURD_CONFIG_DIR unset — dispatch must run through z-launcher" >&2
   exit 1
 }
 export BURD_CONFIG_DIR
+
+# Moorings basename — the repo-root-relative config dir name, derived from the
+# absolute path. Operator-facing messages render paths relative to it because
+# z-launcher leaves the operator at repo root. A BURD_ dispatch value born here
+# in bootstrap (two consumers — this file's SETUP NEEDED block and burs_regime's
+# enroll description — run before the BURD kindle), enrolled in burd_regime, and
+# allowlisted in bud_dispatch.
+export BURD_MOORINGS_DIR="${BURD_CONFIG_DIR##*/}"
 
 # Load BURC configuration
 export BURD_REGIME_FILE="${BURD_CONFIG_DIR}/burc.env"
@@ -124,7 +131,7 @@ if test -z "${BURD_NO_LOG:-}"; then
     buh_line    "  often signals which convention a project prefers."
     buh_e
     buh_line    "  BURS_USER is your local developer username (1-32 chars). Per-user"
-    buh_line    "  profile lookups under ${BUBC_moorings_dir}/${BUBC_rbmu_users_subdir}/<BURS_USER>/ key on this name."
+    buh_line    "  profile lookups under ${BURD_MOORINGS_DIR}/${BUBC_rbmu_users_subdir}/<BURS_USER>/ key on this name."
     buh_e
     buh_line    "  BURS_TINCTURE is a 1-3 char tag (lowercase alphanumeric, leading"
     buh_line    "  letter, no hyphen). Use 'a' until you have a reason to change it;"
