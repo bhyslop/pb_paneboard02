@@ -87,15 +87,12 @@ pub unsafe fn print_expected_pane_sequences() {
 
             if let Some(panes) = panes_opt {
                 eprintln!("  key='{}' → {} panes:", key, panes.len());
-                for (idx, pane) in panes.iter().take(10).enumerate() {
+                for (idx, pane) in panes.iter().enumerate() {
                     let pixel_x = (pane.x * display_info.design_width) as u32;
                     let pixel_y = (pane.y * display_info.design_height) as u32;
                     let pixel_w = (pane.width * display_info.design_width) as u32;
                     let pixel_h = (pane.height * display_info.design_height) as u32;
                     eprintln!("    [{}] ({},{}) {}x{}", idx, pixel_x, pixel_y, pixel_w, pixel_h);
-                }
-                if panes.len() > 10 {
-                    eprintln!("    ... {} more panes", panes.len() - 10);
                 }
             }
         }

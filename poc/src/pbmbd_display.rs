@@ -364,17 +364,25 @@ pub unsafe fn gather_all_display_info() -> Vec<DisplayInfo> {
     displays
 }
 
-// Get full frame (not visible frame) for a specific screen
+// Get full frame (not visible frame) for a specific screen, in AX coordinates.
+//
+// IMPORTANT: this MUST return AX coordinates (top-left origin, Y down) to match
+// visible_frame_for_screen(). get_display_for_window_with_validation() derives the
+// menu-bar height as `visible.min_y - full.min_y`; if the two frames are in different
+// coordinate systems the subtraction is meaningless. Previously this returned the raw
+// NSScreen frame (bottom-left origin, Y up), so on any secondary display the delta came
+// out as that display's AX top offset (e.g. 1310px) instead of the true ~30px menu bar.
+// It only looked correct on the primary display, where Cocoa origin.y and AX top both == 0.
 #[allow(unexpected_cfgs)]
 pub unsafe fn full_frame_for_screen(screen: &NSScreen) -> Option<VisibleFrame> {
     let rect: NSRect = msg_send![screen, frame];
 
-    Some(VisibleFrame {
+    Some(ns_to_ax_visible_frame(VisibleFrame {
         min_x: rect.origin.x,
         min_y: rect.origin.y,
         width: rect.size.x,
         height: rect.size.y,
-    })
+    }))
 }
 
 // Get display info with both visible frame and full frame for validation
