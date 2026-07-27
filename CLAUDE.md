@@ -219,8 +219,8 @@ git log --stat
 **Slash Commands:**
 - `/prep-pr` - Automated workflow to prepare a candidate branch for upstream contribution
 
-<!-- MANAGED:VVK-INCLUDES:BEGIN -->
+<!-- Kit guidance: hand-maintained @-include lines. Edit content in the
+     @-targets, not here. -->
 @Tools/buk/claude-buk-core.md
 @Tools/jjk/claude-jjk-core.md
 @Tools/vvk/claude-vvk-core.md
-<!-- MANAGED:VVK-INCLUDES:END -->
