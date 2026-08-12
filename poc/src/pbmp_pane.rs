@@ -509,7 +509,6 @@ pub unsafe fn enumerate_app_windows(pid: u32) -> Vec<EnumeratedWindow> {
 
     // Iterate through CFArray
     let count = CFArrayGetCount(windows_array);
-    eprintln!("DEBUG: [enumerate_app_windows] Found {} window(s) for pid={}", count, pid);
 
     for i in 0..count {
         let window_element = CFArrayGetValueAtIndex(windows_array, i) as AXUIElementRef;
@@ -537,7 +536,6 @@ pub unsafe fn enumerate_app_windows(pid: u32) -> Vec<EnumeratedWindow> {
 
         // Filter: only include AXWindow role
         if role_str.as_deref() != Some("AXWindow") {
-            eprintln!("DEBUG: [enumerate_app_windows] Skipping window with role={:?}", role_str);
             continue;
         }
 
@@ -570,8 +568,6 @@ pub unsafe fn enumerate_app_windows(pid: u32) -> Vec<EnumeratedWindow> {
         } else {
             format!("<win:{}>", window_id)
         };
-
-        eprintln!("DEBUG: [enumerate_app_windows] Found window: window_id={} title=\"{}\"", window_id, title);
 
         result.push(EnumeratedWindow {
             window_id,

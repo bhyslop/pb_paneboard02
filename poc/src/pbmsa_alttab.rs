@@ -99,6 +99,30 @@ unsafe fn get_window_rect(pid: u32, window_id: u32) -> Option<crate::pbmbd_displ
     result
 }
 
+/// Show (or hide) the yellow highlight border for the given MRU entry.
+/// Logs the raw AX rect and the AX→Cocoa conversion inputs so a post-display-sleep
+/// anomaly can be attributed: wrong AX rect → AX server stale; wrong primary_h →
+/// NSScreen stale; both right but box misplaced → window-server/NSWindow state
+/// (compare against the requested-vs-actual log on the Swift side).
+unsafe fn show_highlight_border_for_entry(entry: &MruWindowEntry) {
+    if entry.identity.window_id == 0 {
+        pbmbo_hide_highlight_border();
+        return;
+    }
+    match get_window_rect(entry.identity.pid, entry.identity.window_id) {
+        Some(rect) => {
+            // Convert AX coordinates (top-left origin) to Cocoa coordinates
+            // (bottom-left origin) so Swift NSWindow positioning is correct
+            let primary_h = crate::pbmbd_display::get_primary_display_height();
+            let cocoa_y = primary_h - rect.y - rect.h;
+            println!("HIGHLIGHT: ax_rect=({:.0},{:.0},{:.0},{:.0}) primary_h={:.0} cocoa_y={:.0} window_id={}",
+                     rect.x, rect.y, rect.w, rect.h, primary_h, cocoa_y, entry.identity.window_id);
+            pbmbo_show_highlight_border(rect.x, cocoa_y, rect.w, rect.h, 1.0, 1.0, 0.0, entry.identity.window_id);
+        }
+        None => pbmbo_hide_highlight_border(),
+    }
+}
+
 /// Helper to show Alt-Tab overlay with MRU entries
 /// Defers to main runloop for thread safety
 pub unsafe fn show_alt_tab_overlay(highlight_index: usize) {
@@ -139,21 +163,8 @@ pub unsafe fn show_alt_tab_overlay(highlight_index: usize) {
         );
 
         // Show highlight border for the selected window
-        // Convert AX coordinates (top-left origin) to Cocoa coordinates (bottom-left origin)
-        // so Swift NSWindow positioning is correct
         if highlight_index < snapshot.len() {
-            let entry = &snapshot[highlight_index];
-            if entry.identity.window_id != 0 {
-                if let Some(rect) = get_window_rect(entry.identity.pid, entry.identity.window_id) {
-                    let primary_h = crate::pbmbd_display::get_primary_display_height();
-                    let cocoa_y = primary_h - rect.y - rect.h;
-                    pbmbo_show_highlight_border(rect.x, cocoa_y, rect.w, rect.h, 1.0, 1.0, 0.0, entry.identity.window_id);
-                } else {
-                    pbmbo_hide_highlight_border();
-                }
-            } else {
-                pbmbo_hide_highlight_border();
-            }
+            show_highlight_border_for_entry(&snapshot[highlight_index]);
         }
     });
 
@@ -202,20 +213,8 @@ pub unsafe fn update_alt_tab_highlight(highlight_index: usize) {
         );
 
         // Update highlight border for the selected window
-        // Convert AX coordinates (top-left origin) to Cocoa coordinates (bottom-left origin)
         if highlight_index < snapshot.len() {
-            let entry = &snapshot[highlight_index];
-            if entry.identity.window_id != 0 {
-                if let Some(rect) = get_window_rect(entry.identity.pid, entry.identity.window_id) {
-                    let primary_h = crate::pbmbd_display::get_primary_display_height();
-                    let cocoa_y = primary_h - rect.y - rect.h;
-                    pbmbo_show_highlight_border(rect.x, cocoa_y, rect.w, rect.h, 1.0, 1.0, 0.0, entry.identity.window_id);
-                } else {
-                    pbmbo_hide_highlight_border();
-                }
-            } else {
-                pbmbo_hide_highlight_border();
-            }
+            show_highlight_border_for_entry(&snapshot[highlight_index]);
         }
     });
 

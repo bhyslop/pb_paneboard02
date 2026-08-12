@@ -146,8 +146,6 @@ pub unsafe fn create_observer_for_app(pid: u32, bundle_id: String) -> Result<(),
         bundle_map.insert(pid, bundle_id.clone());
     }
 
-    eprintln!("DEBUG: [AXObserver] Created observer for pid={} ({})", pid, bundle_id);
-
     Ok(())
 }
 
@@ -265,16 +263,11 @@ extern "C" fn prepopulation_callback(pid: i32, bundle: *const std::os::raw::c_ch
             CStr::from_ptr(name).to_string_lossy().into_owned()
         };
 
-        eprintln!("DEBUG: [Prepopulation] {} {} (pid={}, name={})",
-                  if is_known { "KNOWN:" } else { "GUESS:" }, bundle_id, pid, app_name);
-
         // Enumerate all windows for this app
         let windows = enumerate_app_windows(pid as u32);
 
         if windows.is_empty() {
             // No windows found - add placeholder entry with window_id=0
-            eprintln!("DEBUG: [Prepopulation] No windows enumerated for {} (pid={}), adding placeholder",
-                     bundle_id, pid);
             add_app_to_mru_as_guess(pid as u32, bundle_id.clone(), app_name);
         } else {
             // Windows found - add each to MRU
@@ -305,8 +298,6 @@ extern "C" fn prepopulation_callback(pid: i32, bundle: *const std::os::raw::c_ch
 
                         let mut stack = MRU_STACK.lock().unwrap();
                         stack.insert(0, entry);
-                        eprintln!("DEBUG: Added KNOWN window entry for {} (pid={}, window_id={})",
-                                 bundle_id, pid, enumerated_win.window_id);
                     } else {
                         // Other windows - add as GUESS
                         add_enumerated_window_to_mru(pid as u32, bundle_id.clone(), &enumerated_win);

@@ -104,8 +104,6 @@ pub unsafe fn add_enumerated_window_to_mru(
     // Don't add if this entry already exists (avoid duplicates)
     if !stack.iter().any(|e| e.identity == identity) {
         stack.push(entry);
-        eprintln!("DEBUG: Added GUESS window entry for {} (pid={}, window_id={})",
-                  bundle_id, pid, enumerated_win.window_id);
     }
 }
 
@@ -126,7 +124,6 @@ pub unsafe fn add_app_to_mru_as_guess(pid: u32, bundle_id: String, name: String)
     // Don't add if this placeholder entry already exists (avoid duplicates)
     if !stack.iter().any(|e| e.identity == identity) {
         stack.push(entry);
-        eprintln!("DEBUG: Added GUESS placeholder entry for {} (pid={}, window_id=0)", bundle_id, pid);
     }
 }
 

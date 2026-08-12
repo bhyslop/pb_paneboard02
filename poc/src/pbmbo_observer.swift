@@ -53,6 +53,40 @@ func ffiToStrings(count: Int32, ptrs: UnsafePointer<UnsafePointer<CChar>?>) -> [
     return result
 }
 
+// MARK: - Screen Diagnostics
+
+private let pbmboTimestampFormatter: DateFormatter = {
+    let f = DateFormatter()
+    f.dateFormat = "HH:mm:ss.SSS"
+    return f
+}()
+
+func pbmboTimestamp() -> String {
+    return pbmboTimestampFormatter.string(from: Date())
+}
+
+private func pbmboRectString(_ r: NSRect) -> String {
+    return "(\(Int(r.origin.x)),\(Int(r.origin.y)),\(Int(r.size.width)),\(Int(r.size.height)))"
+}
+
+/// Log a timestamped snapshot of all screens plus the persistent highlight
+/// border window's state. Fired at alt-tab session start and on display
+/// sleep/wake/reconfiguration, so a capture spanning monitor power-down shows
+/// what geometry AppKit believed at each transition and whether the reused
+/// border NSWindow drifted with it.
+func pbmboLogScreenSnapshot(_ tag: String) {
+    let screens = NSScreen.screens
+    print("SCREEN: [\(pbmboTimestamp())] \(tag) count=\(screens.count)")
+    for (idx, s) in screens.enumerated() {
+        let primary = (s.frame.origin == .zero) ? " primary" : ""
+        print("SCREEN:   [\(idx)] \"\(s.localizedName)\" frame=\(pbmboRectString(s.frame)) visible=\(pbmboRectString(s.visibleFrame))\(primary)")
+    }
+    if let hw = highlightBorderWindow {
+        let screenName = hw.screen?.localizedName ?? "<none>"
+        print("SCREEN:   highlightBorderWindow frame=\(pbmboRectString(hw.frame)) screen=\"\(screenName)\" visible=\(hw.isVisible)")
+    }
+}
+
 // Global callback storage
 private var globalActivationCallback: ActivationCallback?
 private var globalTerminationCallback: TerminationCallback?
@@ -103,6 +137,33 @@ class PbmsoObserver {
             if let callback = globalTerminationCallback {
                 callback(pid)
             }
+        }
+
+        // Display sleep/wake and reconfiguration: timestamped screen snapshots,
+        // so a log spanning monitor power-down records what AppKit believed at
+        // each transition (highlight-border misplacement investigation).
+        center.addObserver(
+            forName: NSWorkspace.screensDidSleepNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            pbmboLogScreenSnapshot("event=screensDidSleep")
+        }
+
+        center.addObserver(
+            forName: NSWorkspace.screensDidWakeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            pbmboLogScreenSnapshot("event=screensDidWake")
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            pbmboLogScreenSnapshot("event=didChangeScreenParameters")
         }
     }
 }
@@ -499,6 +560,9 @@ public func pbmbo_show_alt_tab_overlay(
             icon: icon
         ))
     }
+
+    // Screen-state snapshot once per alt-tab session (not per tab-press)
+    pbmboLogScreenSnapshot("event=altTabSessionStart")
 
     // Debug: print overlay content to console
     print("=== ALT-TAB OVERLAY (showing) ===")
@@ -1123,7 +1187,23 @@ public func pbmbo_show_highlight_border(x: Double, y: Double, w: Double, h: Doub
     // Show window
     highlightBorderWindow?.orderFrontRegardless()
 
-    print("HIGHLIGHT: Border shown at (\(x), \(y), \(w), \(h)) color=(\(r), \(g), \(b)) window_id=\(window_id)")
+    pbmboLogHighlightPlacement(action: "shown", requested: windowFrame, window_id: window_id)
+}
+
+/// Log requested vs actual frame after positioning the highlight border.
+/// If the window server clamped or reinterpreted the setFrame (the leading
+/// hypothesis for post-display-sleep misplacement), the two disagree and the
+/// line is tagged DRIFT.
+private func pbmboLogHighlightPlacement(action: String, requested: NSRect, window_id: UInt32) {
+    guard let window = highlightBorderWindow else { return }
+    let actual = window.frame
+    let screenName = window.screen?.localizedName ?? "<none>"
+    let matches = abs(actual.origin.x - requested.origin.x) < 0.5
+        && abs(actual.origin.y - requested.origin.y) < 0.5
+        && abs(actual.size.width - requested.size.width) < 0.5
+        && abs(actual.size.height - requested.size.height) < 0.5
+    let drift = matches ? "" : " DRIFT"
+    print("HIGHLIGHT: [\(pbmboTimestamp())] \(action) requested=\(pbmboRectString(requested)) actual=\(pbmboRectString(actual)) screen=\"\(screenName)\" window_id=\(window_id)\(drift)")
 }
 
 /// Reposition existing highlight border window
@@ -1169,7 +1249,7 @@ public func pbmbo_reposition_highlight_border(x: Double, y: Double, w: Double, h
     // Re-point the emblem surface; it re-reads at paint time.
     highlightEmblemView?.windowId = window_id
 
-    print("HIGHLIGHT: Border repositioned to (\(x), \(y), \(w), \(h)) window_id=\(window_id)")
+    pbmboLogHighlightPlacement(action: "repositioned", requested: windowFrame, window_id: window_id)
 }
 
 /// Hide highlight border window
