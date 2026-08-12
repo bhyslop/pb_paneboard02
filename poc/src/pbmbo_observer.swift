@@ -69,6 +69,36 @@ private func pbmboRectString(_ r: NSRect) -> String {
     return "(\(Int(r.origin.x)),\(Int(r.origin.y)),\(Int(r.size.width)),\(Int(r.size.height)))"
 }
 
+/// Height of the display at the global origin, for server↔Cocoa Y conversion.
+private func pbmboPrimaryHeight() -> CGFloat {
+    for s in NSScreen.screens where s.frame.origin == .zero {
+        return s.frame.height
+    }
+    return NSScreen.screens.first?.frame.height ?? 0
+}
+
+/// Window-server bounds for a window id, converted to Cocoa coordinates
+/// (bottom-left origin, Y up) so it compares directly against NSWindow.frame.
+///
+/// This is ground truth independent of both AX and AppKit: AX can serve stale
+/// geometry, and NSWindow.frame reports what AppKit believes rather than where
+/// the server actually composited the window. Where the three disagree names
+/// the culprit.
+private func pbmboServerFrameCocoa(_ windowId: UInt32) -> NSRect? {
+    guard windowId != 0,
+          let info = CGWindowListCopyWindowInfo([.optionIncludingWindow], windowId) as? [[String: Any]],
+          let entry = info.first,
+          let boundsDict = entry[kCGWindowBounds as String],
+          let bounds = CGRect(dictionaryRepresentation: boundsDict as! CFDictionary)
+    else { return nil }
+
+    // kCGWindowBounds is top-left origin, Y down; flip to Cocoa.
+    return NSRect(x: bounds.origin.x,
+                  y: pbmboPrimaryHeight() - bounds.origin.y - bounds.size.height,
+                  width: bounds.size.width,
+                  height: bounds.size.height)
+}
+
 /// Log a timestamped snapshot of all screens plus the persistent highlight
 /// border window's state. Fired at alt-tab session start and on display
 /// sleep/wake/reconfiguration, so a capture spanning monitor power-down shows
@@ -177,6 +207,12 @@ public func pbmso_register_observer(
     _ activationCallback: @escaping ActivationCallback,
     _ terminationCallback: @escaping TerminationCallback
 ) {
+    // Swift's stdout is block-buffered when not a TTY, while Rust's is line
+    // buffered. Sharing one fd through two buffers splices Rust lines into the
+    // middle of Swift lines and strands Swift's tail, so a captured log cannot
+    // be read in order. Line-buffer this side to match.
+    setvbuf(stdout, nil, _IOLBF, 0)
+
     globalActivationCallback = activationCallback
     globalTerminationCallback = terminationCallback
     observer = PbmsoObserver()
@@ -1198,12 +1234,36 @@ private func pbmboLogHighlightPlacement(action: String, requested: NSRect, windo
     guard let window = highlightBorderWindow else { return }
     let actual = window.frame
     let screenName = window.screen?.localizedName ?? "<none>"
-    let matches = abs(actual.origin.x - requested.origin.x) < 0.5
-        && abs(actual.origin.y - requested.origin.y) < 0.5
-        && abs(actual.size.width - requested.size.width) < 0.5
-        && abs(actual.size.height - requested.size.height) < 0.5
-    let drift = matches ? "" : " DRIFT"
+
+    func near(_ a: NSRect, _ b: NSRect) -> Bool {
+        return abs(a.origin.x - b.origin.x) < 2
+            && abs(a.origin.y - b.origin.y) < 2
+            && abs(a.size.width - b.size.width) < 2
+            && abs(a.size.height - b.size.height) < 2
+    }
+
+    let drift = near(actual, requested) ? "" : " DRIFT"
     print("HIGHLIGHT: [\(pbmboTimestamp())] \(action) requested=\(pbmboRectString(requested)) actual=\(pbmboRectString(actual)) screen=\"\(screenName)\" window_id=\(window_id)\(drift)")
+
+    // Where the window server actually put our border box. NSWindow.frame is
+    // AppKit's belief; a disagreement here means the server composited it
+    // somewhere else, which the requested-vs-actual check above cannot see.
+    if let serverBox = pbmboServerFrameCocoa(UInt32(max(0, window.windowNumber))) {
+        let tag = near(serverBox, actual) ? "" : " SERVER_MISMATCH"
+        print("HIGHLIGHT:   border_server=\(pbmboRectString(serverBox))\(tag)")
+    } else {
+        print("HIGHLIGHT:   border_server=<unavailable>")
+    }
+
+    // Where the window server says the TARGET window is. The border is placed
+    // from the AX rect; if AX is serving stale geometry after display sleep the
+    // box lands on the window's old position and this line disagrees.
+    if let targetBox = pbmboServerFrameCocoa(window_id) {
+        let tag = near(targetBox, requested) ? "" : " AX_STALE"
+        print("HIGHLIGHT:   target_server=\(pbmboRectString(targetBox))\(tag)")
+    } else {
+        print("HIGHLIGHT:   target_server=<unavailable>")
+    }
 }
 
 /// Reposition existing highlight border window
