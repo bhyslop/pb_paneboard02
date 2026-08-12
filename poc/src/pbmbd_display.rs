@@ -485,6 +485,77 @@ extern "C" {
     fn CGDisplayModeRelease(mode: *mut std::ffi::c_void);
 }
 
+lazy_static::lazy_static! {
+    static ref LAST_DISPLAY_FINGERPRINT: std::sync::Mutex<Option<String>> =
+        std::sync::Mutex::new(None);
+}
+
+/// Cheap, pollable summary of the current display configuration.
+///
+/// Pure CoreGraphics, so it costs little enough to run on the existing health
+/// tick. Covers everything a sleep/wake cycle can disturb: how many displays
+/// are active, which one is primary, and each display's identity, bounds and
+/// power state.
+pub unsafe fn display_fingerprint() -> String {
+    let mut count: u32 = 0;
+    if CGGetActiveDisplayList(0, std::ptr::null_mut(), &mut count) != 0 {
+        return "query_failed".to_string();
+    }
+
+    let mut ids: Vec<u32> = vec![0; count as usize];
+    if count > 0 {
+        let mut got: u32 = 0;
+        if CGGetActiveDisplayList(count, ids.as_mut_ptr(), &mut got) != 0 {
+            return "query_failed".to_string();
+        }
+        ids.truncate(got as usize);
+    }
+
+    let mut parts = vec![format!("n={} main={}", ids.len(), CGMainDisplayID())];
+    for id in &ids {
+        let b = CGDisplayBounds(*id);
+        parts.push(format!(
+            "[id={} unit={} bounds=({:.0},{:.0},{:.0},{:.0}) active={} online={} asleep={}]",
+            id,
+            CGDisplayUnitNumber(*id),
+            b.origin.x, b.origin.y, b.size.width, b.size.height,
+            CGDisplayIsActive(*id) as u8,
+            CGDisplayIsOnline(*id) as u8,
+            CGDisplayIsAsleep(*id) as u8,
+        ));
+    }
+    parts.join(" ")
+}
+
+/// Poll for display reconfiguration and report transitions.
+///
+/// The event-driven hooks have already been caught missing here: a visible
+/// power-down of both monitors produced no screensDidSleep and no
+/// didChangeScreenParameters. Polling a fingerprint catches every transition
+/// regardless of which notification the system chose to withhold, including
+/// ones that happen while nobody is watching the machine.
+pub unsafe fn poll_display_configuration() {
+    let current = display_fingerprint();
+    let mut last = LAST_DISPLAY_FINGERPRINT.lock().unwrap();
+
+    match last.as_ref() {
+        Some(prev) if *prev == current => return,
+        Some(prev) => {
+            println!("DISPLAYCFG: changed");
+            println!("DISPLAYCFG:   was {}", prev);
+            println!("DISPLAYCFG:   now {}", current);
+        }
+        None => println!("DISPLAYCFG: baseline {}", current),
+    }
+    *last = Some(current);
+    drop(last);
+
+    // Swift-side snapshot carries the timestamp and AppKit's view, so the two
+    // land adjacent in the log.
+    let tag = std::ffi::CString::new("displayConfigPollChanged").unwrap();
+    crate::pbmbo_overlay::pbmbo_log_screen_snapshot(tag.as_ptr());
+}
+
 // Print comprehensive information about all connected displays
 #[allow(unexpected_cfgs)]
 pub unsafe fn print_all_display_info() {

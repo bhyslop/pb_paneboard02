@@ -424,6 +424,8 @@ extern "C" fn timeout_exit_callback(_timer: *mut c_void, _info: *mut c_void) {
 // Timer callback to check event tap health and switcher state
 extern "C" fn tap_health_check_timer(_timer: *mut c_void, _info: *mut c_void) {
     unsafe {
+        crate::pbmbd_display::poll_display_configuration();
+
         let tap = EVENT_TAP_PTR.load(std::sync::atomic::Ordering::Acquire);
         if tap.is_null() {
             return; // Not initialized yet

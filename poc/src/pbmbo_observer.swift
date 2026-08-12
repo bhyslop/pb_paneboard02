@@ -152,6 +152,14 @@ private func pbmboDisplayReconfigCallback(_ display: CGDirectDisplayID,
     }
 }
 
+/// C-ABI entry so the Rust-side configuration poll can emit a timestamped
+/// AppKit snapshot alongside its own findings.
+@_cdecl("pbmbo_log_screen_snapshot")
+public func pbmbo_log_screen_snapshot(_ tag: UnsafePointer<CChar>?) {
+    let label = tag.map { String(cString: $0) } ?? "unspecified"
+    pbmboLogScreenSnapshot("event=\(label)")
+}
+
 // Global callback storage
 private var globalActivationCallback: ActivationCallback?
 private var globalTerminationCallback: TerminationCallback?
