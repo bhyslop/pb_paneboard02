@@ -117,6 +117,41 @@ func pbmboLogScreenSnapshot(_ tag: String) {
     }
 }
 
+private func pbmboReconfigFlagNames(_ flags: CGDisplayChangeSummaryFlags) -> String {
+    let table: [(CGDisplayChangeSummaryFlags, String)] = [
+        (.beginConfigurationFlag, "begin"),
+        (.movedFlag, "moved"),
+        (.setMainFlag, "setMain"),
+        (.addFlag, "add"),
+        (.removeFlag, "remove"),
+        (.enabledFlag, "enabled"),
+        (.disabledFlag, "disabled"),
+        (.mirrorFlag, "mirror"),
+        (.unMirrorFlag, "unmirror"),
+        (.desktopShapeChangedFlag, "desktopShapeChanged"),
+    ]
+    let names = table.filter { flags.contains($0.0) }.map { $0.1 }
+    return names.isEmpty ? "none" : names.joined(separator: "|")
+}
+
+/// CoreGraphics-level display reconfiguration hook.
+///
+/// PaneBoard drives a bare CFRunLoop and never starts an NSApplication event
+/// loop, so NSApplication.didChangeScreenParametersNotification may never post
+/// here — its silence cannot be read as "no reconfiguration happened". This
+/// callback is delivered by CoreGraphics directly to the run loop and does not
+/// depend on NSApp, making it the authoritative detector.
+private func pbmboDisplayReconfigCallback(_ display: CGDirectDisplayID,
+                                          _ flags: CGDisplayChangeSummaryFlags,
+                                          _ userInfo: UnsafeMutableRawPointer?) {
+    print("SCREEN: [\(pbmboTimestamp())] event=displayReconfig display=\(display) flags=\(pbmboReconfigFlagNames(flags))")
+    // The begin pass fires before the new geometry is readable; snapshot on the
+    // settled pass only.
+    if !flags.contains(.beginConfigurationFlag) {
+        pbmboLogScreenSnapshot("event=displayReconfigSettled display=\(display)")
+    }
+}
+
 // Global callback storage
 private var globalActivationCallback: ActivationCallback?
 private var globalTerminationCallback: TerminationCallback?
@@ -195,6 +230,30 @@ class PbmsoObserver {
         ) { _ in
             pbmboLogScreenSnapshot("event=didChangeScreenParameters")
         }
+
+        // System sleep, distinct from screen sleep.
+        for (name, label) in [(NSWorkspace.willSleepNotification, "willSleep"),
+                              (NSWorkspace.didWakeNotification, "didWake")] {
+            center.addObserver(forName: name, object: nil, queue: .main) { _ in
+                pbmboLogScreenSnapshot("event=\(label)")
+            }
+        }
+
+        // Idle progresses through separable stages — screensaver start, screen
+        // lock, then display power-down — and only some of them disturb the
+        // display configuration. Observing each separately tells us which stage
+        // the geometry breakage tracks, rather than lumping them as "sleep".
+        let distributed = DistributedNotificationCenter.default()
+        for name in ["com.apple.screenIsLocked",
+                     "com.apple.screenIsUnlocked",
+                     "com.apple.screensaver.didstart",
+                     "com.apple.screensaver.didstop"] {
+            distributed.addObserver(forName: Notification.Name(name), object: nil, queue: .main) { _ in
+                pbmboLogScreenSnapshot("event=\(name)")
+            }
+        }
+
+        CGDisplayRegisterReconfigurationCallback(pbmboDisplayReconfigCallback, nil)
     }
 }
 
@@ -1245,16 +1304,6 @@ private func pbmboLogHighlightPlacement(action: String, requested: NSRect, windo
     let drift = near(actual, requested) ? "" : " DRIFT"
     print("HIGHLIGHT: [\(pbmboTimestamp())] \(action) requested=\(pbmboRectString(requested)) actual=\(pbmboRectString(actual)) screen=\"\(screenName)\" window_id=\(window_id)\(drift)")
 
-    // Where the window server actually put our border box. NSWindow.frame is
-    // AppKit's belief; a disagreement here means the server composited it
-    // somewhere else, which the requested-vs-actual check above cannot see.
-    if let serverBox = pbmboServerFrameCocoa(UInt32(max(0, window.windowNumber))) {
-        let tag = near(serverBox, actual) ? "" : " SERVER_MISMATCH"
-        print("HIGHLIGHT:   border_server=\(pbmboRectString(serverBox))\(tag)")
-    } else {
-        print("HIGHLIGHT:   border_server=<unavailable>")
-    }
-
     // Where the window server says the TARGET window is. The border is placed
     // from the AX rect; if AX is serving stale geometry after display sleep the
     // box lands on the window's old position and this line disagrees.
@@ -1263,6 +1312,22 @@ private func pbmboLogHighlightPlacement(action: String, requested: NSRect, windo
         print("HIGHLIGHT:   target_server=\(pbmboRectString(targetBox))\(tag)")
     } else {
         print("HIGHLIGHT:   target_server=<unavailable>")
+    }
+
+    // Where the window server actually put our border box. NSWindow.frame is
+    // only AppKit's belief; a disagreement means the server composited the box
+    // somewhere other than where it was placed, which requested-vs-actual
+    // cannot see. setFrame commits asynchronously, so querying in this run-loop
+    // turn always reports the previous frame — defer a turn to read the settled
+    // state, otherwise every placement looks mismatched by one step.
+    let borderWindowId = UInt32(max(0, window.windowNumber))
+    DispatchQueue.main.async {
+        if let serverBox = pbmboServerFrameCocoa(borderWindowId) {
+            let tag = near(serverBox, requested) ? "" : " SERVER_MISMATCH"
+            print("HIGHLIGHT:   border_server_settled=\(pbmboRectString(serverBox)) for=\(pbmboRectString(requested))\(tag)")
+        } else {
+            print("HIGHLIGHT:   border_server_settled=<unavailable>")
+        }
     }
 }
 
