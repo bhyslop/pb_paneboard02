@@ -1317,12 +1317,26 @@ public func pbmbo_show_highlight_border(x: Double, y: Double, w: Double, h: Doub
 
     // Create window if it doesn't exist, otherwise update existing
     if highlightBorderWindow == nil {
+        // Deliberately built without the screen: parameter.
+        //
+        // AppKit's NSScreen objects are never rebuilt in this process — their
+        // addresses are identical from startup through a lock/wake — while the
+        // displays behind them are genuinely torn down and recreated, as
+        // CoreGraphics reporting a 1x1 secondary mid-wake shows. Anchoring a new
+        // window to one of those stale objects appears to leave it without a
+        // valid display association, after which the server pins it at the
+        // global origin and honours only its size. That matches what the server
+        // reports, and it explains why creating the window fresh each gesture
+        // did not help: the fresh window was anchored to the same stale screen.
+        //
+        // Position is set below by setFrame in global coordinates, which needs
+        // no screen anchor. The initializer's screen: argument was already
+        // suspect here — see the setFrame note below.
         let window = HighlightBorderWindow(
             contentRect: windowFrame,
             styleMask: [.borderless],
             backing: .buffered,
-            defer: false,
-            screen: screen
+            defer: false
         )
 
         window.isOpaque = false
