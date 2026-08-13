@@ -25,6 +25,9 @@ PBW_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
 
 # Source dependencies
 source "${PBW_SCRIPT_DIR}/../buk/buc_command.sh"
+# buc's logging path reaches buyf_strip_yawp, so yelp must accompany it — this
+# workbench previously sourced buc alone and would have failed inside buc_die.
+source "${PBW_SCRIPT_DIR}/../buk/buym_yelp.sh"
 source "${PBW_SCRIPT_DIR}/../buk/bug_git.sh"
 
 # Show filename on each displayed line
