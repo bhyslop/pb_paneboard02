@@ -348,6 +348,17 @@ public struct OverlayEntry {
 class OverlayWindow: NSWindow {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    /// One of these is placed per screen, so the secondary-display panel is
+    /// subject to the same stale-screen clamp that drags the highlight border
+    /// onto the primary. See HighlightBorderWindow.constrainFrameRect.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        let wanted = super.constrainFrameRect(frameRect, to: screen)
+        if abs(wanted.origin.x - frameRect.origin.x) > 1 || abs(wanted.origin.y - frameRect.origin.y) > 1 {
+            print("OVERLAY:   CONSTRAIN_CLAMP proposed=(\(Int(frameRect.origin.x)),\(Int(frameRect.origin.y))) appkit_wanted=(\(Int(wanted.origin.x)),\(Int(wanted.origin.y))) — refused")
+        }
+        return frameRect
+    }
 }
 
 class OverlayManager {
@@ -1174,6 +1185,28 @@ class EmblemContentView: NSView {
 class HighlightBorderWindow: NSWindow {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    /// Refuse AppKit's "keep this window on a screen" adjustment.
+    ///
+    /// AppKit runs every setFrame through this and pulls the origin back onto
+    /// what it believes the screens are, keeping the size. After a display
+    /// reconfiguration that belief goes stale here — this process never runs an
+    /// NSApplication event loop, so it never handles the reconfiguration — and
+    /// the clamp drags every box to one corner of the primary display while the
+    /// size still tracks. That is the observed signature exactly, and it also
+    /// explains why creating a fresh window per gesture did not help: the clamp
+    /// is applied on every placement regardless of the window's age.
+    ///
+    /// This box is positioned in global coordinates to bound a specific window,
+    /// so it must be free to sit anywhere, including on a secondary display at
+    /// negative x. Return the proposed rect untouched.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        let wanted = super.constrainFrameRect(frameRect, to: screen)
+        if abs(wanted.origin.x - frameRect.origin.x) > 1 || abs(wanted.origin.y - frameRect.origin.y) > 1 {
+            print("HIGHLIGHT:   CONSTRAIN_CLAMP proposed=(\(Int(frameRect.origin.x)),\(Int(frameRect.origin.y))) appkit_wanted=(\(Int(wanted.origin.x)),\(Int(wanted.origin.y))) — refused")
+        }
+        return frameRect
+    }
 }
 
 /// Highlight border content view - draws 6px colored border only
