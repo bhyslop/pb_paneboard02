@@ -416,6 +416,29 @@ class OverlayManager {
             overlayWindows.append(overlay)
             overlay.orderFrontRegardless()
         }
+
+        // Discriminator for the border-box misplacement.
+        //
+        // The border box is pinned at the global origin by the server while its
+        // size is honoured, and neither the window's age, AppKit's clamp, nor
+        // the screen anchor accounts for it. These list panels are separate
+        // windows built by a separate path. If they are pinned too, the damage
+        // belongs to the process's window-server connection and no per-window
+        // remedy can reach it; if they place correctly, the difference between
+        // these two window configurations localises the fault.
+        DispatchQueue.main.async { [overlayWindows] in
+            for (idx, w) in overlayWindows.enumerated() {
+                let believed = w.frame
+                guard let server = pbmboServerFrameCocoa(UInt32(max(0, w.windowNumber))) else {
+                    print("OVERLAY:   panel[\(idx)] server=<unavailable>")
+                    continue
+                }
+                let agrees = abs(server.origin.x - believed.origin.x) < 2
+                    && abs(server.origin.y - believed.origin.y) < 2
+                let tag = agrees ? "" : " PANEL_SERVER_MISMATCH"
+                print("OVERLAY:   panel[\(idx)] appkit=\(pbmboRectString(believed)) server=\(pbmboRectString(server))\(tag)")
+            }
+        }
     }
 
     func updateHighlight(entries: [OverlayEntry], highlightIndex: Int) {
