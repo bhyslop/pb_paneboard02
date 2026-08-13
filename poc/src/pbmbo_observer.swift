@@ -667,6 +667,10 @@ public func pbmbo_show_alt_tab_overlay(
     // Screen-state snapshot once per alt-tab session (not per tab-press)
     pbmboLogScreenSnapshot("event=altTabSessionStart")
 
+    // Start each gesture with a fresh border window even if the previous
+    // session ended without a hide, so none can span a reconfiguration.
+    pbmboDestroyHighlightBorder()
+
     // Debug: print overlay content to console
     print("=== ALT-TAB OVERLAY (showing) ===")
     for (index, entry) in swiftEntries.enumerated() {
@@ -1257,6 +1261,9 @@ public func pbmbo_show_highlight_border(x: Double, y: Double, w: Double, h: Doub
         window.ignoresMouseEvents = true
         // Match the Alt-Tab overlay: no implicit fade on orderFront/orderOut.
         window.animationBehavior = .none
+        // We own this reference and drop it to destroy the window; the default
+        // release-on-close would double-release it under ARC.
+        window.isReleasedWhenClosed = false
 
         let contentView = HighlightBorderContentView(frame: windowFrame)
         window.contentView = contentView
@@ -1385,9 +1392,30 @@ public func pbmbo_reposition_highlight_border(x: Double, y: Double, w: Double, h
     pbmboLogHighlightPlacement(action: "repositioned", requested: windowFrame, window_id: window_id)
 }
 
+/// Destroy the border window rather than merely hiding it.
+///
+/// A border window that outlives a display reconfiguration stops accepting
+/// position changes: the server keeps it pinned at a fixed origin and applies
+/// only size changes, so every box lands in the same wrong place. NSWindow.frame
+/// still reports the requested rect, which is why this hid behind an
+/// AppKit-only check for so long — kCGWindowBounds is the authority.
+///
+/// The alt-tab list overlays have never shown this, and they are recreated per
+/// session; the border box was the one window reused for the process lifetime.
+/// Recreating it the same way costs one borderless window per gesture and needs
+/// no reconfiguration detection — which matters, because macOS withheld every
+/// display notification through the transition that caused this.
+private func pbmboDestroyHighlightBorder() {
+    guard let window = highlightBorderWindow else { return }
+    window.orderOut(nil)
+    highlightEmblemView = nil
+    window.contentView = nil
+    highlightBorderWindow = nil
+}
+
 /// Hide highlight border window
 @_cdecl("pbmbo_hide_highlight_border")
 public func pbmbo_hide_highlight_border() {
-    highlightBorderWindow?.orderOut(nil)
+    pbmboDestroyHighlightBorder()
     print("HIGHLIGHT: Border hidden")
 }
