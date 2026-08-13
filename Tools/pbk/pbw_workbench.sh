@@ -25,6 +25,7 @@ PBW_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
 
 # Source dependencies
 source "${PBW_SCRIPT_DIR}/../buk/buc_command.sh"
+source "${PBW_SCRIPT_DIR}/../buk/bug_git.sh"
 
 # Show filename on each displayed line
 buc_context "${0##*/}"
@@ -75,6 +76,10 @@ pbw_route() {
 
     # Build both crates (viewer + PoC), then launch the standing PoC overlay
     pbw-b)
+      # A debugging session is only worth as much as its provenance: gate the
+      # build so the running binary always corresponds to a commit, and a log
+      # captured hours later can be traced to exact source.
+      bug_require_clean_tree "running the PoC"
       echo "Building viewer + PaneBoard PoC, then launching..."
       cargo build --manifest-path viewer/Cargo.toml "$@" || buc_die "viewer build failed"
       pbw_bundle_viewer "$@"
@@ -84,6 +89,7 @@ pbw_route() {
 
     # Build both crates (viewer + PoC), then run the timed PoC overlay (BURD_TOKEN_3 = seconds)
     pbw-t)
+      bug_require_clean_tree "running the timed PoC"
       local z_timeout="${BURD_TOKEN_3:-10}"
       echo "Building viewer + PaneBoard PoC, then running timed (timeout=${z_timeout}s)..."
       cargo build --manifest-path viewer/Cargo.toml "$@" || buc_die "viewer build failed"
