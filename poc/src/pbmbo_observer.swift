@@ -69,6 +69,20 @@ private func pbmboRectString(_ r: NSRect) -> String {
     return "(\(Int(r.origin.x)),\(Int(r.origin.y)),\(Int(r.size.width)),\(Int(r.size.height)))"
 }
 
+/// CGDirectDisplayID backing an NSScreen, or 0 if AppKit won't say.
+private func pbmboDisplayId(of screen: NSScreen) -> CGDirectDisplayID {
+    let key = NSDeviceDescriptionKey("NSScreenNumber")
+    return (screen.deviceDescription[key] as? NSNumber)?.uint32Value ?? 0
+}
+
+/// Whether this login session currently owns the console (false while locked).
+private func pbmboOnConsole() -> String {
+    guard let d = CGSessionCopyCurrentDictionary() as? [String: Any] else { return "<none>" }
+    let onConsole = (d["kCGSSessionOnConsoleKey"] as? Bool) ?? false
+    let loginDone = (d["kCGSessionLoginDoneKey"] as? Bool) ?? false
+    return "onConsole=\(onConsole) loginDone=\(loginDone)"
+}
+
 /// Height of the display at the global origin, for server↔Cocoa Y conversion.
 private func pbmboPrimaryHeight() -> CGFloat {
     for s in NSScreen.screens where s.frame.origin == .zero {
@@ -106,11 +120,35 @@ private func pbmboServerFrameCocoa(_ windowId: UInt32) -> NSRect? {
 /// border NSWindow drifted with it.
 func pbmboLogScreenSnapshot(_ tag: String) {
     let screens = NSScreen.screens
-    print("SCREEN: [\(pbmboTimestamp())] \(tag) count=\(screens.count)")
+    let running = NSApp?.isRunning ?? false
+    let policy = NSApp?.activationPolicy().rawValue ?? -1
+    print("SCREEN: [\(pbmboTimestamp())] \(tag) count=\(screens.count) nsapp_running=\(running) policy=\(policy) \(pbmboOnConsole())")
+
     for (idx, s) in screens.enumerated() {
         let primary = (s.frame.origin == .zero) ? " primary" : ""
-        print("SCREEN:   [\(idx)] \"\(s.localizedName)\" frame=\(pbmboRectString(s.frame)) visible=\(pbmboRectString(s.visibleFrame))\(primary)")
+
+        // AppKit caches its NSScreen objects and refreshes them as the
+        // application event loop handles a reconfiguration. This process runs a
+        // bare CFRunLoop and never starts that loop, so the cache may go stale —
+        // and because the configuration returns to identical values across a
+        // wake, a stale array is indistinguishable from a fresh one by geometry
+        // alone. Print the object address, so a rebuild is visible, and
+        // CoreGraphics' bounds for the same display id, so a disagreement
+        // between AppKit's belief and the hardware truth is named outright.
+        let did = pbmboDisplayId(of: s)
+        let obj = UInt(bitPattern: Unmanaged.passUnretained(s).toOpaque().hashValue) & 0xffffff
+        var cgStr = "<none>"
+        var disagree = ""
+        if did != 0 {
+            let cg = CGDisplayBounds(did)
+            cgStr = "(\(Int(cg.origin.x)),\(Int(cg.origin.y)),\(Int(cg.size.width)),\(Int(cg.size.height)))"
+            if abs(cg.size.width - s.frame.width) > 2 || abs(cg.size.height - s.frame.height) > 2 {
+                disagree = " APPKIT_CG_DISAGREE"
+            }
+        }
+        print("SCREEN:   [\(idx)] \"\(s.localizedName)\" id=\(did) obj=\(String(obj, radix: 16)) frame=\(pbmboRectString(s.frame)) visible=\(pbmboRectString(s.visibleFrame)) cg_bounds=\(cgStr)\(disagree)\(primary)")
     }
+
     if let hw = highlightBorderWindow {
         let screenName = hw.screen?.localizedName ?? "<none>"
         print("SCREEN:   highlightBorderWindow frame=\(pbmboRectString(hw.frame)) screen=\"\(screenName)\" visible=\(hw.isVisible)")
