@@ -190,63 +190,6 @@ private func pbmboDisplayReconfigCallback(_ display: CGDirectDisplayID,
     }
 }
 
-private var pbmboPumpTotal = 0
-private var pbmboPumpQuietTicks = 0
-
-/// Drain and dispatch AppKit's pending events.
-///
-/// This process runs a bare CFRunLoop and never starts the application event
-/// loop, so nothing consumes the NSEvents the window server delivers — including
-/// the display-reconfiguration events AppKit uses to refresh its screen table
-/// and window-placement state. That is the standing candidate for why every
-/// window this process creates is committed at the global origin after a wake
-/// until the process restarts.
-///
-/// Draining the queue by hand is the documented way to process AppKit events
-/// without NSApplication.run(). It must happen on the main thread, which the
-/// health tick that calls this already is.
-///
-/// The drain is bounded. This shares a run loop with the CGEventTap, and macOS
-/// disables a tap whose callbacks run long; a flood of events must not be able
-/// to stall the tick that exists to keep that tap alive.
-@_cdecl("pbmbo_pump_app_events")
-public func pbmbo_pump_app_events() {
-    let app = NSApplication.shared
-    var pumped = 0
-
-    // Dequeue only — deliberately no sendEvent.
-    //
-    // Dispatching into an NSApplication that was never started ended the
-    // process: it exited cleanly three seconds in, as the characterization
-    // windows closed, because AppKit believes it is inside its own run loop and
-    // a dispatched event stopped the main CFRunLoop out from under us.
-    //
-    // Draining without dispatching is also strictly closer to today's behaviour
-    // than dispatching is: nothing consumes these events at present, so they
-    // simply accumulate. PaneBoard takes its input from the CGEventTap and its
-    // overlays ignore mouse events, so discarding them costs nothing — while
-    // the dequeue itself still gives AppKit the chance to run the bookkeeping
-    // that refreshes its screen table.
-    while pumped < 32,
-          app.nextEvent(matching: .any,
-                        until: .distantPast,
-                        inMode: .default,
-                        dequeue: true) != nil {
-        pumped += 1
-    }
-
-    guard pumped > 0 else { return }
-    pbmboPumpTotal += pumped
-
-    // Report sparsely: a line every ~5s of non-empty ticks keeps a long capture
-    // readable, but never swallow a large drain, which is the interesting case.
-    pbmboPumpQuietTicks += 1
-    if pumped >= 8 || pbmboPumpQuietTicks >= 10 {
-        print("PUMP: [\(pbmboTimestamp())] drained=\(pumped) total=\(pbmboPumpTotal)")
-        pbmboPumpQuietTicks = 0
-    }
-}
-
 /// C-ABI entry so the Rust-side configuration poll can emit a timestamped
 /// AppKit snapshot alongside its own findings.
 @_cdecl("pbmbo_log_screen_snapshot")

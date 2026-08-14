@@ -126,6 +126,35 @@ than away from it.
 Source: [Godot PR #104397 — replace custom main loop with NSApp run](https://github.com/godotengine/godot/pull/104397),
 [nextEventMatchingMask must be called on the main thread](https://forums.ni.com/t5/LabVIEW/Labview-crashed-on-Mac-OS-X-Sierra-nextEventMatchingMask-should/td-p/3574639)
 
+### 6a. TRIED AND FAILED — the pump kills the process
+
+Item 6 was implemented and it does not work here. Recorded so nobody spends the
+idea twice.
+
+Draining from the 500ms health tick ended the process. It exited cleanly about
+three seconds in, as the characterization windows closed. Two variants were
+tried, both fatal:
+
+- `nextEvent(dequeue: true)` followed by `sendEvent` — process exits 0.
+- `nextEvent(dequeue: true)` alone, discarding the events — process also exits 0.
+
+That the *dequeue alone* is fatal is the informative part. `nextEventMatchingMask`
+re-enters the run loop to fetch, and calling it from inside a CFRunLoop timer
+callback nests a run loop within `CFRunLoopRun`; when the inner one unwinds the
+outer `CFRunLoopRun` returns, `main` falls through, and the process exits
+normally. Nothing crashes — which is why it presents as a clean exit rather than
+a fault, and why the log simply stops.
+
+The consequence for planning is worth stating plainly: **you cannot half-adopt the
+AppKit event loop from inside a CFRunLoop callback.** The "smaller middle ground"
+this memo previously recommended does not exist after all. If AppKit's event
+processing is needed, the honest route is `NSApp.run()` as the main loop, with a
+CFRunLoop observer for the existing sources — which is precisely what Godot
+converged on (item 6).
+
+Reverted in full. See commits `c6fa81d`, `4453c31`, and the revert that follows
+them.
+
 ### 7. No public way to force the screen cache to refresh
 
 There is no supported API to invalidate `NSScreen`'s cached list on demand. AppKit
@@ -152,17 +181,18 @@ answer.
 ## Suggested order of attack
 
 1. Reorder placement to show-then-move-async (item 1). Cheap, no `NSApp` change.
-2. Pump the AppKit event queue from the existing 500ms health tick (item 6).
-   Also cheap, already has a correct main-thread home, and unlike item 1 it
-   addresses the *reason* the process never notices a reconfiguration. These two
-   are independent and can be tried in either order — or together, though then a
-   success will not say which one earned it.
-3. If a causal answer is wanted before committing to either, the private
+2. ~~Pump the AppKit event queue from the health tick.~~ Tried; kills the
+   process (item 6a). Do not retry.
+3. If a causal answer is wanted before committing to anything larger, the private
    screen-cache invalidation (item 7) settles whether staleness is the cause.
    Diagnostic only; never ship it.
-4. Only then consider the activation-policy and `NSApp.run()` change, weighing
-   the focus-contention risk for a utility whose whole job is focus, and
-   expecting the idle-until-first-event behaviour noted in item 4.
+4. `NSApp.run()` as the main loop, with a CFRunLoop observer for the existing
+   sources. Item 6a removed the cheaper variant of this, so it is now the only
+   route to AppKit event processing. Weigh the focus-contention risk for a
+   utility whose whole job is focus, and expect the idle-until-first-event
+   behaviour noted in item 4.
+5. Restart-on-detection, which never touches AppKit and is the only option here
+   with no unknowns left in it.
 
 A restart-on-detection fallback remains available at any point: the condition is
 now reliably detectable via `kCGWindowBounds`, so PaneBoard can report it or

@@ -79,5 +79,4 @@ extern "C" {
     pub fn pbmbo_reposition_highlight_border(x: f64, y: f64, w: f64, h: f64, window_id: u32);
     pub fn pbmbo_hide_highlight_border();
     pub fn pbmbo_log_screen_snapshot(tag: *const std::os::raw::c_char);
-    pub fn pbmbo_pump_app_events();
 }
