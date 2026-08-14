@@ -214,12 +214,24 @@ public func pbmbo_pump_app_events() {
     let app = NSApplication.shared
     var pumped = 0
 
+    // Dequeue only — deliberately no sendEvent.
+    //
+    // Dispatching into an NSApplication that was never started ended the
+    // process: it exited cleanly three seconds in, as the characterization
+    // windows closed, because AppKit believes it is inside its own run loop and
+    // a dispatched event stopped the main CFRunLoop out from under us.
+    //
+    // Draining without dispatching is also strictly closer to today's behaviour
+    // than dispatching is: nothing consumes these events at present, so they
+    // simply accumulate. PaneBoard takes its input from the CGEventTap and its
+    // overlays ignore mouse events, so discarding them costs nothing — while
+    // the dequeue itself still gives AppKit the chance to run the bookkeeping
+    // that refreshes its screen table.
     while pumped < 32,
-          let event = app.nextEvent(matching: .any,
-                                    until: .distantPast,
-                                    inMode: .default,
-                                    dequeue: true) {
-        app.sendEvent(event)
+          app.nextEvent(matching: .any,
+                        until: .distantPast,
+                        inMode: .default,
+                        dequeue: true) != nil {
         pumped += 1
     }
 
