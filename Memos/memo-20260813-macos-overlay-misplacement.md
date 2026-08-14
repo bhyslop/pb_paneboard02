@@ -89,6 +89,56 @@ initializer anchor did not help.
 
 Source: [Sunshine: macOS host won't reliably update connected/removed screens](https://github.com/LizardByte/Sunshine/issues/2523)
 
+### 6. A periodic refresh does exist — pump the AppKit event queue
+
+Follow-up sweep, prompted by the question "is there something we could do every
+second to refresh this?" The answer is yes, and it is a documented pattern rather
+than a trick.
+
+The standard way to let AppKit process its events without running
+`NSApplication.run()` is to drain the queue by hand:
+
+```
+while let e = NSApp.nextEvent(matching: .any, until: .distantPast,
+                              inMode: .default, dequeue: true) {
+    NSApp.sendEvent(e)
+}
+```
+
+Two properties make this a good fit here. It **must** run on the main thread — and
+PaneBoard's 500ms health tick already does, so there is a correct home for it
+with no new machinery. And consuming events periodically is described as
+*particularly* important for applications that run in the background, which is
+exactly our shape: an agent process that never starts the application event loop
+and therefore never consumes the events AppKit would use to notice a display
+reconfiguration.
+
+Caveat worth respecting: manual event dispatch is not normal practice and is
+noted as able to produce odd behaviour. Introduce it deliberately, and watch for
+interactions with the CGEventTap, which is a separate mechanism on the same run
+loop.
+
+Precedent worth knowing: Godot removed its custom macOS main loop in favour of
+`[NSApp run]` plus a CFRunLoop observer — a real project meeting the same
+architectural tension and resolving it toward the application event loop rather
+than away from it.
+
+Source: [Godot PR #104397 — replace custom main loop with NSApp run](https://github.com/godotengine/godot/pull/104397),
+[nextEventMatchingMask must be called on the main thread](https://forums.ni.com/t5/LabVIEW/Labview-crashed-on-Mac-OS-X-Sierra-nextEventMatchingMask-should/td-p/3574639)
+
+### 7. No public way to force the screen cache to refresh
+
+There is no supported API to invalidate `NSScreen`'s cached list on demand. AppKit
+does it internally via the private `+[NSScreen _invalidateIfNeededForReason:]`,
+visible in the AppKit headers. As shipping SPI it is a non-starter, but as a
+*diagnostic* it is attractive: calling it once in the broken state would settle
+whether the stale screen cache actually causes the pinning, which the anchor
+experiment left unresolved. Treat that strictly as a throwaway experiment, never
+as a fix.
+
+Source: [AppKit NSScreen.h headers](https://github.com/w0lfschild/macOS_headers/blob/master/macOS/Frameworks/AppKit/1865.10.102/NSScreen.h),
+[NSScreen.screens](https://developer.apple.com/documentation/appkit/nsscreen/1388393-screens)
+
 ## What the literature did not answer
 
 Nothing found describes our precise signature: *position discarded while size is
@@ -102,10 +152,17 @@ answer.
 ## Suggested order of attack
 
 1. Reorder placement to show-then-move-async (item 1). Cheap, no `NSApp` change.
-2. If that fails, the bounded event-pump experiment described in `6e2f6e6`,
-   which only acts once the state is already broken.
-3. Only then consider the activation-policy and `NSApp.run()` change, weighing
-   the focus-contention risk for a utility whose whole job is focus.
+2. Pump the AppKit event queue from the existing 500ms health tick (item 6).
+   Also cheap, already has a correct main-thread home, and unlike item 1 it
+   addresses the *reason* the process never notices a reconfiguration. These two
+   are independent and can be tried in either order — or together, though then a
+   success will not say which one earned it.
+3. If a causal answer is wanted before committing to either, the private
+   screen-cache invalidation (item 7) settles whether staleness is the cause.
+   Diagnostic only; never ship it.
+4. Only then consider the activation-policy and `NSApp.run()` change, weighing
+   the focus-contention risk for a utility whose whole job is focus, and
+   expecting the idle-until-first-event behaviour noted in item 4.
 
 A restart-on-detection fallback remains available at any point: the condition is
 now reliably detectable via `kCGWindowBounds`, so PaneBoard can report it or
