@@ -1,11 +1,14 @@
-# Memo: macOS overlay misplacement after display wake — literature sweep
+# Memo: macOS overlay misplacement after display wake
 
 Date: 2026-08-13
+Status: **paused**. Cause not identified. Operational workaround is a manual
+restart of PaneBoard after each wake.
 Companion to: commit `6e2f6e6` (empty commit recording the investigation state)
 
-This memo records what a web sweep turned up *after* the investigation had
-narrowed the fault, and what each finding is worth. The empirical record lives in
-`6e2f6e6`; this is only the outside reading.
+Began as a web sweep taken *after* the investigation had narrowed the fault, and
+grew to hold the experiments that sweep suggested — including the ones that
+failed — and the remediation options that remain. The empirical record of the
+investigation itself lives in `6e2f6e6`; this memo is everything after it.
 
 ## The fault, in one paragraph
 
@@ -177,6 +180,63 @@ not about a process losing the ability to position windows at all. So the sweep
 narrowed the options and supplied one concrete untried fix, but it did not
 identify a matching root cause. Treat item 1 as the next experiment, not as an
 answer.
+
+## Remediation without a manual restart
+
+A restart clears the fault every time, and today that restart is manual. Three
+things shape what can replace it.
+
+**There is no Swift component to recycle.** `build.rs` compiles
+`pbmbo_observer.swift` with `swiftc -c` into an object file and links it into the
+`paneboard-poc` binary. Rust and Swift are one process in one address space, and
+the FFI is a function call across a link boundary, not a connection. Nothing can
+be disconnected and reattached.
+
+**The broken state is process-scoped.** It is the process's connection to the
+window server, and there is no public way to drop and rebuild it in place — the
+same wall as the screen cache in item 7.
+
+**But the blast radius is small, and that is the opening.** The overlays are the
+only windows PaneBoard creates. Tiling moves *other* applications' windows
+through AX, and that path stayed provably correct throughout — the target
+window's own server bounds matched our computed rect on every placement, even
+while the overlays were pinned. So the entire fault is confined to PaneBoard's
+own drawing, and isolating the drawing isolates all of it.
+
+### Option A — re-exec on detection
+
+The condition is reliably detectable via `kCGWindowBounds`, so the process can
+notice it and re-execute itself. Cheapest by a wide margin; removes the manual
+step entirely.
+
+Costs: clipboard history is lost, the MRU rebuilds from scratch, and there is a
+gap while the event tap re-registers. Accessibility permission ought to survive
+because the binary path is unchanged, but that is worth verifying rather than
+assuming — dev binaries and TCC have a history.
+
+### Option B — move the overlays into a helper process
+
+Host the alt-tab list, highlight border, emblems, and characterization windows in
+a child process, and recycle *that* on detection. The main process keeps its
+event tap, MRU, clipboard history, and AX permission untouched.
+
+The pattern is already proven in this repo: `pbmv_viewer.rs` runs
+`ensure_viewer()` on each alt-tab, finds the viewer helper by bundle id, and
+relaunches it if absent. A second helper would follow the same shape.
+
+Costs: it is a real chunk of work — the overlay rendering has to move, and IPC
+has to carry pane geometry and emblem data. It is the principled answer, because
+it isolates the fault completely, preserves all state, and stops depending on a
+macOS behaviour that was never explained.
+
+### Option C — address the cause instead
+
+`NSApp.run()` as the main loop with a CFRunLoop observer, per items 6a and 4. The
+only candidate that treats the cause rather than the symptom, and the only one
+carrying focus-contention risk in a utility whose whole job is focus.
+
+Recommendation on the record: A to stop the bleeding, B when there is appetite
+for the real fix. A and B are both workarounds around a cause still unidentified.
 
 ## Suggested order of attack
 
