@@ -424,6 +424,10 @@ extern "C" fn timeout_exit_callback(_timer: *mut c_void, _info: *mut c_void) {
 // Timer callback to check event tap health and switcher state
 extern "C" fn tap_health_check_timer(_timer: *mut c_void, _info: *mut c_void) {
     unsafe {
+        // Runs first: the configuration poll below reads AppKit state, and this
+        // is what gives AppKit the chance to have noticed a reconfiguration.
+        crate::pbmbo_overlay::pbmbo_pump_app_events();
+
         crate::pbmbd_display::poll_display_configuration();
 
         let tap = EVENT_TAP_PTR.load(std::sync::atomic::Ordering::Acquire);
