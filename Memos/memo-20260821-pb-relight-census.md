@@ -84,3 +84,65 @@ so a fresh mint from the kit trunk is the freight.
       pb:Tools/buk      brumby  overlanded  (never-sync — not reported)
 
 The row this pace closes on is `pb:Tools/buk`, and it reads as the docket predicted.
+
+## Closing — what the drive settled
+
+Recorded against the baseline above, in the same session.
+
+The modernization alone carried the station past the launcher.
+Driven before any freight landed, against brand 1017,
+the emitter tabtarget reached `buv`-based station validation
+and refused there on `BURS_TACKROOM` unenrolled —
+the third-in-line failure the first-drive memo predicted and could never reach.
+Reaching a `buv` refusal at all is the proof:
+the module that refused is the one the old bootstrap never loaded.
+
+Both emplace blockers are discharged, and neither needed a code pace.
+Brand 1059, minted from the kit trunk at `f1f615cd0`,
+installed through the rescue door into this consumer's own BURC at exit 0 —
+`parcel contains [buk] but target expects [buk,jjk,vvk]` is gone,
+the guard testing containment where it tested equality.
+Then the same freight drove through the maintenance door, `buw-pe`, at exit 0,
+routing through the parcel's own bundled engine and reporting read-only afterward,
+exactly as the install-door constraints cinched it.
+
+**Finding 4's acceptance test now works as stated, for two reasons rather than one.**
+The memo's caveat was that `../logs-buk/` is an estate-shared corpus
+keyed by colophon alone, so a `hist-` filename proves *some* tree passed its launcher, never this one.
+Under a pace kraal the log root resolves per-kraal —
+`jjqd_scratch/jjqb_203570_260820_billet_pb_CAAKB/logs-buk/` — so the corpus is no longer shared.
+And the log body now opens with a `Git context:` line carrying the producing tree's own HEAD,
+which disambiguates even where a corpus is shared.
+The announced `hist-` path is the one to read;
+it is announced on the dispatch's first line and never worth locating by newest-match.
+
+## Two conditions found and not repaired
+
+Neither is pb's, and neither is this pace's to fix.
+
+**The tabtarget and launcher emitters cannot receive their arguments.**
+`buw-tt-cbl`, `buw-tt-cbn`, `buw-tt-cil`, `buw-tt-cin` and `buw-tt-cl`
+are enrolled with an empty folio channel,
+so the workbench drops the positional arguments they require
+— `Colophon 'buw-tt-cbl' takes no folio; ignoring unexpected argument(s)` —
+and the command dies on its own usage line.
+The channel model offers `imprint`, `param1` or empty, and these emitters need two arguments,
+so no enrollment available today would serve them.
+This is kit-wide, not consumer-specific:
+the kit repo carries no `buut` launcher of its own either,
+and the direct-CLI door that once passed arguments through (`buut_cli.sh` behind its own stub)
+has no launcher anywhere in the estate.
+The practical consequence is that the Launcher Stub Law's
+"regenerated through `buut_launcher`, never hand-maintained"
+has no working route from a tabtarget, and hand-repair is the only path.
+The stubs and tabtargets this pace wrote were verified byte-identical
+to the emitter's own output and to the kit repo's own copies instead.
+
+**pb's `jja-*` tabtargets are unrouted.**
+`jja-c`, `jja-i` and `jja-u` dispatch to `jjw_workbench`,
+which is correct and now resolves,
+but `Tools/jjk/jjz_zipper.sh` enrolls no `jja-*` colophon at all — only the `jjw-tf*` family.
+They were modernized in shape as the docket ordered,
+so they now fail legibly at dispatch rather than at a launcher that did not exist,
+but they remain vestigial.
+Whether pb still wants a JJ install door is an operator question, not a moorings one.
