@@ -216,3 +216,5 @@ Corrected by the re-drive:
 
 The verdict is unchanged: the emplace is blocked in this consumer and did not land,
 the machinery behind the guard is sound, and a second independent blocker stands behind the first.
+
+Where these findings travel: the two emplace blockers and the launcher-stub darkness are consumed by the parcel-consumer-hardening heat — its bootstrap-containment-guard, install-tabtarget and pb-relight paces — and the guard-ordering and hist-file findings ride along with them.
