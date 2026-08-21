@@ -46,6 +46,8 @@ source "${BUTT_BUTS_DIR}/butcbx_burx.sh"
 source "${BUTT_BUTS_DIR}/butcfc_facts.sh"
 source "${BUTT_BUTS_DIR}/butclc_links.sh"
 source "${BUTT_BUTS_DIR}/butcym_yelp.sh"
+source "${BUTT_BUTS_DIR}/butcdc_color.sh"
+source "${BUTT_BUTS_DIR}/butcds_desuetude.sh"
 
 buc_context "${0##*/}"
 zbuv_kindle
@@ -55,7 +57,7 @@ zburd_kindle
 # Registration
 
 butt_kindle() {
-  butr_kindle
+  zbutr_kindle
 
   # All fixtures are pure local
   butr_suite_enroll "self-test"
@@ -96,7 +98,7 @@ butt_kindle() {
   butr_case_enroll "burx-exchange" butcbx_multi_preexist_tcase
   butr_case_enroll "burx-exchange" butcbx_multi_empty_content_tcase
 
-  # fact-chaining fixture (7 cases)
+  # fact-chaining fixture (9 cases)
   butr_fixture_enroll "fact-chaining" "" "zbutt_noop_baste"
   butr_case_enroll "fact-chaining" butcfc_relay_forwards_tcase
   butr_case_enroll "fact-chaining" butcfc_relay_preserves_current_tcase
@@ -104,6 +106,8 @@ butt_kindle() {
   butr_case_enroll "fact-chaining" butcfc_read_fact_tcase
   butr_case_enroll "fact-chaining" butcfc_read_fact_absent_tcase
   butr_case_enroll "fact-chaining" butcfc_elect_express_tcase
+  butr_case_enroll "fact-chaining" butcfc_elect_after_relay_tcase
+  butr_case_enroll "fact-chaining" butcfc_chain_survives_consumption_tcase
   butr_case_enroll "fact-chaining" butcfc_elect_chain_tcase
 
   # buh-link fixture (3 cases)
@@ -112,7 +116,14 @@ butt_kindle() {
   butr_case_enroll "buh-link" butclc_link_fallback_tcase
   butr_case_enroll "buh-link" butclc_link_variants_tcase
 
-  # buym-yelp fixture (15 cases)
+  # dispatch-color fixture (4 cases)
+  butr_fixture_enroll "dispatch-color" "" "zbutt_noop_baste"
+  butr_case_enroll "dispatch-color" butcdc_no_color_forces_zero_tcase
+  butr_case_enroll "dispatch-color" butcdc_explicit_one_passes_through_tcase
+  butr_case_enroll "dispatch-color" butcdc_explicit_zero_passes_through_tcase
+  butr_case_enroll "dispatch-color" butcdc_auto_leaves_operator_input_unset_tcase
+
+  # buym-yelp fixture (18 cases)
   butr_fixture_enroll "buym-yelp" "" "zbutt_noop_baste"
   butr_case_enroll "buym-yelp" butcym_cmd_resolve_tcase
   butr_case_enroll "buym-yelp" butcym_link_osc8_tcase
@@ -129,6 +140,16 @@ butt_kindle() {
   butr_case_enroll "buym-yelp" butcym_strip_fast_path_tcase
   butr_case_enroll "buym-yelp" butcym_cold_die_tcase
   butr_case_enroll "buym-yelp" butcym_cold_die_plain_tcase
+  butr_case_enroll "buym-yelp" butcym_verdict_zero_beats_env_tcase
+  butr_case_enroll "buym-yelp" butcym_verdict_one_beats_env_tcase
+  butr_case_enroll "buym-yelp" butcym_fallback_non_tty_tcase
+
+  # stale-launcher fixture (4 cases)
+  butr_fixture_enroll "stale-launcher" "" "zbutt_noop_baste"
+  butr_case_enroll "stale-launcher" butcds_stale_bootstrap_refuses_tcase
+  butr_case_enroll "stale-launcher" butcds_refusal_names_condition_and_remedy_tcase
+  butr_case_enroll "stale-launcher" butcds_bash_command_not_found_is_gone_tcase
+  butr_case_enroll "stale-launcher" butcds_sound_bootstrap_passes_tcase
 }
 
 zbutt_noop_baste() {
@@ -154,7 +175,7 @@ butt_route() {
       butd_run_suite "self-test"
       ;;
     *)
-      buc_die "Unknown command: ${z_command}"
+      buc_die_now "Unknown command: ${z_command}"
       ;;
   esac
 }
@@ -162,7 +183,7 @@ butt_route() {
 butt_main() {
   local -r z_command="${1:-}"
   shift || true
-  test -n "${z_command}" || buc_die "No command specified"
+  test -n "${z_command}" || buc_die_now "No command specified"
   butt_route "${z_command}" "$@"
 }
 

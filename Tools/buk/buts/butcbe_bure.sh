@@ -89,22 +89,22 @@ zbutcbe_unexpected_var() {
 
 butcbe_tweak_empty_tcase() {
   buto_trace "BURE: empty tweaks (default) must pass"
-  buto_unit_expect_ok zbutcbe_tweak_empty
+  buto_unit_expect_ok_status zbutcbe_tweak_empty
 }
 
 butcbe_tweak_both_set_tcase() {
   buto_trace "BURE: both tweak name and value set must pass"
-  buto_unit_expect_ok zbutcbe_tweak_both_set
+  buto_unit_expect_ok_status zbutcbe_tweak_both_set
 }
 
 butcbe_tweak_name_only_tcase() {
   buto_trace "BURE: tweak name without value must pass"
-  buto_unit_expect_ok zbutcbe_tweak_name_only
+  buto_unit_expect_ok_status zbutcbe_tweak_name_only
 }
 
 butcbe_tweak_value_only_tcase() {
   buto_trace "BURE: tweak value without name must pass"
-  buto_unit_expect_ok zbutcbe_tweak_value_only
+  buto_unit_expect_ok_status zbutcbe_tweak_value_only
 }
 
 ######################################################################
@@ -122,7 +122,7 @@ butcbe_tweak_value_too_long_tcase() {
 
 butcbe_label_valid_tcase() {
   buto_trace "BURE: label at max length (120 chars) must pass"
-  buto_unit_expect_ok zbutcbe_label_valid
+  buto_unit_expect_ok_status zbutcbe_label_valid
 }
 
 butcbe_label_too_long_tcase() {

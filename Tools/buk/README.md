@@ -147,11 +147,11 @@ workbench_main "$@"
 tt/jjt-f.TestFavor.sh → Launcher → BUD → jjt_testbench.sh
                                               │
                                               ▼ invokes
-                                    tt/jjw-hs.HeatSaddle.sh → Launcher → BUD → jjw_workbench.sh
-                                              │                    ▲
-                                              ▼ assesses           │
-                                         [pass/fail]          environment
-                                                                 gate
+                                    tt/jjw-tfP1.ProvisionPhase1.sh → Launcher → BUD → jjw_workbench.sh
+                                              │                           ▲
+                                              ▼ assesses                  │
+                                         [pass/fail]                 environment
+                                                                        gate
 ```
 
 **Critical**: Each tabtarget under test passes through its own launcher. The launcher acts as an **environment gate**—testbench configuration cannot bleed into workbench execution. This isolation ensures tests exercise real dispatch paths.
@@ -567,17 +567,26 @@ This mirrors MBC's `MBC_TTPARAM__FIRST` through `MBC_TTPARAM__FIFTH` pattern.
 
 | Variable | Values | Description |
 |----------|--------|-------------|
-| `BURE_COLOR` | `0` or `1` | Color policy after terminal detection; respects `NO_COLOR` |
+| `BURE_COLOR` | `auto`, `0`, or `1` | Operator override for color policy; read at dispatch, never written. The resolved verdict lands in `BURD_COLOR`; `NO_COLOR` is respected |
 
 #### Control Variables
 
-Set these *before* invoking a tabtarget to modify dispatch behavior:
+Set these *before* invoking a tabtarget to modify dispatch behavior (BURE is
+the ambient override family — the only one set from the caller's environment):
 
 | Variable | Values | Effect |
 |----------|--------|--------|
 | `BURE_VERBOSE` | `0`, `1`, `2`, `3` | `0`=quiet, `1`=debug output, `2`=bash trace (`set -x`), `3`=trace + deep diagnostics |
-| `BURD_NO_LOG` | any value | Disables all logging |
-| `BURD_INTERACTIVE` | any value | Line-buffered output mode for interactive commands |
+
+Two dispatch-mode flags exist but are *not* ambient controls: they are static
+properties of a tabtarget, exported in its own `BURD_*` block, and never set
+from the environment — a launching harness strips any inherited copy so each
+launched context chooses its own mode:
+
+| Variable | Values | Effect |
+|----------|--------|--------|
+| `BURD_NO_LOG` | any value | This tabtarget's dispatch runs unlogged (no log files, no station load, streams unmerged) |
+| `BURD_INTERACTIVE` | any value | This tabtarget runs interactive: output to terminal via uncurated tee |
 
 #### The Three-Log Pattern
 

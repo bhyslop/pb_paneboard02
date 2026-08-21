@@ -31,13 +31,13 @@ set -euo pipefail
 butcbx_burx_dual_write_tcase() {
   buto_trace "BURX: burx.env exists in both output and temp dirs (dual-write)"
 
-  test -f "${BURD_TEMP_DIR}/${BUF_burx_env}"  || buto_fatal "Missing temp dir copy"
-  test -f "${BURD_OUTPUT_DIR}/${BUF_burx_env}" || buto_fatal "Missing output dir copy"
+  test -f "${BURD_TEMP_DIR}/${BUF_burx_env}"  || buto_fatal_now "Missing temp dir copy"
+  test -f "${BURD_OUTPUT_DIR}/${BUF_burx_env}" || buto_fatal_now "Missing output dir copy"
 
   local -r z_tmp_content=$(<"${BURD_TEMP_DIR}/${BUF_burx_env}")
   local -r z_out_content=$(<"${BURD_OUTPUT_DIR}/${BUF_burx_env}")
   test "${z_tmp_content}" = "${z_out_content}" \
-    || buto_fatal "Dual-write mismatch between output and temp dirs"
+    || buto_fatal_now "Dual-write mismatch between output and temp dirs"
 }
 
 butcbx_burx_fields_tcase() {
@@ -48,21 +48,21 @@ butcbx_burx_fields_tcase() {
   # Verify sourceable in a subshell
   local z_status=0
   ( source "${z_burx}" ) || z_status=$?
-  test "${z_status}" -eq 0 || buto_fatal "burx.env is not sourceable (status ${z_status})"
+  test "${z_status}" -eq 0 || buto_fatal_now "burx.env is not sourceable (status ${z_status})"
 
   # Source and check all initial fields
   source "${z_burx}"
 
-  test -n "${BURX_PID:-}"        || buto_fatal "BURX_PID missing or empty"
-  test -n "${BURX_BEGAN_AT:-}"   || buto_fatal "BURX_BEGAN_AT missing or empty"
-  test -n "${BURX_TABTARGET:-}"  || buto_fatal "BURX_TABTARGET missing or empty"
-  test -n "${BURX_TEMP_DIR:-}"   || buto_fatal "BURX_TEMP_DIR missing or empty"
-  test -n "${BURX_TRANSCRIPT:-}" || buto_fatal "BURX_TRANSCRIPT missing or empty"
-  test -n "${BURX_LOG_HIST:-}"   || buto_fatal "BURX_LOG_HIST missing or empty"
+  test -n "${BURX_PID:-}"        || buto_fatal_now "BURX_PID missing or empty"
+  test -n "${BURX_BEGAN_AT:-}"   || buto_fatal_now "BURX_BEGAN_AT missing or empty"
+  test -n "${BURX_TABTARGET:-}"  || buto_fatal_now "BURX_TABTARGET missing or empty"
+  test -n "${BURX_TEMP_DIR:-}"   || buto_fatal_now "BURX_TEMP_DIR missing or empty"
+  test -n "${BURX_TRANSCRIPT:-}" || buto_fatal_now "BURX_TRANSCRIPT missing or empty"
+  test -n "${BURX_LOG_HIST:-}"   || buto_fatal_now "BURX_LOG_HIST missing or empty"
 
   # BURX_LABEL may be empty — verify it is declared (not missing)
   local -r z_label_check="${BURX_LABEL+declared}"
-  test "${z_label_check}" = "declared" || buto_fatal "BURX_LABEL not declared in burx.env"
+  test "${z_label_check}" = "declared" || buto_fatal_now "BURX_LABEL not declared in burx.env"
 }
 
 butcbx_burx_preexist_tcase() {
@@ -74,7 +74,7 @@ butcbx_burx_preexist_tcase() {
   local z_status=0
   buf_write_fact_single "${BUF_burx_env}" "duplicate-write" 2>"${z_stderr}" || z_status=$?
   test "${z_status}" -ne 0 \
-    || buto_fatal "buf_write_fact_single should have failed on preexisting burx.env"
+    || buto_fatal_now "buf_write_fact_single should have failed on preexisting burx.env"
 }
 
 butcbx_burx_timestamp_format_tcase() {
@@ -85,7 +85,7 @@ butcbx_burx_timestamp_format_tcase() {
   # Format: YYYYMMDD-HHMMSS.NNNNNNNNN
   local -r z_pattern='^[0-9]{8}-[0-9]{6}\.[0-9]{9}$'
   [[ "${BURX_BEGAN_AT}" =~ ${z_pattern} ]] \
-    || buto_fatal "BURX_BEGAN_AT format invalid: '${BURX_BEGAN_AT}' (expected YYYYMMDD-HHMMSS.NNNNNNNNN)"
+    || buto_fatal_now "BURX_BEGAN_AT format invalid: '${BURX_BEGAN_AT}' (expected YYYYMMDD-HHMMSS.NNNNNNNNN)"
 }
 
 butcbx_multi_dual_write_tcase() {
@@ -96,15 +96,15 @@ butcbx_multi_dual_write_tcase() {
   local -r z_filename="${z_root}.${z_ext}"
   buf_write_fact_multi "${z_root}" "${z_ext}" "alpha"
 
-  test -f "${BURD_TEMP_DIR}/${z_filename}"   || buto_fatal "Missing temp dir copy: ${z_filename}"
-  test -f "${BURD_OUTPUT_DIR}/${z_filename}" || buto_fatal "Missing output dir copy: ${z_filename}"
+  test -f "${BURD_TEMP_DIR}/${z_filename}"   || buto_fatal_now "Missing temp dir copy: ${z_filename}"
+  test -f "${BURD_OUTPUT_DIR}/${z_filename}" || buto_fatal_now "Missing output dir copy: ${z_filename}"
 
   local -r z_tmp_content=$(<"${BURD_TEMP_DIR}/${z_filename}")
   local -r z_out_content=$(<"${BURD_OUTPUT_DIR}/${z_filename}")
   test "${z_tmp_content}" = "${z_out_content}" \
-    || buto_fatal "Dual-write mismatch for multi: ${z_filename}"
+    || buto_fatal_now "Dual-write mismatch for multi: ${z_filename}"
   test "${z_tmp_content}" = "alpha" \
-    || buto_fatal "Multi content mismatch: got '${z_tmp_content}' expected 'alpha'"
+    || buto_fatal_now "Multi content mismatch: got '${z_tmp_content}' expected 'alpha'"
 }
 
 butcbx_multi_preexist_tcase() {
@@ -119,7 +119,7 @@ butcbx_multi_preexist_tcase() {
   local z_status=0
   buf_write_fact_multi "${z_root}" "${z_ext}" "second" 2>"${z_stderr}" || z_status=$?
   test "${z_status}" -ne 0 \
-    || buto_fatal "buf_write_fact_multi should have failed on preexisting file"
+    || buto_fatal_now "buf_write_fact_multi should have failed on preexisting file"
 }
 
 butcbx_multi_empty_content_tcase() {
@@ -130,8 +130,8 @@ butcbx_multi_empty_content_tcase() {
   local -r z_filename="${z_root}.${z_ext}"
   buf_write_fact_multi "${z_root}" "${z_ext}" ""
 
-  test -f "${BURD_TEMP_DIR}/${z_filename}"   || buto_fatal "Missing temp dir copy: ${z_filename}"
-  test -f "${BURD_OUTPUT_DIR}/${z_filename}" || buto_fatal "Missing output dir copy: ${z_filename}"
+  test -f "${BURD_TEMP_DIR}/${z_filename}"   || buto_fatal_now "Missing temp dir copy: ${z_filename}"
+  test -f "${BURD_OUTPUT_DIR}/${z_filename}" || buto_fatal_now "Missing output dir copy: ${z_filename}"
 }
 
 # eof

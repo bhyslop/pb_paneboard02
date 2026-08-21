@@ -23,24 +23,31 @@
 # return variable (z_buym_yelp).  No subshells, no stdout, no stderr,
 # cannot fail.
 #
-# All terminal capability decisions are deferred to buyf_format_yawp,
+# All terminal capability decisions are deferred to buym_format_yawp,
 # which resolves diastema markers into ANSI color sequences and OSC-8
 # hyperlinks at display time.
 #
 # Namespace:
-#   buyy_  — yelp yawp functions (set z_buym_yelp)
-#   buyc_  — configurators (set ZBUYM_CONFIG_MODE before kindle)
-#   buyf_  — format yawp (set z_buym_format)
-#   buym_  — module infrastructure (kindle, sentinel)
+#   buym_   — every public declaration here.  The module is one file, so one
+#             prefix homes all of it and the groups below are section
+#             boundaries rather than sibling prefixes.
+#   zbuym_  — internal (kindle, sentinel, the tabtarget glob).
+#   BUYC_   — the kindle-time color palette, named for color and not for the
+#             configurators that select it.
+#
+# Groups, by section:
+#   configurators (set ZBUYM_CONFIG_MODE before kindle)
+#   yelp yawps    (set z_buym_yelp)
+#   format yawps  (set z_buym_format)
 #
 # Usage pattern — yawp+capture on one line via semicolon:
-#   buyy_cmd_yawp "git status";            local -r z_cmd="${z_buym_yelp}"
-#   buyy_link_yawp "${z_docs}" "Depot";    local -r z_depot="${z_buym_yelp}"
+#   buym_cmd_yawp "git status";            local -r z_cmd="${z_buym_yelp}"
+#   buym_link_yawp "${z_docs}" "Depot";    local -r z_depot="${z_buym_yelp}"
 #   buh_line "Run ${z_cmd} to see your ${z_depot} status."
 #
 # Never use z_buym_yelp directly in buh_line — the semicolon form
 # captures immediately, but the slot is still overwritten by the
-# next yawp.  See buyy_* section for details.
+# next yawp.  See the yelp yawp section for details.
 
 set -euo pipefail
 
@@ -49,16 +56,25 @@ test -z "${ZBUYM_SOURCED:-}" || return 0
 ZBUYM_SOURCED=1
 
 ######################################################################
-# Configurators (buyc_*)
+# Configurators
 #
 # Called before kindle.  Each sets ZBUYM_CONFIG_MODE flag.
 # Kindle reads the mode and defines readonly BUYC_* palette.
+#
+# THESE THREE CARRY NO SENTINEL AND MUST NOT GAIN ONE.  Every regular function
+# opens on its module's sentinel by convention; these are the
+# deliberate exception, and the reason is the line above rather than oversight.
+# zbuym_sentinel LAZILY KINDLES rather than dying, so a guard here would kindle
+# the module at the moment the mode is being set — freezing the readonly BUYC_*
+# palette against the DEFAULT mode and discarding the caller's choice.  The
+# failure would be silent: wrong colors, no error.  A conformance read over this
+# rule will name these three; they are left standing knowingly, not overlooked.
 
 ZBUYM_CONFIG_MODE="dispatch"
 
-buyc_dispatch()      { ZBUYM_CONFIG_MODE="dispatch"; }
-buyc_unconditional() { ZBUYM_CONFIG_MODE="unconditional"; }
-buyc_plain()         { ZBUYM_CONFIG_MODE="plain"; }
+buym_dispatch()      { ZBUYM_CONFIG_MODE="dispatch"; }
+buym_unconditional() { ZBUYM_CONFIG_MODE="unconditional"; }
+buym_plain()         { ZBUYM_CONFIG_MODE="plain"; }
 
 ######################################################################
 # Module kindle — defines all constants and initializes mutable state
@@ -76,9 +92,22 @@ zbuym_kindle() {
       z_use_color=0
       ;;
     dispatch|*)
-      if test -z "${NO_COLOR:-}" && test -n "${TERM:-}" && test "${TERM}" != "dumb"; then
-        z_use_color=1
-      fi
+      # The dispatch verdict wins when present: under dispatch this module's
+      # streams are always pipes (the log relay), so a local tty probe here
+      # carries no signal — the pre-pipe tty truth lives only in BURD_COLOR,
+      # computed once by zbud_resolve_color (BUr_q2m).  Local detection is
+      # the undispatched fallback alone, and probes stderr because every
+      # buym-rendered line lands there.
+      case "${BURD_COLOR:-}" in
+        0|1)
+          z_use_color="${BURD_COLOR}"
+          ;;
+        *)
+          if test -z "${NO_COLOR:-}" && test -n "${TERM:-}" && test "${TERM}" != "dumb" && test -t 2; then
+            z_use_color=1
+          fi
+          ;;
+      esac
       ;;
   esac
 
@@ -125,7 +154,7 @@ zbuym_kindle() {
 
   # --- Diastema markers (non-printing byte sequences) ---
   # Each marker is a unique non-printing sequence that yelp yawp functions
-  # stamp into strings.  buyf_format_yawp resolves them at display time.
+  # stamp into strings.  buym_format_yawp resolves them at display time.
   # Prefix byte is \x02 (STX) — \x01 (SOH) is reserved by bash internally
   # for BASH_REMATCH group delimiting and gets silently dropped from matches.
   readonly ZBUYM_DIASTEMA_CMD=$'\x02\x11'
@@ -154,32 +183,32 @@ zbuym_sentinel() {
 
 
 ######################################################################
-# Yelp yawp functions (buyy_*)
+# Yelp yawp functions
 #
 # Pure assignment to z_buym_yelp.  No stdout, no stderr, cannot fail.
 # Caller MUST capture on the same line via semicolon — next yawp
 # overwrites the slot.  See module header for usage pattern.
 
-# buyy_cmd_yawp text;  local -r z_cmd="${z_buym_yelp}"
-buyy_cmd_yawp() {
+# buym_cmd_yawp text;  local -r z_cmd="${z_buym_yelp}"
+buym_cmd_yawp() {
   zbuym_sentinel
   z_buym_yelp="${ZBUYM_DIASTEMA_CMD}${1:-}${ZBUYM_DIASTEMA_END}"
 }
 
-# buyy_ui_yawp text;  local -r z_ui="${z_buym_yelp}"
-buyy_ui_yawp() {
+# buym_ui_yawp text;  local -r z_ui="${z_buym_yelp}"
+buym_ui_yawp() {
   zbuym_sentinel
   z_buym_yelp="${ZBUYM_DIASTEMA_UI}${1:-}${ZBUYM_DIASTEMA_END}"
 }
 
-# buyy_href_yawp url display;  local -r z_href="${z_buym_yelp}"
-buyy_href_yawp() {
+# buym_href_yawp url display;  local -r z_href="${z_buym_yelp}"
+buym_href_yawp() {
   zbuym_sentinel
   z_buym_yelp="${ZBUYM_DIASTEMA_HREF_URL}${1:-}${ZBUYM_DIASTEMA_HREF_TEXT}${2:-}${ZBUYM_DIASTEMA_END}"
 }
 
-# buyy_link_yawp base_url anchor [display];  local -r z_link="${z_buym_yelp}"
-buyy_link_yawp() {
+# buym_link_yawp base_url anchor [display];  local -r z_link="${z_buym_yelp}"
+buym_link_yawp() {
   zbuym_sentinel
   local -r z_url="${1:-}#${2:-}"
   local -r z_display="${3:-${2:-}}"
@@ -201,8 +230,8 @@ zbuym_tt_path() {
   test -e "${z_matches[0]}" && z_buym_tt_path="${z_matches[0]}" || z_buym_tt_path=""
 }
 
-# buyy_tt_yawp colophon [imprint] [args];  local -r z_tt="${z_buym_yelp}"
-buyy_tt_yawp() {
+# buym_tt_yawp colophon [imprint] [args];  local -r z_tt="${z_buym_yelp}"
+buym_tt_yawp() {
   zbuym_sentinel
   local -r z_colophon="${1:-}"
   zbuym_tt_path "${z_colophon}" "${2:-}"
@@ -213,28 +242,28 @@ buyy_tt_yawp() {
   z_buym_yelp="${ZBUYM_DIASTEMA_TT}${z_path}${3:-}${ZBUYM_DIASTEMA_END}"
 }
 
-# buyy_pass_yawp text;  local -r z_pass="${z_buym_yelp}"
-buyy_pass_yawp() {
+# buym_pass_yawp text;  local -r z_pass="${z_buym_yelp}"
+buym_pass_yawp() {
   zbuym_sentinel
   z_buym_yelp="${ZBUYM_DIASTEMA_PASS}${1:-}${ZBUYM_DIASTEMA_END}"
 }
 
-# buyy_warn_yawp text;  local -r z_warn="${z_buym_yelp}"
-buyy_warn_yawp() {
+# buym_warn_yawp text;  local -r z_warn="${z_buym_yelp}"
+buym_warn_yawp() {
   zbuym_sentinel
   z_buym_yelp="${ZBUYM_DIASTEMA_WARN}${1:-}${ZBUYM_DIASTEMA_END}"
 }
 
-# buyy_fail_yawp text;  local -r z_fail="${z_buym_yelp}"
-buyy_fail_yawp() {
+# buym_fail_yawp text;  local -r z_fail="${z_buym_yelp}"
+buym_fail_yawp() {
   zbuym_sentinel
   z_buym_yelp="${ZBUYM_DIASTEMA_FAIL}${1:-}${ZBUYM_DIASTEMA_END}"
 }
 
 ######################################################################
-# Format yawp (buyf_*)
+# Format yawp
 #
-# buyf_format_yawp color string
+# buym_format_yawp color string
 #   The single intelligence point.  Takes a BUYC_* color constant
 #   (the line's ambient color) and a diastema-marked string.
 #   Sets z_buym_format with the resolved string.
@@ -245,7 +274,7 @@ buyy_fail_yawp() {
 #   3. All DIASTEMA_END → ambient color
 #   4. Prepend ambient, append BUYC_RESET
 
-buyf_format_yawp() {
+buym_format_yawp() {
   zbuym_sentinel
   local z_ambient="${1:-}"
   local z_str="${2:-}"
@@ -309,15 +338,15 @@ buyf_format_yawp() {
   z_buym_format="${z_ambient}${z_str}${BUYC_RESET}"
 }
 
-# buyf_strip_yawp string
-#   Plain-text sibling of buyf_format_yawp.  Takes a diastema-marked
+# buym_strip_yawp string
+#   Plain-text sibling of buym_format_yawp.  Takes a diastema-marked
 #   string and resolves it to bare text — no ANSI color, no OSC-8
 #   hyperlinks.  HREF and LINK degrade to "text <url>"; all other
 #   markers vanish.  Independent of terminal mode (the kindle's color
 #   decision does not gate this path), so a transcript carries neither
 #   ANSI nor diastema bytes regardless of TERM.  Sets z_buym_format.
 
-buyf_strip_yawp() {
+buym_strip_yawp() {
   zbuym_sentinel
   local z_str="${1:-}"
 

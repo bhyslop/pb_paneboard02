@@ -25,7 +25,7 @@ set -euo pipefail
 
 butckk_true_tcase() {
   buto_trace "Kick-tires: verifying true returns success"
-  buto_unit_expect_ok true
+  buto_unit_expect_ok_status true
 }
 
 butckk_false_tcase() {

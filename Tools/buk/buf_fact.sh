@@ -28,16 +28,16 @@
 # current/ so it survives one more hop; buf_read_fact_capture reads one named
 # fact and fails hard if it is absent; buf_elect_fact_capture prefers an express
 # value and falls back to the chained fact (express-or-chain). The two reads are
-# _capture-suffixed: stdout-once-or-return-1, the caller guards with || buc_die.
+# _capture-suffixed: stdout-once-or-return-1, the caller guards with || buc_die_now.
 
 set -euo pipefail
 
-# Multiple inclusion guard (return 0 — sourced from non-BCG dispatch context)
+# Multiple inclusion guard (return 0 — sourced from a non-module dispatch context)
 test -z "${ZBUF_SOURCED:-}" || return 0
 ZBUF_SOURCED=1
 
 # Tinder constants (pure string literals — available at source time)
-BUF_burx_env="burx.env"
+readonly BUF_burx_env="burx.env"
 
 # Multi-fact extension registry (BUK-domain only). Constant value matches
 # constant name downcased; the buf_ext_ prefix in the value carries the
@@ -98,7 +98,7 @@ buf_relay() {
 # its bare value (trailing newline stripped) on stdout. Fails hard if the fact
 # is absent — a missing upstream fact is a broken chain, not a default-to-empty.
 # Single-form only: the value is an opaque singular string, never parsed here.
-# _capture shape: stdout once or return 1; the caller guards with || buc_die.
+# _capture shape: stdout once or return 1; the caller guards with || buc_die_now.
 # Args: <filename>
 buf_read_fact_capture() {
   local -r z_filename="$1"
@@ -111,9 +111,10 @@ buf_read_fact_capture() {
 # otherwise fall through to the chained fact (buf_read_fact_capture). Fails (the
 # read returns 1) only when express is empty AND the chained fact is absent — a
 # broken chain. Generic over any fact constant: the express value and the fact
-# filename are both arguments, so each verb stays its own caller. NEVER relays —
-# the chain is depth-1 and terminally consumed, the leak-elimination invariant.
-# _capture shape: stdout once or return 1; the caller guards with || buc_die.
+# filename are both arguments, so each verb stays its own caller. Never relays
+# itself — relaying is the caller's explicit act (buf_relay first, then elect),
+# keeping this primitive a pure read.
+# _capture shape: stdout once or return 1; the caller guards with || buc_die_now.
 # Args: <express_value> <fact_filename>
 buf_elect_fact_capture() {
   local -r z_express="$1"

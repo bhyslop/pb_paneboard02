@@ -24,14 +24,14 @@
 set -euo pipefail
 
 # Multiple inclusion detection
-test -z "${ZBURE_SOURCED:-}" || buc_die "Module bure multiply sourced - check sourcing hierarchy"
+test -z "${ZBURE_SOURCED:-}" || buc_die_now "Module bure multiply sourced - check sourcing hierarchy"
 ZBURE_SOURCED=1
 
 ######################################################################
 # Internal Functions (zbure_*)
 
 zbure_kindle() {
-  test -z "${ZBURE_KINDLED:-}" || buc_die "Module bure already kindled"
+  test -z "${ZBURE_KINDLED:-}" || buc_die_now "Module bure already kindled"
 
   # No defaults set — buv uses ${!varname:-} for safe indirect expansion under set -u.
   # Unset variables are detected distinctly from empty by zbuv_check_capture.
@@ -69,7 +69,7 @@ zbure_kindle() {
 }
 
 zbure_sentinel() {
-  test "${ZBURE_KINDLED:-}" = "1" || buc_die "Module bure not kindled - call zbure_kindle first"
+  test "${ZBURE_KINDLED:-}" = "1" || buc_die_now "Module bure not kindled - call zbure_kindle first"
 }
 
 # Enforce all BURE enrollment validations
@@ -81,7 +81,7 @@ zbure_enforce() {
   # Custom enforce: BURE_COUNTDOWN must be empty or "skip"
   if test -n "${BURE_COUNTDOWN}"; then
     test "${BURE_COUNTDOWN}" = "skip" \
-      || buc_die "BURE_COUNTDOWN must be 'skip' or empty, got '${BURE_COUNTDOWN}'"
+      || buc_die_now "BURE_COUNTDOWN must be 'skip' or empty, got '${BURE_COUNTDOWN}'"
   fi
 
   # Custom enforce: BURE_TWEAK_NAME, when set, must carry the buo tweak sprue —
@@ -89,13 +89,13 @@ zbure_enforce() {
   # of tweaks is `grep buo`); it never enumerates consumer names, so this stays
   # generic. An unregistered or mistyped tweak name fails loud here rather than
   # silently no-op'ing at the consumer.
-  # Doctrine (BUS0 "Tweak Mechanism"): a tweak forces one hard-to-produce
+  # Doctrine: a tweak forces one hard-to-produce
   # condition for a test to observe handled correctly; one tweak at a time per
   # test/fixture/suite, by design; a suite may reserve the slot for a standing guard.
   if test -n "${BURE_TWEAK_NAME}"; then
     case "${BURE_TWEAK_NAME}" in
       buo[a-z]*_*) : ;;
-      *) buc_die "BURE_TWEAK_NAME must carry the buo sprue (buo<segment>_<name>), got '${BURE_TWEAK_NAME}'" ;;
+      *) buc_die_now "BURE_TWEAK_NAME must carry the buo sprue (buo<segment>_<name>), got '${BURE_TWEAK_NAME}'" ;;
     esac
   fi
 }

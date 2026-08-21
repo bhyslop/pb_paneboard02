@@ -17,8 +17,17 @@
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
 # Bash Utility Regime Dispatch - Direct bash dispatch
+#
+# NOTE: This is bootstrap infrastructure, not a full module.
+# No kindle/sentinel pattern - this runs before other modules are loaded.
+# A dispatcher is external code by convention, and this file has no
+# ZBUD_SOURCED guard, no kindle, and no buc_* to call: it is executed,
+# not sourced, and it hand-rolls zbud_die/zbud_show because buc_command.sh
+# is not loaded yet. Declaring a two-segment sentinel here would register
+# the file as a module body to any structural reader.
 
 set -euo pipefail
+shopt -s extglob
 
 BURE_VERBOSE=${BURE_VERBOSE:-0}
 
@@ -33,10 +42,6 @@ if test "${BURE_VERBOSE}" = "2"; then
 fi
 
 zbud_die() { echo "FATAL: $*" >&2; exit 1; }
-
-zburd_sentinel() {
-  test "${ZBURD_INITIALIZED:-}" = "1" || zbud_die "Dispatch not initialized - zbud_main not complete"
-}
 
 # String validator with optional length constraints
 zbud_check_string() {
@@ -78,12 +83,30 @@ zbud_setup() {
   BURD_TOOLS_DIR="${BURC_TOOLS_DIR}"
   BURD_BUK_DIR="${BURC_TOOLS_DIR}/buk"
   BURD_TABTARGET_DIR="${BURC_TABTARGET_DIR}"
-  export BURD_TOOLS_DIR BURD_BUK_DIR BURD_TABTARGET_DIR
+
+  # The coordinator runs as its own process, so a station value reaches a kit's
+  # CLI only by riding a BURD_ variable across that boundary. Declared here and
+  # left empty for the no-log path below, which sources no station file at all.
+  BURD_TACKROOM=""
+
+  export BURD_TOOLS_DIR BURD_BUK_DIR BURD_TABTARGET_DIR BURD_TACKROOM
 
   # Source station file (skip for no-log handbook tabtargets)
   if test -z "${BURD_NO_LOG:-}"; then
     zbud_show "Sourcing station file: ${BURC_STATION_FILE}"
     source                           "${BURC_STATION_FILE}"
+
+    # Apply BURV (Bash Utility Regime Verification) overrides if set
+    BURS_LOG_DIR="${BURV_LOG_DIR:-${BURS_LOG_DIR}}"
+    BURD_TACKROOM="${BURV_TACKROOM:-${BURS_TACKROOM:-}}"
+
+    # Absolutize a relative tackroom against the repo root, the same idiom the
+    # temp directory takes below: z-launcher normalizes cwd to the repo root, so
+    # a station value may be written relative exactly as the log directory is.
+    case "${BURD_TACKROOM}" in
+      ""|/*) ;;
+      *)     BURD_TACKROOM="${PWD}/${BURD_TACKROOM}" ;;
+    esac
 
     # Validate station variables
     zbud_check_string "${BURC_STATION_FILE}" BURS_LOG_DIR 1 256
@@ -230,12 +253,26 @@ zbud_process_args() {
 # Function to curate logs for the 'same' log file (normalized output)
 zbud_curate_same() {
   # Convert to unix line endings, strip colors, normalize temp dir, remove VOLATILE lines
-  sed -e 's/\r/\n/g'                             \
-      -e '/^$/d'                                 \
-      -e 's/\x1b[\[][0-9;]*[a-zA-Z]//g'          \
-      -e 's/\x1b[(][A-Z]//g'                     \
-      -e "s|${BURD_TEMP_DIR}|BURD_EPHEMERAL_DIR|g" \
-      -e '/VOLATILE/d'
+  local z_line
+  while IFS= read -r z_line || test -n "${z_line}"; do
+    test -n "${z_line}" || continue
+    z_line="${z_line//$'\x1b'\[*([0-9;])[a-zA-Z]/}"
+    z_line="${z_line//$'\x1b'\([A-Z]/}"
+    z_line="${z_line//${BURD_TEMP_DIR}/BURD_EPHEMERAL_DIR}"
+    case "${z_line}" in
+      *VOLATILE*) continue ;;
+    esac
+    local -a z_frames
+    IFS=$'\r' read -ra z_frames <<< "${z_line}"
+    local z_frame
+    if test "${#z_frames[@]}" -gt 0; then
+      for z_frame in "${z_frames[@]}"; do
+        printf '%s\n' "${z_frame}"
+      done
+    else
+      printf '\n'
+    fi
+  done
 }
 
 # Function to curate logs for the historical log file (with timestamps)
@@ -258,21 +295,27 @@ zbud_generate_checksum() {
   return 0
 }
 
-# Resolve color policy once at dispatch time and export BURE_COLOR (0/1)
+# Resolve color policy once at dispatch time and export the verdict as
+# BURD_COLOR (0/1) — a dispatch-computed value, never an operator-set BURE_
+# input (BUr_q2m). BURE_COLOR stays readable here as the optional operator
+# override it always was, but dispatch never writes it: a verdict left under
+# the BURE_ prefix crosses a spawn boundary as if it were operator ambient
+# (BURE_ passes by design), so the child reads a stale pin as an explicit
+# override and never re-derives its own.
 zbud_resolve_color() {
   if test -n "${NO_COLOR:-}"; then
-    export BURE_COLOR=0
+    export BURD_COLOR=0
     return 0
   fi
   case "${BURE_COLOR:-auto}" in
     0|1)
-      export BURE_COLOR
+      export BURD_COLOR="${BURE_COLOR}"
       ;;
     auto|*)
       if test -t 1 && test "${TERM:-}" != "dumb"; then
-          export BURE_COLOR=1
+          export BURD_COLOR=1
       else
-          export BURE_COLOR=0
+          export BURD_COLOR=0
       fi
       ;;
   esac
@@ -335,22 +378,20 @@ zbud_main() {
   zbud_write_burx_initial
 
   # Detect unexpected BURD_ variables
-  local -r z_known="BURD_CONFIG_DIR BURD_MOORINGS_DIR BURD_REGIME_FILE BURD_NO_LOG BURD_INTERACTIVE BURD_COORDINATOR_SCRIPT BURD_LAUNCHER BURD_STATION_FILE BURD_TERM_COLS BURD_NOW_STAMP BURD_NOW_EPOCH BURD_TEMP_DIR BURD_OUTPUT_DIR BURD_PREVIOUS_DIR BURD_TRANSCRIPT BURD_GIT_CONTEXT BURD_LOG_LAST BURD_LOG_SAME BURD_LOG_HIST BURD_COMMAND BURD_TARGET BURD_CLI_ARGS BURD_TOKEN_1 BURD_TOKEN_2 BURD_TOKEN_3 BURD_TOKEN_4 BURD_TOKEN_5 BURD_TOOLS_DIR BURD_BUK_DIR BURD_TABTARGET_DIR BURD_OSTYPE"
-  ZBURD_UNEXPECTED=()
+  local -r z_known="BURD_CONFIG_DIR BURD_MOORINGS_DIR BURD_REGIME_FILE BURD_NO_LOG BURD_INTERACTIVE BURD_COORDINATOR_SCRIPT BURD_LAUNCHER BURD_STATION_FILE BURD_TERM_COLS BURD_NOW_STAMP BURD_NOW_EPOCH BURD_TEMP_DIR BURD_OUTPUT_DIR BURD_PREVIOUS_DIR BURD_TRANSCRIPT BURD_GIT_CONTEXT BURD_LOG_LAST BURD_LOG_SAME BURD_LOG_HIST BURD_COMMAND BURD_TARGET BURD_CLI_ARGS BURD_TOKEN_1 BURD_TOKEN_2 BURD_TOKEN_3 BURD_TOKEN_4 BURD_TOKEN_5 BURD_TOOLS_DIR BURD_BUK_DIR BURD_TABTARGET_DIR BURD_TACKROOM BURD_OSTYPE BURD_COLOR"
+  ZBUD_UNEXPECTED=()
   local z_var
   for z_var in $(compgen -v BURD_); do
     case " ${z_known} " in
       *" ${z_var} "*) : ;;
-      *) ZBURD_UNEXPECTED+=("${z_var}") ;;
+      *) ZBUD_UNEXPECTED+=("${z_var}") ;;
     esac
   done
 
   # Die on unexpected variables
-  if test ${#ZBURD_UNEXPECTED[@]} -gt 0; then
-    zbud_die "Unexpected BURD_ variables: ${ZBURD_UNEXPECTED[*]}"
+  if test ${#ZBUD_UNEXPECTED[@]} -gt 0; then
+    zbud_die "Unexpected BURD_ variables: ${ZBUD_UNEXPECTED[*]}"
   fi
-
-  ZBURD_INITIALIZED=1
 
   # Build complete invocation array (always has ≥2 elements, so always safe under set -u)
   local -r z_coordinator_cmd="${BURD_COORDINATOR_SCRIPT}"
@@ -426,6 +467,11 @@ zbud_main() {
   exit "${zBURD_EXIT_STATUS}"
 }
 
-zbud_main "$@"
+# Direct execution only — sourcing (e.g. a test harness calling
+# zbud_resolve_color in isolation) defines the functions without re-running
+# a whole dispatch.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  zbud_main "$@"
+fi
 
 # eof

@@ -19,12 +19,12 @@
 # Compatible with Bash 3.2 (e.g., macOS default shell)
 
 # Multiple inclusion guard
-test -z "${ZBUV_INCLUDED:-}" || return 0
-ZBUV_INCLUDED=1
+test -z "${ZBUV_SOURCED:-}" || return 0
+ZBUV_SOURCED=1
 
 # Literal constants — check capture output protocol markers
-BUV_check_gated="gated"
-BUV_check_fail="fail:"
+readonly BUV_check_gated="gated"
+readonly BUV_check_fail="fail:"
 
 # Source the console utility library
 ZBUV_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
@@ -37,23 +37,29 @@ source "${ZBUV_SCRIPT_DIR}/buym_yelp.sh"
 source "${ZBUV_SCRIPT_DIR}/bubc_constants.sh"
 
 buv_file_exists() {
+  zbuv_sentinel
   local z_filepath="${1:-}"
-  test -f "${z_filepath}" || buc_die "Required file not found: ${z_filepath}"
+  test -f "${z_filepath}" || buc_die_now "Required file not found: ${z_filepath}"
 }
 
 buv_dir_exists() {
+  zbuv_sentinel
   local z_dirpath="${1:-}"
-  test -d "${z_dirpath}" || buc_die "Required directory not found: ${z_dirpath}"
+  test -d "${z_dirpath}" || buc_die_now "Required directory not found: ${z_dirpath}"
 }
 
 buv_dir_empty() {
+  zbuv_sentinel
   local z_dirpath="${1:-}"
-  test -d "${z_dirpath}" || buc_die "Required directory not found: ${z_dirpath}"
-  local z_check_file
-  z_check_file=$(mktemp)
-  find "${z_dirpath}" -maxdepth 1 -mindepth 1 -print -quit > "${z_check_file}"
-  test ! -s "${z_check_file}" || { rm -f "${z_check_file}"; buc_die "Directory must be empty: ${z_dirpath}"; }
-  rm -f "${z_check_file}"
+  test -d "${z_dirpath}" || buc_die_now "Required directory not found: ${z_dirpath}"
+  # Per-call scratch name under BURD_TEMP_DIR: a monotonic counter, not mktemp
+  # (BUV's first BURD_TEMP_DIR dependency, taken on deliberately) — never
+  # deleted after — left for forensic debugging.
+  ZBUV_DIR_EMPTY_SEQ=$((${ZBUV_DIR_EMPTY_SEQ:-0} + 1))
+  local -r z_check_file="${BURD_TEMP_DIR}/buv-dir-empty-${ZBUV_DIR_EMPTY_SEQ}.txt"
+  find "${z_dirpath}" -maxdepth 1 -mindepth 1 -print -quit > "${z_check_file}" \
+    || buc_die_now "Failed to probe directory: ${z_dirpath}"
+  test ! -s "${z_check_file}" || buc_die_now "Directory must be empty: ${z_dirpath}"
 }
 
 # ---------------------------------------------------------------------------
@@ -61,7 +67,7 @@ buv_dir_empty() {
 # ---------------------------------------------------------------------------
 
 zbuv_kindle() {
-  test -z "${ZBUV_KINDLED:-}" || buc_die "Module buv already kindled"
+  test -z "${ZBUV_KINDLED:-}" || buc_die_now "Module buv already kindled"
 
   # Enrollment rolls (9 parallel arrays)
   z_buv_scope_roll=()
@@ -91,7 +97,7 @@ zbuv_kindle() {
 }
 
 zbuv_sentinel() {
-  test "${ZBUV_KINDLED:-}" = "1" || buc_die "Module buv not kindled - call zbuv_kindle first"
+  test "${ZBUV_KINDLED:-}" = "1" || buc_die_now "Module buv not kindled - call zbuv_kindle first"
 }
 
 # Test support: reset enrollment state without re-kindling
@@ -125,7 +131,7 @@ zbuv_reset_enrollment() {
 
 # Regime context setters — called during kindle to establish enrollment scope
 
-# Regime-poison seam (BUS0 Tweak Mechanism) — the one membrane in the
+# Regime-poison seam — the one membrane in the
 # regime-load path, crossed at every regime kindle post-source pre-validate.
 # Under BUBC_tweak_regime_poison, BURE_TWEAK_VALUE names one variable to
 # corrupt: "VAR=value" sets, bare "VAR" unsets. Applies only when VAR carries
@@ -138,14 +144,15 @@ zbuv_reset_enrollment() {
 # matching nothing. Any other tweak occupying the slot — notably the reveille-tier
 # credless guard — compares unequal here and rides inert.
 zbuv_poison_apply() {
+  zbuv_sentinel
   local z_scope="${1:-}"
   test -n "${BURE_TWEAK_NAME:-}" || return 0
   test "${BURE_TWEAK_NAME}" = "${BUBC_tweak_regime_poison}" || return 0
 
   local z_spec="${BURE_TWEAK_VALUE:-}"
-  test -n "${z_spec}" || buc_die "regime poison: BURE_TWEAK_VALUE required ('VAR=value' to set, 'VAR' to unset)"
+  test -n "${z_spec}" || buc_die_now "regime poison: BURE_TWEAK_VALUE required ('VAR=value' to set, 'VAR' to unset)"
   local z_var="${z_spec%%=*}"
-  [[ "${z_var}" =~ ^[A-Z][A-Z0-9_]*$ ]] || buc_die "regime poison: invalid variable name '${z_var}'"
+  [[ "${z_var}" =~ ^[A-Z][A-Z0-9_]*$ ]] || buc_die_now "regime poison: invalid variable name '${z_var}'"
 
   case "${z_var}" in
     "${z_scope}_"*) : ;;
@@ -153,10 +160,10 @@ zbuv_poison_apply() {
   esac
 
   if test "${z_spec}" = "${z_var}"; then
-    unset "${z_var}" || buc_die "regime poison: cannot unset ${z_var}"
+    unset "${z_var}" || buc_die_now "regime poison: cannot unset ${z_var}"
     buc_log_args "regime poison: unset ${z_var} (scope ${z_scope})"
   else
-    export "${z_var}=${z_spec#*=}" || buc_die "regime poison: cannot set ${z_var}"
+    export "${z_var}=${z_spec#*=}" || buc_die_now "regime poison: cannot set ${z_var}"
     buc_log_args "regime poison: set ${z_var} (scope ${z_scope})"
   fi
 }
@@ -168,7 +175,7 @@ buv_regime_enroll() {
   zbuv_sentinel
 
   local z_scope="${1:-}"
-  test -n "${z_scope}" || buc_die "buv_regime_enroll: scope required"
+  test -n "${z_scope}" || buc_die_now "buv_regime_enroll: scope required"
   z_buv_current_scope="${z_scope}"
   z_buv_current_group=""
   z_buv_current_group_idx=-1
@@ -185,10 +192,10 @@ buv_regime_enroll() {
 buv_group_enroll() {
   zbuv_sentinel
 
-  test -n "${z_buv_current_scope}" || buc_die "buv_group_enroll: call buv_regime_enroll first"
+  test -n "${z_buv_current_scope}" || buc_die_now "buv_group_enroll: call buv_regime_enroll first"
 
   local z_title="${1:-}"
-  test -n "${z_title}" || buc_die "buv_group_enroll: title required"
+  test -n "${z_title}" || buc_die_now "buv_group_enroll: title required"
 
   z_buv_grp_scope_roll+=("${z_buv_current_scope}")
   z_buv_grp_title_roll+=("${z_title}")
@@ -207,12 +214,12 @@ buv_group_enroll() {
 buv_gate_enroll() {
   zbuv_sentinel
 
-  test -n "${z_buv_current_group}" || buc_die "buv_gate_enroll: call buv_group_enroll first"
+  test -n "${z_buv_current_group}" || buc_die_now "buv_gate_enroll: call buv_group_enroll first"
 
   local z_gate_var="${1:-}"
   local z_gate_val="${2:-}"
-  test -n "${z_gate_var}" || buc_die "buv_gate_enroll: gate variable required"
-  test -n "${z_gate_val}" || buc_die "buv_gate_enroll: gate value required"
+  test -n "${z_gate_var}" || buc_die_now "buv_gate_enroll: gate variable required"
+  test -n "${z_gate_val}" || buc_die_now "buv_gate_enroll: gate value required"
 
   z_buv_current_gate_var="${z_gate_var}"
   z_buv_current_gate_val="${z_gate_val}"
@@ -233,8 +240,8 @@ zbuv_enroll() {
   local z_p2="${4:-}"
   local z_desc="${5:-}"
 
-  test -n "${z_buv_current_scope}" || buc_die "zbuv_enroll: call buv_regime_enroll first"
-  [[ "${z_varname}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || buc_die "zbuv_enroll: invalid variable name: '${z_varname}'"
+  test -n "${z_buv_current_scope}" || buc_die_now "zbuv_enroll: call buv_regime_enroll first"
+  [[ "${z_varname}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || buc_die_now "zbuv_enroll: invalid variable name: '${z_varname}'"
 
   z_buv_scope_roll+=("${z_buv_current_scope}")
   z_buv_varname_roll+=("${z_varname}")
@@ -253,6 +260,7 @@ zbuv_enroll() {
 # Scope from buv_regime_enroll; group from buv_group_enroll; gate from buv_gate_enroll.
 
 buv_string_enroll() {
+  zbuv_sentinel
   local z_varname="${1:-}"
   local z_p1="${2:-}"
   local z_p2="${3:-}"
@@ -261,6 +269,7 @@ buv_string_enroll() {
 }
 
 buv_secret_enroll() {
+  zbuv_sentinel
   local z_varname="${1:-}"
   local z_p1="${2:-}"
   local z_p2="${3:-}"
@@ -269,6 +278,7 @@ buv_secret_enroll() {
 }
 
 buv_xname_enroll() {
+  zbuv_sentinel
   local z_varname="${1:-}"
   local z_p1="${2:-}"
   local z_p2="${3:-}"
@@ -277,6 +287,7 @@ buv_xname_enroll() {
 }
 
 buv_gname_enroll() {
+  zbuv_sentinel
   local z_varname="${1:-}"
   local z_p1="${2:-}"
   local z_p2="${3:-}"
@@ -285,6 +296,7 @@ buv_gname_enroll() {
 }
 
 buv_fqin_enroll() {
+  zbuv_sentinel
   local z_varname="${1:-}"
   local z_p1="${2:-}"
   local z_p2="${3:-}"
@@ -293,12 +305,14 @@ buv_fqin_enroll() {
 }
 
 buv_bool_enroll() {
+  zbuv_sentinel
   local z_varname="${1:-}"
   local z_desc="${2:-}"
   zbuv_enroll "${z_varname}" "bool" "" "" "${z_desc}"
 }
 
 buv_enum_enroll() {
+  zbuv_sentinel
   local z_varname="${1:-}"
   local z_desc="${2:-}"
   shift 2
@@ -306,6 +320,7 @@ buv_enum_enroll() {
 }
 
 buv_decimal_enroll() {
+  zbuv_sentinel
   local z_varname="${1:-}"
   local z_p1="${2:-}"
   local z_p2="${3:-}"
@@ -314,18 +329,21 @@ buv_decimal_enroll() {
 }
 
 buv_odref_enroll() {
+  zbuv_sentinel
   local z_varname="${1:-}"
   local z_desc="${2:-}"
   zbuv_enroll "${z_varname}" "odref" "" "" "${z_desc}"
 }
 
 buv_ipv4_enroll() {
+  zbuv_sentinel
   local z_varname="${1:-}"
   local z_desc="${2:-}"
   zbuv_enroll "${z_varname}" "ipv4" "" "" "${z_desc}"
 }
 
 buv_port_enroll() {
+  zbuv_sentinel
   local z_varname="${1:-}"
   local z_desc="${2:-}"
   zbuv_enroll "${z_varname}" "port" "" "" "${z_desc}"
@@ -334,6 +352,7 @@ buv_port_enroll() {
 # Public enrollment functions — list types
 
 buv_list_string_enroll() {
+  zbuv_sentinel
   local z_varname="${1:-}"
   local z_p1="${2:-}"
   local z_p2="${3:-}"
@@ -342,12 +361,14 @@ buv_list_string_enroll() {
 }
 
 buv_list_ipv4_enroll() {
+  zbuv_sentinel
   local z_varname="${1:-}"
   local z_desc="${2:-}"
   zbuv_enroll "${z_varname}" "list_ipv4" "" "" "${z_desc}"
 }
 
 buv_list_gname_enroll() {
+  zbuv_sentinel
   local z_varname="${1:-}"
   local z_p1="${2:-}"
   local z_p2="${3:-}"
@@ -356,12 +377,14 @@ buv_list_gname_enroll() {
 }
 
 buv_list_cidr_enroll() {
+  zbuv_sentinel
   local z_varname="${1:-}"
   local z_desc="${2:-}"
   zbuv_enroll "${z_varname}" "list_cidr" "" "" "${z_desc}"
 }
 
 buv_list_domain_enroll() {
+  zbuv_sentinel
   local z_varname="${1:-}"
   local z_desc="${2:-}"
   zbuv_enroll "${z_varname}" "list_domain" "" "" "${z_desc}"
@@ -391,10 +414,14 @@ zbuv_check_capture() {
     fi
   fi
 
-  # Unset detection — distinguish "not set" from "set but empty"
+  # Unset detection — distinguish "not set" from "set but empty".
+  # A min-0 scalar (string|secret|gname|fqin) and every list type pass when
+  # unset: an omitted line reads as a declared vacancy, uniformly across the
+  # four scalar types. A min-1 field that is unset fails loud below. Set-empty
+  # is handled per-type further down.
   if test -z "${!z_varname+x}"; then
     case "${z_type}" in
-      string|secret|gname)
+      string|secret|gname|fqin)
         if test "${z_p1}" = "0"; then return 0; fi ;;
       list_string|list_ipv4|list_gname|list_cidr|list_domain)
         return 0 ;;
@@ -468,7 +495,10 @@ zbuv_check_capture() {
 
     fqin)
       if test -z "${z_val}"; then
-        echo "${BUV_check_fail}${z_varname} must not be empty"
+        if test "${z_p1}" -gt 0; then
+          echo "${BUV_check_fail}${z_varname} must not be empty"
+          return 0
+        fi
         return 0
       fi
       if test "${#z_val}" -lt "${z_p1}"; then
@@ -645,10 +675,11 @@ zbuv_check_capture() {
 # buv_hallmark_format VALUE — validate hallmark string matches [cbg]YYMMDDHHMMSS-rYYMMDDHHMMSS
 # Returns 0 on valid, dies on invalid. Pass empty string to skip (optional fields).
 buv_hallmark_format() {
+  zbuv_sentinel
   local z_val="${1:-}"
   test -n "${z_val}" || return 0
   [[ "${z_val}" =~ ^[cbg][0-9]{12}-r[0-9]{12}$ ]] \
-    || buc_die "Invalid hallmark format: '${z_val}' (expected [cbg]YYMMDDHHMMSS-rYYMMDDHHMMSS)"
+    || buc_die_now "Invalid hallmark format: '${z_val}' (expected [cbg]YYMMDDHHMMSS-rYYMMDDHHMMSS)"
 }
 
 # buv_scope_sentinel SCOPE PREFIX — die if any PREFIX_ vars exist that are not enrolled in SCOPE
@@ -658,8 +689,8 @@ buv_scope_sentinel() {
 
   local z_scope="${1:-}"
   local z_prefix="${2:-}"
-  test -n "${z_scope}"  || buc_die "buv_scope_sentinel: scope required"
-  test -n "${z_prefix}" || buc_die "buv_scope_sentinel: prefix required"
+  test -n "${z_scope}"  || buc_die_now "buv_scope_sentinel: scope required"
+  test -n "${z_prefix}" || buc_die_now "buv_scope_sentinel: prefix required"
 
   # Build lookup string from enrolled varnames for this scope
   local z_known=" "
@@ -691,10 +722,10 @@ buv_docker_env() {
 
   local z_scope="${1:-}"
   local z_array_var="${2:-}"
-  test -n "${z_scope}"     || buc_die "buv_docker_env: scope required"
-  test -n "${z_array_var}" || buc_die "buv_docker_env: array variable name required"
+  test -n "${z_scope}"     || buc_die_now "buv_docker_env: scope required"
+  test -n "${z_array_var}" || buc_die_now "buv_docker_env: array variable name required"
   [[ "${z_array_var}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] \
-    || buc_die "buv_docker_env: invalid array variable name: '${z_array_var}'"
+    || buc_die_now "buv_docker_env: invalid array variable name: '${z_array_var}'"
 
   eval "${z_array_var}=()"
 
@@ -716,7 +747,7 @@ buv_vet() {
   zbuv_sentinel
 
   local z_scope="${1:-}"
-  test -n "${z_scope}" || buc_die "buv_vet: scope required"
+  test -n "${z_scope}" || buc_die_now "buv_vet: scope required"
 
   local z_i
   local z_err
@@ -733,7 +764,7 @@ buv_lock() {
   zbuv_sentinel
 
   local -r z_scope="${1:-}"
-  test -n "${z_scope}" || buc_die "buv_lock: scope required"
+  test -n "${z_scope}" || buc_die_now "buv_lock: scope required"
 
   local z_i
   for z_i in "${!z_buv_scope_roll[@]}"; do
@@ -746,7 +777,7 @@ buv_export_and_lock() {
   zbuv_sentinel
 
   local -r z_scope="${1:-}"
-  test -n "${z_scope}" || buc_die "buv_export_and_lock: scope required"
+  test -n "${z_scope}" || buc_die_now "buv_export_and_lock: scope required"
 
   local z_i
   for z_i in "${!z_buv_scope_roll[@]}"; do
@@ -762,8 +793,8 @@ buv_report() {
 
   local z_scope="${1:-}"
   local z_label="${2:-}"
-  test -n "${z_scope}" || buc_die "buv_report: scope required"
-  test -n "${z_label}" || buc_die "buv_report: label required"
+  test -n "${z_scope}" || buc_die_now "buv_report: scope required"
+  test -n "${z_label}" || buc_die_now "buv_report: label required"
 
   local z_any_failed=0
 
@@ -775,6 +806,7 @@ buv_report() {
 
     local z_varname="${z_buv_varname_roll[$z_i]}"
     local z_type="${z_buv_type_roll[$z_i]}"
+    local z_desc="${z_buv_desc_roll[$z_i]}"
     local z_val="${!z_varname:-}"
     local z_err
 
@@ -786,7 +818,12 @@ buv_report() {
 
     z_err=$(zbuv_check_capture "${z_i}")
     if test -z "${z_err}"; then
-      buc_step "  PASS  ${z_varname}=${z_display_val} [${z_type}]"
+      zbuv_req_status "${z_i}"
+      if test "${ZBUV_REQ_STATUS}" = "opt" && test -z "${z_val}"; then
+        buc_step "  VACANT  ${z_varname} [${z_type}] (${z_desc})"
+      else
+        buc_step "  PASS  ${z_varname}=${z_display_val} [${z_type}]"
+      fi
     elif test "${z_err}" = "${BUV_check_gated}"; then
       buc_step "  SKIP  ${z_varname} (gated)"
     else
@@ -801,6 +838,7 @@ buv_report() {
 # zbuv_group_gate_recite SCOPE TITLE — look up group gate from registry
 # Sets ZBUV_GRP_GATE_VAR and ZBUV_GRP_GATE_VAL (empty if ungated).
 zbuv_group_gate_recite() {
+  zbuv_sentinel
   local z_scope="${1:-}"
   local z_title="${2:-}"
 
@@ -821,6 +859,7 @@ zbuv_group_gate_recite() {
 # zbuv_req_status INDEX — derive req/opt/cond from enrollment data
 # Sets ZBUV_REQ_STATUS.
 zbuv_req_status() {
+  zbuv_sentinel
   local z_idx="${1:-}"
   local z_gate_var="${z_buv_gate_var_roll[$z_idx]}"
   local z_p1="${z_buv_p1_roll[$z_idx]}"
@@ -845,8 +884,8 @@ buv_render() {
   local z_scope="${1:-}"
   local z_label="${2:-}"
   local z_file_path="${3:-}"
-  test -n "${z_scope}" || buc_die "buv_render: scope required"
-  test -n "${z_label}" || buc_die "buv_render: label required"
+  test -n "${z_scope}" || buc_die_now "buv_render: scope required"
+  test -n "${z_label}" || buc_die_now "buv_render: label required"
 
   local z_current_group=""
   local z_i

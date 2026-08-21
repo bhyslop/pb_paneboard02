@@ -20,8 +20,8 @@
 set -euo pipefail
 
 # Multiple inclusion guard
-test -z "${ZBUQ_INCLUDED:-}" || return 0
-ZBUQ_INCLUDED=1
+test -z "${ZBUQ_SOURCED:-}" || return 0
+ZBUQ_SOURCED=1
 
 # Source the console utility library + moorings-layout names (launcher subdir)
 ZBUQ_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
@@ -37,8 +37,8 @@ source "${ZBUQ_SCRIPT_DIR}/bubc_constants.sh"
 #   2. Check coverage and severity defaults drift across versions, so the same
 #      tree can pass on one station and fail on another. The pin converts that
 #      silent cross-station divergence into an immediate, actionable failure.
-# Bump deliberately and in lockstep across all stations (linux/cerebro,
-# macos/pym): install the matching binary everywhere, then change this constant.
+# Bump deliberately and in lockstep across every station platform (Linux,
+# macOS): install the matching binary everywhere, then change this constant.
 readonly BUQ_SHELLCHECK_VERSION="0.11.0"
 
 ######################################################################
@@ -47,9 +47,9 @@ readonly BUQ_SHELLCHECK_VERSION="0.11.0"
 buq_tabtargets() {
   local z_tt_dir="${1:-}"
   local z_project_root="${2:-}"
-  test -n "${z_tt_dir}"       || buc_die "buq_tabtargets: tabtarget directory required"
-  test -n "${z_project_root}" || buc_die "buq_tabtargets: project root required"
-  test -d "${z_tt_dir}"       || buc_die "buq_tabtargets: directory not found: ${z_tt_dir}"
+  test -n "${z_tt_dir}"       || buc_die_now "buq_tabtargets: tabtarget directory required"
+  test -n "${z_project_root}" || buc_die_now "buq_tabtargets: project root required"
+  test -d "${z_tt_dir}"       || buc_die_now "buq_tabtargets: directory not found: ${z_tt_dir}"
   shift 2
 
   # Remaining arguments are glob patterns for exempt tabtargets
@@ -94,7 +94,7 @@ buq_tabtargets() {
       continue
     fi
 
-    # Load file lines (load-then-iterate per BCG)
+    # Load file lines (load-then-iterate)
     local z_lines=()
     local z_line=""
     while IFS= read -r z_line || test -n "${z_line}"; do
@@ -169,9 +169,9 @@ buq_tabtargets() {
   if (( ${#z_fail_files[@]} )); then
     local z_j=0
     for z_j in "${!z_fail_files[@]}"; do
-      buc_warn "${z_fail_files[$z_j]}: ${z_fail_reasons[$z_j]}" || buc_die "Failed to warn"
+      buc_warn "${z_fail_files[$z_j]}: ${z_fail_reasons[$z_j]}" || buc_die_now "Failed to warn"
     done
-    buc_die "Tabtarget qualification failed: ${#z_fail_files[@]} of ${z_checked} tabtargets"
+    buc_die_now "Tabtarget qualification failed: ${#z_fail_files[@]} of ${z_checked} tabtargets"
   fi
 
   buc_log_args "All ${z_checked} tabtargets structurally valid"
@@ -184,9 +184,9 @@ buq_shellcheck() {
   local z_tools_dir="${1:-${BURD_TOOLS_DIR:-}}"
   local z_rcfile="${2:-${BURD_BUK_DIR:+${BURD_BUK_DIR}/busc_shellcheckrc}}"
   local z_result_file="${3:-${BURD_TEMP_DIR:+${BURD_TEMP_DIR}/buq_shellcheck_results.txt}}"
-  test -n "${z_tools_dir}"   || buc_die "buq_shellcheck: tools directory required"
-  test -n "${z_rcfile}"      || buc_die "buq_shellcheck: rcfile path required"
-  test -n "${z_result_file}" || buc_die "buq_shellcheck: result file path required"
+  test -n "${z_tools_dir}"   || buc_die_now "buq_shellcheck: tools directory required"
+  test -n "${z_rcfile}"      || buc_die_now "buq_shellcheck: rcfile path required"
+  test -n "${z_result_file}" || buc_die_now "buq_shellcheck: result file path required"
 
   # Args beyond the third are explicit extra .sh files to lint alongside the
   # tree under z_tools_dir — a consumer with load-bearing shell scripts outside
@@ -200,10 +200,10 @@ buq_shellcheck() {
 
   buc_step "Running shellcheck qualification"
 
-  test -f "${z_rcfile}"    || buc_die "Shellcheck rcfile not found: ${z_rcfile}"
-  test -d "${z_tools_dir}" || buc_die "Tools directory not found: ${z_tools_dir}"
+  test -f "${z_rcfile}"    || buc_die_now "Shellcheck rcfile not found: ${z_rcfile}"
+  test -d "${z_tools_dir}" || buc_die_now "Tools directory not found: ${z_tools_dir}"
 
-  command -v shellcheck >/dev/null 2>&1 || buc_die "shellcheck not found — install from https://www.shellcheck.net"
+  command -v shellcheck >/dev/null 2>&1 || buc_die_now "shellcheck not found — install from https://www.shellcheck.net"
 
   # Hard version pin — fail instantly if this station's shellcheck is not the
   # pinned version, before any check runs. Prevents silent cross-station
@@ -211,10 +211,10 @@ buq_shellcheck() {
   # in lockstep; bump BUQ_SHELLCHECK_VERSION only after upgrading all of them.
   local z_sc_version=""
   z_sc_version="$(shellcheck --version | awk '/^version:/ {print $2}')"
-  test "${z_sc_version}" = "${BUQ_SHELLCHECK_VERSION}" || buc_die \
+  test "${z_sc_version}" = "${BUQ_SHELLCHECK_VERSION}" || buc_die_now \
     "shellcheck version mismatch: found '${z_sc_version}', require '${BUQ_SHELLCHECK_VERSION}'. Install the pinned version ahead of the system binary on PATH — static release: https://github.com/koalaman/shellcheck/releases/tag/v${BUQ_SHELLCHECK_VERSION}"
 
-  # Collect .sh files (load-then-iterate per BCG)
+  # Collect .sh files (load-then-iterate)
   local z_files=()
   local z_file=""
   while IFS= read -r z_file || test -n "${z_file}"; do
@@ -227,7 +227,7 @@ buq_shellcheck() {
   if (( ${#z_extra_files[@]} > 0 )); then
     local z_extra=""
     for z_extra in "${z_extra_files[@]}"; do
-      test -f "${z_extra}" || buc_die "buq_shellcheck: extra file not found: ${z_extra}"
+      test -f "${z_extra}" || buc_die_now "buq_shellcheck: extra file not found: ${z_extra}"
       z_files+=("${z_extra}")
     done
   fi
@@ -235,7 +235,7 @@ buq_shellcheck() {
   local -r z_file_count=${#z_files[@]}
   buc_log_args "Found ${z_tree_count} shell files under ${z_tools_dir}; ${#z_extra_files[@]} explicit extra files"
 
-  test "${z_file_count}" -gt 0 || buc_die "No .sh files found under ${z_tools_dir}"
+  test "${z_file_count}" -gt 0 || buc_die_now "No .sh files found under ${z_tools_dir}"
 
   # Run shellcheck — capture output to temp file for forensics
   local z_status=0
@@ -261,7 +261,7 @@ buq_shellcheck() {
     buc_warn "${z_line}"
   done < "${z_result_file}"
 
-  buc_die "Shellcheck qualification failed: ${z_finding_count} findings across ${z_file_count} files"
+  buc_die_now "Shellcheck qualification failed: ${z_finding_count} findings across ${z_file_count} files"
 }
 
 # eof

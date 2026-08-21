@@ -57,7 +57,6 @@ buw_route() {
   buw_show "Routing command: ${z_command} with args: $*"
 
   zburd_sentinel
-  zbuwz_healthcheck
 
   buw_show "BURD environment verified"
 
@@ -68,7 +67,7 @@ buw_main() {
   local z_command="${1:-}"
   shift || true
 
-  test -n "${z_command}" || buc_die "No command specified"
+  test -n "${z_command}" || buc_die_now "No command specified"
 
   buw_route "${z_command}" "$@"
 }

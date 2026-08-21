@@ -22,8 +22,8 @@
 # Callers not yet migrated to buto_ can continue using but_ names.
 
 # Multiple inclusion guard
-test -z "${ZBUT_INCLUDED:-}" || return 0
-ZBUT_INCLUDED=1
+test -z "${ZBUT_SOURCED:-}" || return 0
+ZBUT_SOURCED=1
 
 # Source the real implementation
 ZBUT_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
@@ -40,12 +40,12 @@ but_color()                { buto_color "$@"; }
 but_section()              { buto_section "$@"; }
 but_info()                 { buto_info "$@"; }
 but_trace()                { buto_trace "$@"; }
-but_fatal()                { buto_fatal "$@"; }
+but_fatal_now()                { buto_fatal_now "$@"; }
 but_fatal_on_error()       { buto_fatal_on_error "$@"; }
 but_fatal_on_success()     { buto_fatal_on_success "$@"; }
 zbut_invoke()              { zbuto_invoke "$@"; }
 but_unit_expect_ok_stdout(){ buto_unit_expect_ok_stdout "$@"; }
-but_unit_expect_ok()       { buto_unit_expect_ok "$@"; }
+but_unit_expect_ok_status()       { buto_unit_expect_ok_status "$@"; }
 but_unit_expect_fatal()    { buto_unit_expect_fatal "$@"; }
 zbut_resolve_tabtarget()   { zbuto_resolve_tabtarget "$@"; }
 but_tt_expect_ok()         { buto_tt_expect_ok "$@"; }

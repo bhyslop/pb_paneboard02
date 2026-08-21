@@ -30,16 +30,16 @@
 #   buh_link   — OSC-8 hyperlink with prefix/suffix
 #   buh_tt     — resolved tabtarget display
 #
-# Callers compose lines from yelp yawp captures (buyy_*_yawp)
+# Callers compose lines from yelp yawp captures (buym_*_yawp)
 # and pass the pre-rendered string to buh_line:
-#   buyy_cmd_yawp "gcloud"; local -r z_cmd="${z_buym_yelp}"
+#   buym_cmd_yawp "gcloud"; local -r z_cmd="${z_buym_yelp}"
 #   buh_line "Run ${z_cmd} to authenticate."
 
 set -euo pipefail
 
 # Multiple inclusion guard
-test -z "${ZBUH_INCLUDED:-}" || return 0
-ZBUH_INCLUDED=1
+test -z "${ZBUH_SOURCED:-}" || return 0
+ZBUH_SOURCED=1
 
 ######################################################################
 # Internal: Kindle and Sentinel
@@ -83,8 +83,8 @@ zbuh_sentinel() {
 ######################################################################
 # Public: Section headers and numbered steps
 
-buh_section() { zbuh_sentinel; z_buh_body_indent=""; buyf_format_yawp "${BUYC_BRIGHT_WHITE}" "${1:-}"; printf '%s\n' "${z_buym_format}" >&2; }
-buh_e()       { echo "" >&2; }
+buh_section() { zbuh_sentinel; z_buh_body_indent=""; buym_format_yawp "${BUYC_BRIGHT_WHITE}" "${1:-}"; printf '%s\n' "${z_buym_format}" >&2; }
+buh_e()       { zbuh_sentinel; echo "" >&2; }
 
 buh_step_style() {
   zbuh_sentinel
@@ -97,7 +97,7 @@ buh_step1() {
   z_buh_step1_n=$((z_buh_step1_n + 1))
   z_buh_step2_n=0
   z_buh_body_indent="   "
-  buyf_format_yawp "${BUYC_BRIGHT_WHITE}" "${1:-}"
+  buym_format_yawp "${BUYC_BRIGHT_WHITE}" "${1:-}"
   printf '%s\n' "${ZBUH_S}${z_buh_step_prefix}${z_buh_step1_n}${z_buh_step_separator}${z_buym_format}" >&2
 }
 
@@ -105,7 +105,7 @@ buh_step2() {
   zbuh_sentinel
   z_buh_step2_n=$((z_buh_step2_n + 1))
   z_buh_body_indent="      "
-  buyf_format_yawp "${BUYC_BRIGHT_WHITE}" "${1:-}"
+  buym_format_yawp "${BUYC_BRIGHT_WHITE}" "${1:-}"
   printf '%s\n' "   ${ZBUH_S}${z_buh_step_prefix}${z_buh_step1_n}.${z_buh_step2_n}${z_buh_step_separator}${z_buym_format}" >&2
 }
 
@@ -144,21 +144,9 @@ buh_link() {
 
 buh_tt() {
   zbuh_sentinel
-  buyy_tt_yawp "${2:-}" "${3:-}" "${4:-}"
+  buym_tt_yawp "${2:-}" "${3:-}" "${4:-}"
   local -r z_tt="${z_buym_yelp}"
   buh_line "${1:-}${z_tt}"
-}
-
-######################################################################
-# Public: Index renderers
-#
-# Group-level handbook indexes shared across kits.
-# Each function renders one kit's handbook group tops.
-
-buh_index_buk() {
-  buh_section  "Generic OS Procedures (Bash Utility Kit)"
-  buh_line     "  Project-independent OS-level mechanisms."
-  buh_tt       "  Jurisdiction:  " "${BUWZ_HJ0_TOP}"
 }
 
 ######################################################################
@@ -173,14 +161,14 @@ buh_index_buk() {
 
 buh_line() {
   zbuh_sentinel
-  buyf_format_yawp "${BUYC_RESET}" "${1:-}"
+  buym_format_yawp "${BUYC_RESET}" "${1:-}"
   printf '%s\n' "${z_buh_body_indent}${z_buym_format}" >&2
 }
 
 ######################################################################
 # Public: Semantic line functions
 #
-# Each routes through buyf_format_yawp with a BUYC_* ambient color,
+# Each routes through buym_format_yawp with a BUYC_* ambient color,
 # then prints via indent-aware printf.  Diastema markers in the string
 # are resolved to ANSI/OSC-8 at display time.
 #
@@ -191,19 +179,19 @@ buh_line() {
 
 buh_code() {
   zbuh_sentinel
-  buyf_format_yawp "${BUYC_CYAN}" "${1:-}"
+  buym_format_yawp "${BUYC_CYAN}" "${1:-}"
   printf '%s\n' "${z_buh_body_indent}${z_buym_format}" >&2
 }
 
 buh_warn() {
   zbuh_sentinel
-  buyf_format_yawp "${BUYC_BRIGHT_YELLOW}" "${1:-}"
+  buym_format_yawp "${BUYC_BRIGHT_YELLOW}" "${1:-}"
   printf '%s\n' "${z_buh_body_indent}${z_buym_format}" >&2
 }
 
 buh_error() {
   zbuh_sentinel
-  buyf_format_yawp "${BUYC_BRIGHT_RED}" "${1:-}"
+  buym_format_yawp "${BUYC_BRIGHT_RED}" "${1:-}"
   printf '%s\n' "${z_buh_body_indent}${z_buym_format}" >&2
 }
 
@@ -225,23 +213,28 @@ buh_ternary() {
 
 ######################################################################
 # Public: User prompts
+#
+# Every prompt below is newline-terminated by necessity: the non-interactive
+# dispatch relay forwards this stream a whole line at a time, so a partial line
+# never reaches the terminal — the operator would face a blocked read with no
+# visible prompt. Input is typed on the line beneath. Do not rejoin them.
 
-# buh_prompt "prompt text"
+# buh_prompt_plain "prompt text"
 # Displays prompt and reads user input, returns via stdout
-buh_prompt() {
+buh_prompt_plain() {
   zbuh_sentinel
-  printf '%s' "${1:-}" >&2
+  printf '%s\n' "${1:-}" >&2
   local z_input
   read -r z_input
   printf '%s' "${z_input}"
 }
 
 # buh_prompt_secret "prompt text"
-# Like buh_prompt but suppresses terminal echo of typed/pasted input.
+# Like buh_prompt_plain but suppresses terminal echo of typed/pasted input.
 # Emits a trailing newline to stderr so subsequent output starts on a fresh line.
 buh_prompt_secret() {
   zbuh_sentinel
-  printf '%s' "${1:-}" >&2
+  printf '%s\n' "${1:-}" >&2
   local z_input
   read -rs z_input
   printf '\n' >&2
@@ -249,10 +242,11 @@ buh_prompt_secret() {
 }
 
 # buh_prompt_required "prompt text" "error message"
-# Like buh_prompt but dies if input is empty
+# Like buh_prompt_plain but dies if input is empty
 buh_prompt_required() {
+  zbuh_sentinel
   local z_input
-  z_input=$(buh_prompt "${1:-}")
+  z_input=$(buh_prompt_plain "${1:-}")
   if test -z "${z_input}"; then
     printf '%s\n' "${z_buh_body_indent}${ZBUH_E}ERROR:${ZBUH_R} ${2:-Input required}" >&2
     return 1

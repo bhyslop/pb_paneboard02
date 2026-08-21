@@ -24,34 +24,35 @@
 set -euo pipefail
 
 # Multiple inclusion detection
-test -z "${ZBUUT_SOURCED:-}" || buc_die "Module buut multiply sourced - check sourcing hierarchy"
+test -z "${ZBUUT_SOURCED:-}" || buc_die_now "Module buut multiply sourced - check sourcing hierarchy"
 ZBUUT_SOURCED=1
 
 ######################################################################
 # Internal Functions (zbuut_*)
 
 zbuut_kindle() {
-  test -z "${ZBUUT_KINDLED:-}" || buc_die "Module buut already kindled"
+  test -z "${ZBUUT_KINDLED:-}" || buc_die_now "Module buut already kindled"
 
   # Validate BURD environment
   zburd_sentinel
 
   # Validate BURC environment (needed for paths)
-  test -n "${BURC_TABTARGET_DIR:-}" || buc_die "BURC_TABTARGET_DIR is unset"
-  test -n "${BURC_TOOLS_DIR:-}" || buc_die "BURC_TOOLS_DIR is unset"
+  test -n "${BURC_TABTARGET_DIR:-}" || buc_die_now "BURC_TABTARGET_DIR is unset"
+  test -n "${BURC_TOOLS_DIR:-}" || buc_die_now "BURC_TOOLS_DIR is unset"
 
   # Moorings-layout names (launcher subdir) for launcher list/create.
-  source "${BURC_TOOLS_DIR}/buk/bubc_constants.sh" || buc_die "Failed to source bubc_constants.sh"
+  source "${BURC_TOOLS_DIR}/buk/bubc_constants.sh" || buc_die_now "Failed to source bubc_constants.sh"
 
   readonly ZBUUT_KINDLED=1
 }
 
 zbuut_sentinel() {
-  test "${ZBUUT_KINDLED:-}" = "1" || buc_die "Module buut not kindled - call zbuut_kindle first"
+  test "${ZBUUT_KINDLED:-}" = "1" || buc_die_now "Module buut not kindled - call zbuut_kindle first"
 }
 
 # Verbose output if BURE_VERBOSE is set
 zbuut_show() {
+  zbuut_sentinel
   test "${BURE_VERBOSE:-0}" != "1" || echo "BUUTSHOW: $*"
 }
 
@@ -64,8 +65,8 @@ zbuut_write_tabtarget() {
   local z_tabtarget_file="${2:-}"
   local z_flag_lines="${3:-}"
 
-  test -n "${z_launcher_path}" || buc_die "zbuut_write_tabtarget: launcher_path required"
-  test -n "${z_tabtarget_file}" || buc_die "zbuut_write_tabtarget: tabtarget_file required"
+  test -n "${z_launcher_path}" || buc_die_now "zbuut_write_tabtarget: launcher_path required"
+  test -n "${z_tabtarget_file}" || buc_die_now "zbuut_write_tabtarget: tabtarget_file required"
 
   zbuut_show "Writing tabtarget: ${z_tabtarget_file}"
 
@@ -84,7 +85,7 @@ zbuut_write_tabtarget() {
 
   echo "exec \"\${BASH_SOURCE[0]%/*}/z-launcher.sh\" \"\${0##*/}\" \"\${@}\"" >> "${z_tabtarget_file}"
 
-  chmod +x "${z_tabtarget_file}" || buc_die "Failed to make tabtarget executable: ${z_tabtarget_file}"
+  chmod +x "${z_tabtarget_file}" || buc_die_now "Failed to make tabtarget executable: ${z_tabtarget_file}"
 }
 
 # Create tabtargets with specified flags
@@ -97,12 +98,12 @@ zbuut_create_tabtargets() {
   local z_launcher_path="${1:-}"
   shift || true
 
-  test -n "${z_launcher_path}" || buc_die "launcher_path required"
-  test "$#" -gt 0 || buc_die "at least one tabtarget_name required"
+  test -n "${z_launcher_path}" || buc_die_now "launcher_path required"
+  test "$#" -gt 0 || buc_die_now "at least one tabtarget_name required"
 
   # Validate launcher exists
   local z_launcher_file="${PWD}/${z_launcher_path}"
-  test -f "${z_launcher_file}" || buc_die "launcher not found: ${z_launcher_file}"
+  test -f "${z_launcher_file}" || buc_die_now "launcher not found: ${z_launcher_file}"
 
   # Process each tabtarget name
   local z_tabtarget_name
@@ -225,11 +226,11 @@ buut_launcher() {
 
   # Validate workbench exists
   local z_workbench_file="${PWD}/${z_workbench_path}"
-  test -f "${z_workbench_file}" || buc_die "workbench not found: ${z_workbench_file}"
+  test -f "${z_workbench_file}" || buc_die_now "workbench not found: ${z_workbench_file}"
 
   # Validate moorings launcher directory exists
   local z_launcher_dir="${BURD_CONFIG_DIR}/${BUBC_launchers_subdir}"
-  test -d "${z_launcher_dir}" || buc_die "launcher directory not found: ${z_launcher_dir}"
+  test -d "${z_launcher_dir}" || buc_die_now "launcher directory not found: ${z_launcher_dir}"
 
   local z_launcher_file="${z_launcher_dir}/launcher.${z_launcher_name}.sh"
 
@@ -255,7 +256,7 @@ buut_launcher() {
     echo "bul_launch \"\${BURC_TOOLS_DIR}/${z_workbench_path#Tools/}\" \"\$@\""
   } > "${z_launcher_file}"
 
-  chmod +x "${z_launcher_file}" || buc_die "Failed to make launcher executable: ${z_launcher_file}"
+  chmod +x "${z_launcher_file}" || buc_die_now "Failed to make launcher executable: ${z_launcher_file}"
   buc_success "Created launcher: ${z_launcher_file}"
 }
 

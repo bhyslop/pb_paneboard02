@@ -16,7 +16,7 @@
 #
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
-# BUK Test Registry - fixture/case/suite enrollment following BCG enroll/recite patterns
+# BUK Test Registry - fixture/case/suite enrollment following the enroll/recite pattern
 #
 # Fixtures: litmus/baste execution contexts (one per case)
 # Suites: cross-cutting selection groups (N:M with cases)
@@ -24,14 +24,14 @@
 set -euo pipefail
 
 # Multiple inclusion guard
-test -z "${ZBUTR_INCLUDED:-}" || buto_fatal "butr_registry multiply sourced"
-ZBUTR_INCLUDED=1
+test -z "${ZBUTR_SOURCED:-}" || buto_fatal_now "butr_registry multiply sourced"
+ZBUTR_SOURCED=1
 
 ######################################################################
 # Internal kindle boilerplate
 
-butr_kindle() {
-  test -z "${ZBUTR_KINDLED:-}" || buto_fatal "butr already kindled"
+zbutr_kindle() {
+  test -z "${ZBUTR_KINDLED:-}" || buto_fatal_now "butr already kindled"
 
   # Fixture rolls (parallel arrays)
   z_butr_name_roll=()
@@ -55,7 +55,7 @@ butr_kindle() {
 # Internal sentinel
 
 zbutr_sentinel() {
-  test "${ZBUTR_KINDLED:-}" = "1" || buto_fatal "Module butr not kindled - call butr_kindle first"
+  test "${ZBUTR_KINDLED:-}" = "1" || buto_fatal_now "Module butr not kindled - call zbutr_kindle first"
 }
 
 ######################################################################
@@ -73,22 +73,22 @@ butr_fixture_enroll() {
   local -r z_litmus="${2:-}"
   local -r z_baste="${3:-}"
 
-  test -n "${z_name}" || buto_fatal "butr_fixture_enroll: fixture_name required"
+  test -n "${z_name}" || buto_fatal_now "butr_fixture_enroll: fixture_name required"
 
   # Check for duplicate fixture names
   local z_i
   for z_i in "${!z_butr_name_roll[@]}"; do
-    test "${z_butr_name_roll[$z_i]}" != "${z_name}" || buto_fatal "butr_fixture_enroll: duplicate fixture '${z_name}'"
+    test "${z_butr_name_roll[$z_i]}" != "${z_name}" || buto_fatal_now "butr_fixture_enroll: duplicate fixture '${z_name}'"
   done
 
   # Validate litmus function if specified
   if test -n "${z_litmus}"; then
-    declare -F "${z_litmus}" >/dev/null || buto_fatal "butr_fixture_enroll: litmus function not found: ${z_litmus}"
+    declare -F "${z_litmus}" >/dev/null || buto_fatal_now "butr_fixture_enroll: litmus function not found: ${z_litmus}"
   fi
 
   # Validate baste function if specified
   if test -n "${z_baste}"; then
-    declare -F "${z_baste}" >/dev/null || buto_fatal "butr_fixture_enroll: baste function not found: ${z_baste}"
+    declare -F "${z_baste}" >/dev/null || buto_fatal_now "butr_fixture_enroll: baste function not found: ${z_baste}"
   fi
 
   z_butr_name_roll+=("${z_name}")
@@ -105,7 +105,7 @@ butr_fixture_enroll() {
 butr_suite_enroll() {
   zbutr_sentinel
 
-  test $# -gt 0 || buto_fatal "butr_suite_enroll: at least one suite required"
+  test $# -gt 0 || buto_fatal_now "butr_suite_enroll: at least one suite required"
 
   z_butr_current_suites=("$@")
   z_butr_suite_context_set=1
@@ -137,11 +137,11 @@ butr_case_enroll() {
   local -r z_fixture="${1:-}"
   local -r z_case="${2:-}"
 
-  test -n "${z_fixture}" || buto_fatal "butr_case_enroll: fixture_name required"
-  test -n "${z_case}" || buto_fatal "butr_case_enroll: case_function required"
+  test -n "${z_fixture}" || buto_fatal_now "butr_case_enroll: fixture_name required"
+  test -n "${z_case}" || buto_fatal_now "butr_case_enroll: case_function required"
 
   # Require suite context
-  test "${z_butr_suite_context_set}" -eq 1 || buto_fatal "butr_case_enroll: no suite context — call butr_suite_enroll first"
+  test "${z_butr_suite_context_set}" -eq 1 || buto_fatal_now "butr_case_enroll: no suite context — call butr_suite_enroll first"
 
   # Find fixture index
   local z_fixture_idx=""
@@ -153,10 +153,10 @@ butr_case_enroll() {
     fi
   done
 
-  test -n "${z_fixture_idx}" || buto_fatal "butr_case_enroll: unknown fixture '${z_fixture}'"
+  test -n "${z_fixture_idx}" || buto_fatal_now "butr_case_enroll: unknown fixture '${z_fixture}'"
 
   # Validate case function exists
-  declare -F "${z_case}" >/dev/null || buto_fatal "butr_case_enroll: case function not found: ${z_case}"
+  declare -F "${z_case}" >/dev/null || buto_fatal_now "butr_case_enroll: case function not found: ${z_case}"
 
   z_butr_case_fn_roll+=("${z_case}")
   z_butr_case_fixture_roll+=("${z_fixture_idx}")
