@@ -90,8 +90,9 @@ EXIT=0
   (`buhj_*`, `bujb_*`, `bujp_preflight.sh`, `burn_*`, `burp_*`) and added `burs_template.sh`,
   `buts/butcdc_color.sh`, `claude-buk-acronyms.md`, plus a `.vvk/` brand record.
 - Tools-never-commit holds, and the closing line says so explicitly.
-- Two ordering guards fire ahead of the payload work and are correctly ordered:
-  the kit-set check, then `emplace: error: Target is not a git repository: <root>`.
+- Three ordering guards fire ahead of the payload work and are correctly ordered:
+  the kit-set check, then `emplace: error: Target is not a git repository: <root>`,
+  then `emplace: error: Target repo has uncommitted changes. Commit or stash before install.`
 
 ## Finding 2 — the parcel cannot re-light this consumer on its own (BLOCKING, independent)
 
@@ -153,11 +154,20 @@ So there is currently no cheap logging tabtarget that both routes through z-laun
 Logging is performed by `bud_dispatch.sh`, downstream of the launcher.
 Every failure described above dies *in* the launcher, so **nothing is written** to `../logs-buk/` —
 no `hist-`, no `same-`, no update to `last.txt`.
-Confirmed: no `hist-buw-tt-cl-*` file has ever existed.
+Confirmed by re-drive: a `buw-tt-cl` invocation dying at exit 127 in the launcher left nothing
+modified in `../logs-buk/` within the following ten minutes.
 
-This cuts usefully as an acceptance test — the mere existence of a `hist-` file for a tabtarget proves the launcher was passed —
-but it also means a consumer dark at the launcher leaves no trace in the log corpus at all,
+A consumer dark at the launcher therefore leaves no trace in the log corpus at all,
 which is worth knowing before diagnosing a silent station from logs.
+
+**The obvious acceptance test does not work as stated, and the reason is worth its own line.**
+`../logs-buk/` resolves to a corpus SHARED BY EVERY CONSUMER under the projects root,
+and `hist-` filenames are keyed by *colophon alone* — nothing in the name says which tree produced the run.
+`hist-buw-tt-cl-*` files do exist (in `_logs_buk`, this corpus's former name, newest 2026-01-14),
+and reading one shows `command: Tools/buk/buw_workbench.sh buw-tt-cl Tools/vok/vow_workbench.sh vow_workbench`
+— a *different* consumer's `vok` kit, not this one.
+So the existence of a `hist-` file proves *some* tree's launcher was passed, never this tree's.
+The disambiguator is the log **body**, which carries the invoked command line; the filename is not enough.
 
 ## Superseded docket premise
 
@@ -178,3 +188,31 @@ since `bul_launcher.sh` handles `BURS_TACKROOM` explicitly.
 
 Items 2 and 3 are the same class of hazard: the moorings layer is the one part of the
 bootstrap that no parcel governs, so it drifts against the kit without any check noticing.
+
+## Independent re-drive, 260820, second session
+
+The findings above were re-driven from scratch in a later session on the refitted tree,
+because a criterion driven in one chat is not evidence held by the next.
+Everything reproduced; two claims above were corrected rather than confirmed, and both corrections are folded in place.
+
+Re-driven, unchanged:
+
+- Finding 1's blocking signature, byte-identical, against this consumer's own BURC —
+  `emplace: error: Kit mismatch: parcel contains [buk] but target expects [buk,jjk,vvk]`, EXIT=1.
+  `git status --short` in the consumer was empty immediately afterward: the guard fires ahead of all payload work and the tree is untouched by a refused emplace.
+- The replica proof. `emplace: success - 43 files, 0 commands, 0 hooks`, EXIT=0,
+  then `diff -rq <replica>/Tools/buk <parcel>/kits/buk` → no output, exit 0.
+  Replacement-not-merge confirmed by the install delta: 40 modified, 9 deleted, 4 added.
+- Finding 2's block. A logging tabtarget in the live consumer still dies in the launcher:
+  `Tools/buk/burc_regime.sh: line 40: buv_regime_enroll: command not found`, EXIT=127.
+  This consumer remains dark, and the docket's predicted `BURS_TACKROOM` refusal is still never reached.
+
+Corrected by the re-drive:
+
+- The guard count. Three ordering guards stand ahead of the payload, not two;
+  the third is a git-clean check, surfaced by driving a replica that was a git repository but had everything untracked.
+- Finding 4's supporting claim. "No `hist-buw-tt-cl-*` file has ever existed" was false at estate scope
+  and rested on searching a single directory. See the finding for what replaced it.
+
+The verdict is unchanged: the emplace is blocked in this consumer and did not land,
+the machinery behind the guard is sound, and a second independent blocker stands behind the first.
