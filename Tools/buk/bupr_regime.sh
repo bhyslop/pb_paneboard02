@@ -27,14 +27,14 @@
 set -euo pipefail
 
 # Multiple inclusion detection
-test -z "${ZBUPR_SOURCED:-}" || buc_die "Module bupr multiply sourced - check sourcing hierarchy"
+test -z "${ZBUPR_SOURCED:-}" || buc_die_now "Module bupr multiply sourced - check sourcing hierarchy"
 ZBUPR_SOURCED=1
 
 ######################################################################
 # Internal Functions (zbupr_*)
 
 zbupr_kindle() {
-  test -z "${ZBUPR_KINDLED:-}" || buc_die "Module bupr already kindled"
+  test -z "${ZBUPR_KINDLED:-}" || buc_die_now "Module bupr already kindled"
 
   # Terminal layout from BURD dispatch (set in bul_launcher before pipe)
   readonly ZBUPR_TERM_COLS=${BURD_TERM_COLS:-80}
@@ -54,7 +54,7 @@ zbupr_kindle() {
 }
 
 zbupr_sentinel() {
-  test "${ZBUPR_KINDLED:-}" = "1" || buc_die "Module bupr not kindled - call zbupr_kindle first"
+  test "${ZBUPR_KINDLED:-}" = "1" || buc_die_now "Module bupr not kindled - call zbupr_kindle first"
 }
 
 ######################################################################
@@ -146,6 +146,7 @@ bupr_section_item() {
 # Shared rendering logic for bupr_item and bupr_section_item.
 # Reads ZBUPR_LAYOUT to choose single-line or double-line format.
 zbupr_render_field() {
+  zbupr_sentinel
   zbuym_sentinel
   local z_varname=$1
   local z_type=$2

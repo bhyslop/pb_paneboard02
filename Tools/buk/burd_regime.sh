@@ -24,14 +24,14 @@
 set -euo pipefail
 
 # Multiple inclusion detection
-test -z "${ZBURD_SOURCED:-}" || buc_die "Module burd multiply sourced - check sourcing hierarchy"
+test -z "${ZBURD_SOURCED:-}" || buc_die_now "Module burd multiply sourced - check sourcing hierarchy"
 ZBURD_SOURCED=1
 
 ######################################################################
 # Internal Functions (zburd_*)
 
 zburd_kindle() {
-  test -z "${ZBURD_KINDLED:-}" || buc_die "Module burd already kindled"
+  test -z "${ZBURD_KINDLED:-}" || buc_die_now "Module burd already kindled"
 
   # No defaults set — buv uses ${!varname:-} for safe indirect expansion under set -u.
   # Unset variables are detected distinctly from empty by zbuv_check_capture.
@@ -53,6 +53,7 @@ zburd_kindle() {
   buv_string_enroll  BURD_TOOLS_DIR             1  256  "Tools directory path (from BURC)"
   buv_string_enroll  BURD_BUK_DIR               1  256  "BUK directory path (derived)"
   buv_string_enroll  BURD_TABTARGET_DIR         1  256  "Tabtarget directory path (from BURC)"
+  buv_string_enroll  BURD_TACKROOM              0  512  "Station-shared tool store root, carried across the dispatch exec boundary from BURS_TACKROOM so a kit's CLI can read it (empty where the station declares none)"
 
   buv_group_enroll "Computed State"
   buv_string_enroll  BURD_NOW_STAMP             1   64  "Timestamp string computed at dispatch time"
@@ -63,6 +64,7 @@ zburd_kindle() {
   buv_string_enroll  BURD_TRANSCRIPT            1  256  "Path to transcript file for this invocation"
   buv_string_enroll  BURD_GIT_CONTEXT           1  128  "Git context string at dispatch time"
   buv_string_enroll  BURD_OSTYPE                1   32  "Operating-system type at dispatch time (e.g. cygwin, linux-gnu, darwin) — lets native binaries learn the platform bash already knows"
+  buv_enum_enroll    BURD_COLOR                     "Resolved color verdict (0/1), computed once at dispatch time from BURE_COLOR/NO_COLOR/tty detection" 0 1
 
   buv_group_enroll "Parsed Tabtarget"
   buv_string_enroll  BURD_TARGET                1  256  "Target parsed from tabtarget filename"
@@ -95,7 +97,7 @@ zburd_kindle() {
 }
 
 zburd_sentinel() {
-  test "${ZBURD_KINDLED:-}" = "1" || buc_die "Module burd not kindled - call zburd_kindle first"
+  test "${ZBURD_KINDLED:-}" = "1" || buc_die_now "Module burd not kindled - call zburd_kindle first"
 }
 
 # Enforce all BURD enrollment validations
@@ -106,8 +108,8 @@ zburd_enforce() {
 
   # Custom enforce: log paths must be set when logging is active
   if test -z "${BURD_NO_LOG:-}" && test -n "${BURD_LOG_LAST:-}"; then
-    test -n "${BURD_LOG_SAME:-}" || buc_die "BURD_LOG_SAME required when logging is active"
-    test -n "${BURD_LOG_HIST:-}" || buc_die "BURD_LOG_HIST required when logging is active"
+    test -n "${BURD_LOG_SAME:-}" || buc_die_now "BURD_LOG_SAME required when logging is active"
+    test -n "${BURD_LOG_HIST:-}" || buc_die_now "BURD_LOG_HIST required when logging is active"
   fi
 }
 

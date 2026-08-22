@@ -46,7 +46,7 @@ burc_render() {
 # Furnish and Main
 
 zburc_furnish() {
-  buc_doc_env "BURD_BUK_DIR          " "BUK module directory (dispatch-provided)"
+  buc_doc_env_row "BURD_BUK_DIR          " "BUK module directory (dispatch-provided)"
   buc_doc_env_done || return 0
 
   source "${BURD_BUK_DIR}/buv_validation.sh"
@@ -58,7 +58,7 @@ zburc_furnish() {
   zburd_kindle
   zburd_enforce
 
-  source "${BURD_REGIME_FILE}" || buc_die "Failed to source BURC: ${BURD_REGIME_FILE}"
+  source "${BURD_REGIME_FILE}" || buc_die_now "Failed to source BURC: ${BURD_REGIME_FILE}"
 
   zburc_kindle
   zburc_enforce

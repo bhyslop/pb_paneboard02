@@ -20,11 +20,11 @@
 set -euo pipefail
 
 # Multiple inclusion guard
-test -z "${ZBUC_INCLUDED:-}" || return 0
-ZBUC_INCLUDED=1
+test -z "${ZBUC_SOURCED:-}" || return 0
+ZBUC_SOURCED=1
 
 # Color is no longer buc's own concern.  Every display path renders through
-# the buym core (buyf_format_yawp over the kindle-time BUYC_* palette), which
+# the buym core (buym_format_yawp over the kindle-time BUYC_* palette), which
 # owns the single terminal-capability decision and honors NO_COLOR/TERM=dumb.
 # Semantic ambients flow in by BUYC_* name (resolved after kindle); colored
 # prefixes ride buym's WARN/FAIL span markers.
@@ -70,7 +70,7 @@ zbuc_tag_args() {
   zbuc_make_tag "${z_d}" "${z_label}"
   local z_arg
   for z_arg in "$@"; do
-    buyf_strip_yawp "${z_arg}"
+    buym_strip_yawp "${z_arg}"
     printf '%s\n' "${z_buym_format}"
   done | zbuc_log "${ZBUC_TAG}" " ---- "
 }
@@ -88,22 +88,22 @@ buc_debug()    { zbuc_tag_args 3 "buc_debug    " "$@"; zbuc_print 2 ""          
 buc_trace()    { zbuc_tag_args 3 "buc_trace    " "$@"; zbuc_print 3 ""                "$@"; }
 buc_warn() {
   zbuc_tag_args 3 "buc_warn     " "$@"
-  buyy_warn_yawp "WARNING:"; local z_pfx="${z_buym_yelp}"
+  buym_warn_yawp "WARNING:"; local z_pfx="${z_buym_yelp}"
   zbuc_print 0 "" "${z_pfx} $*"
 }
 buc_success() {
   zbuc_tag_args 3 "buc_success  " "$@"
   zbuc_tint BUYC_GREEN "$*"
-  printf '%s\n' "${z_buym_format}" >&2 || buc_die
+  printf '%s\n' "${z_buym_format}" >&2 || buc_die_now
 }
-# Band membrane: $? captured before any command so a `cmd || buc_die` chain
+# Band membrane: $? captured before any command so a `cmd || buc_die_now` chain
 # whose cmd exited with a precision-band code (bubc band tinder) re-exits
 # that code instead of laundering it to 1. Everything else — including a
 # cold caller before bubc is sourced — stays exit 1, "imprecise death".
-buc_die() {
+buc_die_now() {
   local z_status=$?
-  zbuc_tag_args 3 "buc_die      " "ERROR: [${ZBUC_CONTEXT:-}] $*"
-  buyy_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
+  zbuc_tag_args 3 "buc_die_now      " "ERROR: [${ZBUC_CONTEXT:-}] $*"
+  buym_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
   zbuc_print -1 "" "${z_pfx} [${ZBUC_CONTEXT:-}] $*"
   if test -n "${BUBC_band_base:-}"                                \
      && test "${z_status}" -ge "${BUBC_band_base}"                \
@@ -114,18 +114,18 @@ buc_die() {
 }
 
 # Deliberate rejection origin. Exits with an in-band code from the bubc band
-# tinder block so a negative test can assert WHICH gate fired; buc_die
+# tinder block so a negative test can assert WHICH gate fired; buc_die_now
 # wrappers upstream propagate the code unchanged through the band membrane.
 # An out-of-band argument is a programming error and dies imprecisely.
 buc_reject() {
   local z_code="${1:-}"
   shift || true
-  test -n "${BUBC_band_base:-}" || buc_die "buc_reject: band tinder not sourced (bubc_constants.sh)"
-  test -n "${z_code}"           || buc_die "buc_reject: band code required"
-  test "${z_code}" -ge "${BUBC_band_base}" 2>/dev/null || buc_die "buc_reject: code '${z_code}' below band"
-  test "${z_code}" -lt "$((BUBC_band_base + BUBC_band_width))" || buc_die "buc_reject: code '${z_code}' above band"
+  test -n "${BUBC_band_base:-}" || buc_die_now "buc_reject: band tinder not sourced (bubc_constants.sh)"
+  test -n "${z_code}"           || buc_die_now "buc_reject: band code required"
+  test "${z_code}" -ge "${BUBC_band_base}" 2>/dev/null || buc_die_now "buc_reject: code '${z_code}' below band"
+  test "${z_code}" -lt "$((BUBC_band_base + BUBC_band_width))" || buc_die_now "buc_reject: code '${z_code}' above band"
   zbuc_tag_args 3 "buc_reject   " "ERROR: [${ZBUC_CONTEXT:-}] $*"
-  buyy_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
+  buym_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
   zbuc_print -1 "" "${z_pfx} [${ZBUC_CONTEXT:-}] $*"
   exit "${z_code}"
 }
@@ -145,7 +145,7 @@ buc_tabtarget() {
   shift
   local z_extra="${*:+ $*}"
   zbuym_tt_path "${z_colophon}"
-  test -n "${z_buym_tt_path}" || buc_die "buc_tabtarget: no tabtarget found for colophon '${z_colophon}'"
+  test -n "${z_buym_tt_path}" || buc_die_now "buc_tabtarget: no tabtarget found for colophon '${z_colophon}'"
   buc_bare "        ${z_buym_tt_path}${z_extra}"
 }
 
@@ -171,7 +171,7 @@ zbuc_doc_mode_predicate() {
   test "${ZBUC_DOC_MODE}" = "true"
 }
 
-buc_doc_env() {
+buc_doc_env_row() {
   set -e
 
   local env_var_name="${1}"
@@ -253,7 +253,7 @@ buc_set_doc_mode() {
 buc_usage_die() {
   set -e
   local usage; usage=$(zbuc_usage)
-  buyy_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
+  buym_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
   zbuc_tint "" "${z_pfx} ${usage}"
   printf '%s\n' "${z_buym_format}"
   exit 1
@@ -262,13 +262,13 @@ buc_usage_die() {
 # Tint <text> through the buym core with the ambient named by <BUYC_name>
 # (empty name => default/no ambient).  Sentinel-guarded and name-indirect so
 # every BUYC_* dereference happens after kindle — a cold caller (doc-mode,
-# pre-kindle buc_die) is set -u safe.  Resolved string lands in z_buym_format.
+# pre-kindle buc_die_now) is set -u safe.  Resolved string lands in z_buym_format.
 zbuc_tint() {
   zbuym_sentinel
   local z_name="${1:-}"
   local z_ambient=""
   test -z "${z_name}" || z_ambient="${!z_name}"
-  buyf_format_yawp "${z_ambient}" "${2:-}"
+  buym_format_yawp "${z_ambient}" "${2:-}"
 }
 
 # Multi-line print function with verbosity control.
@@ -298,15 +298,22 @@ zbuc_print() {
 }
 
 # Core logging implementation - always reads from stdin
+#
+# The drain is UNCONDITIONAL, and BURD_TRANSCRIPT decides only whether each
+# line is written. Returning early on an unset transcript would close the read
+# end of the pipe zbuc_tag_args builds, and the writer loop feeding it takes
+# SIGPIPE the moment it loses that race — under `set -o pipefail` the writer's
+# 141 becomes the pipeline's status, and `set -e` then exits the shell inside
+# buc_die_now BEFORE zbuc_print can reach stderr. The diagnostic is annihilated
+# and the caller dies mute. Read to EOF first; decide what to write second.
 zbuc_log() {
-  test -n "${BURD_TRANSCRIPT:-}" || return 0
-
   local z_prefix="$1"
-  local z_rest_prefix="$2"
-  local z_outfile="${BURD_TRANSCRIPT}"
+  local -r z_rest_prefix="$2"
+  local -r z_outfile="${BURD_TRANSCRIPT:-}"
+  local z_line=""
 
   while IFS= read -r z_line; do
-    printf '%s%s\n' "${z_prefix}" "${z_line}" >> "${z_outfile}"
+    test -z "${z_outfile}" || printf '%s%s\n' "${z_prefix}" "${z_line}" >> "${z_outfile}"
     z_prefix="${z_rest_prefix}"
   done
 }
@@ -322,7 +329,7 @@ buc_die_if() {
 
   set -e
   local context="${ZBUC_CONTEXT:-}"
-  buyy_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
+  buym_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
   zbuc_print -1 "" "${z_pfx} [$context] $1"
   shift
   zbuc_print -1 "" "$@"
@@ -339,7 +346,7 @@ buc_die_unless() {
 
   set -e
   local context="${ZBUC_CONTEXT:-}"
-  buyy_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
+  buym_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
   zbuc_print -1 "" "${z_pfx} [$context] $1"
   shift
   zbuc_print -1 "" "$@"
@@ -379,7 +386,7 @@ buc_countdown() {
     return 0
   fi
 
-  test -z "${BURE_COUNTDOWN:-}" || buc_die "BURE_COUNTDOWN must be 'skip' or unset, got '${BURE_COUNTDOWN}'"
+  test -z "${BURE_COUNTDOWN:-}" || buc_die_now "BURE_COUNTDOWN must be 'skip' or unset, got '${BURE_COUNTDOWN}'"
 
   buc_step "Countdown: ${z_seconds}s to cancel (Ctrl-C)"
   sleep 1
@@ -402,15 +409,19 @@ buc_require() {
     return 0
   fi
 
-  test -z "${BURE_CONFIRM:-}" || buc_die "BURE_CONFIRM must be 'skip' or unset, got '${BURE_CONFIRM}'"
+  test -z "${BURE_CONFIRM:-}" || buc_die_now "BURE_CONFIRM must be 'skip' or unset, got '${BURE_CONFIRM}'"
 
   sleep 1
   zbuc_tint BUYC_BRIGHT_YELLOW "${z_prompt}"
   printf '%s\n' "${z_buym_format}" >&2
-  printf 'Type %s to confirm: ' "${z_required_value}" >&2
+  # Newline-terminated by necessity: the non-interactive dispatch relay forwards
+  # this stream a whole line at a time, so a partial line never reaches the
+  # terminal — the operator would face a blocked read with no visible prompt.
+  # The answer is typed on the line beneath. Do not rejoin prompt and answer.
+  printf 'Type %s to confirm:\n' "${z_required_value}" >&2
   local z_input
   read -r z_input </dev/tty
-  test "${z_input}" = "${z_required_value}" || buc_die "Confirmation failed — expected '${z_required_value}', got '${z_input}'"
+  test "${z_input}" = "${z_required_value}" || buc_die_now "Confirmation failed — expected '${z_required_value}', got '${z_input}'"
 }
 
 buc_execute() {
@@ -436,7 +447,7 @@ buc_execute() {
   if test -n "${command}" && [[ "${command}" =~ ^${prefix}[a-z][a-z0-9_]*$ ]]; then
     buc_context "${command}"
     test -z "${env_func}" || "${env_func}" "${command}"
-    declare -F "${command}" >/dev/null || buc_die "Function not found: ${command}"
+    declare -F "${command}" >/dev/null || buc_die_now "Function not found: ${command}"
     "${command}" "$@"
   else
     test -z "${command}" || buc_warn "Unknown command: ${command}"
@@ -525,6 +536,42 @@ buc_native_path_capture() {
       printf '%s\n' "${z_path}"
       ;;
   esac
+}
+
+# --- Clipboard copy (platform-normalized) ---
+#
+# Copy the argument text to the system clipboard via the first present
+# platform tool: pbcopy (macOS), clip.exe (Windows — reachable from WSL and
+# Cygwin), wl-copy (Wayland), xclip (X11). Existence-probing is the platform
+# discrimination — no OSTYPE sniffing;
+# the tools are optional probe-and-skip dependencies each consuming project
+# inventories itself. Predicate contract:
+# exit 0 only when a tool was found AND the copy succeeded; exit 1 otherwise.
+# Sets z_buc_clipboard_tool to the probed tool name (empty when none present)
+# so the caller can log the outcome. Emits nothing on either stream and never
+# dies — the caller owns any user-visible announcement, and a copy is always
+# a convenience, never load-bearing. Reads only its argument — no kindle
+# state — so it stays unit-testable in isolation.
+buc_clipboard_copy_predicate() {
+  local -r z_text="${1:?buc_clipboard_copy_predicate: text required}"
+
+  z_buc_clipboard_tool=""
+  local z_copied=0
+  if command -v pbcopy >/dev/null 2>&1; then
+    z_buc_clipboard_tool="pbcopy"
+    if printf '%s' "${z_text}" | pbcopy 2>/dev/null; then z_copied=1; fi
+  elif command -v clip.exe >/dev/null 2>&1; then
+    z_buc_clipboard_tool="clip.exe"
+    if printf '%s' "${z_text}" | clip.exe 2>/dev/null; then z_copied=1; fi
+  elif command -v wl-copy >/dev/null 2>&1; then
+    z_buc_clipboard_tool="wl-copy"
+    if printf '%s' "${z_text}" | wl-copy 2>/dev/null; then z_copied=1; fi
+  elif command -v xclip >/dev/null 2>&1; then
+    z_buc_clipboard_tool="xclip"
+    if printf '%s' "${z_text}" | xclip -selection clipboard 2>/dev/null; then z_copied=1; fi
+  fi
+
+  test "${z_copied}" = "1"
 }
 
 # eof

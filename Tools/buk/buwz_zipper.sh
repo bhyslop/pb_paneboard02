@@ -28,7 +28,7 @@ ZBUWZ_SOURCED=1
 # Colophon registry initialization
 
 zbuwz_kindle() {
-  test -z "${ZBUWZ_KINDLED:-}" || buc_die "buwz already kindled"
+  test -z "${ZBUWZ_KINDLED:-}" || buc_die_now "buwz already kindled"
 
   # Verify buz zipper is kindled (CLI furnish must kindle buz first)
   zbuz_sentinel
@@ -37,7 +37,7 @@ zbuwz_kindle() {
   # Must precede the first enroll so the run begins at the roll's current head —
   # which, when RB is kindled first (the theurge build and rbq), lands the BUK
   # run after the RB run, keeping the RBTDGC_ block byte-stable.
-  buz_tome "buwz" "BUWGC_" "BUWZ_"
+  buz_tome_seat "buwz" "BUWGC_" "BUWZ_"
 
   # TabTarget subsystem (buut_cli.sh)
   local z_mod="buut_cli.sh"
@@ -63,17 +63,9 @@ zbuwz_kindle() {
   buz_enroll BUWZ_RE_VALIDATE "buw-rev" "${z_mod}" "bure_validate"  ""  "Validate BURE regime"
   buz_enroll BUWZ_RE_RENDER   "buw-rer" "${z_mod}" "bure_render"    ""  "Render BURE regime"
 
-  # Node Regime subsystem (burn_cli.sh)
-  z_mod="burn_cli.sh"
-  buz_enroll BUWZ_RN_VALIDATE "buw-rnv" "${z_mod}" "burn_validate" "param1" "Validate BURN profile"
-  buz_enroll BUWZ_RN_RENDER   "buw-rnr" "${z_mod}" "burn_render"   "param1" "Render BURN profile"
-  buz_enroll BUWZ_RN_LIST     "buw-rnl" "${z_mod}" "burn_list"     ""       "List BURN profiles"
-
-  # Privileged Regime subsystem (burp_cli.sh)
-  z_mod="burp_cli.sh"
-  buz_enroll BUWZ_RP_VALIDATE "buw-rpv" "${z_mod}" "burp_validate" "param1" "Validate BURP profile"
-  buz_enroll BUWZ_RP_RENDER   "buw-rpr" "${z_mod}" "burp_render"   "param1" "Render BURP profile"
-  buz_enroll BUWZ_RP_LIST     "buw-rpl" "${z_mod}" "burp_list"     ""       "List BURP profiles"
+  # Parcel emplacement (bupe_cli.sh)
+  z_mod="bupe_cli.sh"
+  buz_enroll BUWZ_PARCEL_EMPLACE "buw-pe" "${z_mod}" "bupe_emplace" "param1" "Emplace an extracted parcel into this station; the argument is the parcel directory"
 
   # Test fixtures (bux_cli.sh)
   z_mod="bux_cli.sh"
@@ -84,48 +76,14 @@ zbuwz_kindle() {
   z_mod="butt_testbench.sh"
   buz_enroll BUWZ_SELF_TEST "buw-st" "${z_mod}" "buw-st"  ""  "BUK self-test (kick-tires + bure-tweak)"
 
-  # Handbook — jurisdiction (buhj_cli.sh)
-  z_mod="buhj_cli.sh"
-  buz_enroll BUWZ_HJ0_TOP           "buw-hj0"   "${z_mod}" "buhj_top"                ""        "Jurisdiction handbook landing + tabtarget catalog (top level)"
-  buz_enroll BUWZ_HJW_WINDOWS       "buw-hjw"   "${z_mod}" "buhj_windows"            ""        "Windows first-time host setup (Tailscale autonomy + sshd reachability)"
-  buz_enroll BUWZ_HJM_MACOS         "buw-hjm"   "${z_mod}" "buhj_macos"              ""        "macOS first-time host setup (Tailscale install + login, ssh-copy-id admin trust)"
-  buz_enroll BUWZ_HJL_LINUX         "buw-hjl"   "${z_mod}" "buhj_linux"              ""        "Linux first-time host setup (Tailscale, sshd on minimal distros, ssh-copy-id admin trust)"
-
-  # Jurisdiction operational — workload ceremonies (bujb_cli.sh)
-  z_mod="bujb_cli.sh"
-  buz_enroll BUWZ_JW_KNOCK          "buw-jwk"   "${z_mod}" "bujb_knock"               "param1"  "Knock — probe workload SSH reachability"
-  buz_enroll BUWZ_JW_COMMAND_FILE   "buw-jwc"   "${z_mod}" "bujb_command_file"        "param1"  "Run command file as workload, capture outputs"
-  buz_enroll BUWZ_JW_INTERACTIVE    "buw-jws"   "${z_mod}" "bujb_interactive_session" "param1"  "Interactive SSH session as workload"
-
-  # Jurisdiction operational — caparison ceremonies (bujb_cli.sh)
-  buz_enroll BUWZ_JP_CAPARISON_WIN    "buw-jpCW"  "${z_mod}" "bujb_caparison_windows_command" "param1"  "Caparison — admin host posture (admin SSH trust, sshd harden, WSL stage, sleep disable, Tailscale auto-start) on a bunne_windows node"
-  buz_enroll BUWZ_JP_CAPARISON_MAC    "buw-jpCM"  "${z_mod}" "bujb_caparison_macos_command"   "param1"  "Caparison — admin host posture (Remote Login, pmset, tailscaled) on a bunne_mac node"
-  buz_enroll BUWZ_JP_CAPARISON_LIN    "buw-jpCL"  "${z_mod}" "bujb_caparison_linux_command"   "param1"  "Caparison — admin host posture (sshd, sleep mask, tailscaled) on a bunne_linux node"
-
-  # Jurisdiction operational — privileged SSH pass-through (bujb_cli.sh)
-  buz_enroll BUWZ_JP_PRIVILEGED_SSH   "buw-jpS"   "${z_mod}" "bujb_privileged_ssh_command" "param1"  "Privileged SSH — run a command on a node as BURP_PRIVILEGED_USER"
-
-  # Jurisdiction operational — garrison ceremonies (bujb_cli.sh)
-  buz_enroll BUWZ_JP_GARRISON_BASH    "buw-jpGb"  "${z_mod}" "bujb_garrison_bash"     "param1"  "Garrison workload (shell-letter b: native bash, Linux/Mac)"
-  buz_enroll BUWZ_JP_GARRISON_CYGWIN  "buw-jpGc"  "${z_mod}" "bujb_garrison_cygwin"   "param1"  "Garrison workload (shell-letter c: Cygwin bash, Windows)"
-  buz_enroll BUWZ_JP_GARRISON_WSL     "buw-jpGw"  "${z_mod}" "bujb_garrison_wsl"      "param1"  "Garrison workload (shell-letter w: WSL bash, Windows)"
-
   readonly ZBUWZ_KINDLED=1
-}
-
-######################################################################
-# Healthcheck (validates all enrolled tabtargets exist on disk)
-
-zbuwz_healthcheck() {
-  zbuwz_sentinel
-  buz_healthcheck
 }
 
 ######################################################################
 # Internal sentinel
 
 zbuwz_sentinel() {
-  test "${ZBUWZ_KINDLED:-}" = "1" || buc_die "Module buwz not kindled - call zbuwz_kindle first"
+  test "${ZBUWZ_KINDLED:-}" = "1" || buc_die_now "Module buwz not kindled - call zbuwz_kindle first"
 }
 
 # eof

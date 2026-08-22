@@ -43,15 +43,15 @@ bux_band_chain() {
   buc_step "Band chain: raising self-test code ${BUBC_band_selftest} beneath a capture"
   local z_out
   z_out=$(buc_reject "${BUBC_band_selftest}" "deliberate self-test rejection") \
-    || buc_die "band chain: origin rejected beneath capture"
-  buc_die "band chain: rejection failed to propagate (captured: '${z_out}')"
+    || buc_die_now "band chain: origin rejected beneath capture"
+  buc_die_now "band chain: rejection failed to propagate (captured: '${z_out}')"
 }
 
 ######################################################################
 # Furnish and Main
 
 zbux_furnish() {
-  buc_doc_env "BURD_BUK_DIR          " "BUK module directory (dispatch-provided)"
+  buc_doc_env_row "BURD_BUK_DIR          " "BUK module directory (dispatch-provided)"
   buc_doc_env_done || return 0
 }
 

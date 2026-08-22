@@ -32,12 +32,12 @@ zbute_tcase() {
   set -e
 
   local z_case_name="${1}"
-  declare -F "${z_case_name}" >/dev/null || buto_fatal "Test function not found: ${z_case_name}"
+  declare -F "${z_case_name}" >/dev/null || buto_fatal_now "Test function not found: ${z_case_name}"
 
   buto_section "START: ${z_case_name}"
 
   local z_case_temp_dir="${ZBUTE_ROOT_TEMP_DIR}/${z_case_name}"
-  mkdir -p "${z_case_temp_dir}" || buto_fatal "Failed to create test temp dir: ${z_case_temp_dir}"
+  mkdir -p "${z_case_temp_dir}" || buto_fatal_now "Failed to create test temp dir: ${z_case_temp_dir}"
 
   local z_status=0
   (

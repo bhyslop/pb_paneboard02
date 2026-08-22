@@ -18,8 +18,8 @@
 #
 # BUTCBD - Precision exit-code band test cases for BUK self-test
 #
-# Proves the band membrane in buc_die: an in-band $? beneath a
-# `cmd || buc_die` chain re-exits unchanged, everything else stays
+# Proves the band membrane in buc_die_now: an in-band $? beneath a
+# `cmd || buc_die_now` chain re-exits unchanged, everything else stays
 # imprecise death (1), and a band code survives the full
 # tabtarget/launcher/dispatch exec path to the caller's captured status.
 
@@ -29,15 +29,15 @@ set -euo pipefail
 # Helpers — each runs inside zbuto_invoke's isolation subshell
 
 zbutcbd_die_in_band() {
-  ( exit "${BUBC_band_selftest}" ) || buc_die "wrapped in-band failure"
+  ( exit "${BUBC_band_selftest}" ) || buc_die_now "wrapped in-band failure"
 }
 
 zbutcbd_die_plain() {
-  false || buc_die "wrapped plain failure"
+  false || buc_die_now "wrapped plain failure"
 }
 
 zbutcbd_die_out_of_band() {
-  ( exit 42 ) || buc_die "wrapped out-of-band failure"
+  ( exit 42 ) || buc_die_now "wrapped out-of-band failure"
 }
 
 zbutcbd_reject_direct() {
@@ -52,17 +52,17 @@ zbutcbd_reject_out_of_band() {
 # Membrane cases
 
 butcbd_die_in_band_tcase() {
-  buto_trace "Band: in-band status beneath cmd || buc_die re-exits unchanged"
+  buto_trace "Band: in-band status beneath cmd || buc_die_now re-exits unchanged"
   buto_unit_expect_code "${BUBC_band_selftest}" zbutcbd_die_in_band
 }
 
 butcbd_die_plain_tcase() {
-  buto_trace "Band: ordinary failure beneath buc_die stays imprecise death (1)"
+  buto_trace "Band: ordinary failure beneath buc_die_now stays imprecise death (1)"
   buto_unit_expect_code 1 zbutcbd_die_plain
 }
 
 butcbd_die_out_of_band_tcase() {
-  buto_trace "Band: out-of-band nonzero beneath buc_die launders to 1"
+  buto_trace "Band: out-of-band nonzero beneath buc_die_now launders to 1"
   buto_unit_expect_code 1 zbutcbd_die_out_of_band
 }
 

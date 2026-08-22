@@ -6,8 +6,6 @@
 #
 # Policy: No inline shellcheck directives anywhere in the codebase.
 # All structural suppressions live here. Genuine findings must be fixed.
-#
-# Companion: BCG-BashConsoleGuide.md § Shellcheck Integration
 
 # SC1090: Can't follow non-constant source.
 #   BCG furnish pattern sources via "${BURD_BUK_DIR}/module.sh" —

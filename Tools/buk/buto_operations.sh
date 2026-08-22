@@ -24,7 +24,13 @@ set -euo pipefail
 # Color codes
 
 buto_color() {
-  if test -n "${TERM:-}" && test "${TERM}" != "dumb"; then
+  # Obey the dispatch color verdict when present; TERM probe is the
+  # undispatched fallback (mirrors the buym dispatch arm).
+  if test "${BURD_COLOR:-}" = "0"; then
+    printf ''
+  elif test "${BURD_COLOR:-}" = "1"; then
+    printf '\033[%sm' "${1}"
+  elif test -n "${TERM:-}" && test "${TERM}" != "dumb"; then
     printf '\033[%sm' "${1}"
   else
     printf ''
@@ -79,7 +85,7 @@ buto_trace() {
   zbuto_render_lines "trace" "" "$@"
 }
 
-buto_fatal() {
+buto_fatal_now() {
   zbuto_render_lines "ERROR" "${ZBUTO_RED}" "$@"
   exit 1
 }
@@ -88,14 +94,14 @@ buto_fatal_on_error() {
   set -e
   local z_condition="${1}"; shift
   test "${z_condition}" -ne 0 || return 0
-  buto_fatal "$@"
+  buto_fatal_now "$@"
 }
 
 buto_fatal_on_success() {
   set -e
   local z_condition="${1}"; shift
   test "${z_condition}" -eq 0 || return 0
-  buto_fatal "$@"
+  buto_fatal_now "$@"
 }
 
 buto_success() {
@@ -132,10 +138,15 @@ zbuto_next_invoke_capture() {
 zbuto_invoke() {
   buto_trace "Invoking: $*"
 
-  local z_tmp_stdout
-  z_tmp_stdout=$(mktemp)
-  local z_tmp_stderr
-  z_tmp_stderr=$(mktemp)
+  # Per-call scratch names: a monotonic counter, not $$ — $$ is fixed for the
+  # whole process (bash never changes it in a subshell), so a command that
+  # itself nests another zbuto_invoke would collide on a $$-keyed name; the
+  # counter increments across that same fork, so nested and sequential calls
+  # alike always land on a fresh name. BUT_TEMP_DIR is the per-test-case
+  # scratch dir zbute_tcase exports before any case body runs.
+  ZBUTO_INVOKE_SEQ=$((${ZBUTO_INVOKE_SEQ:-0} + 1))
+  local -r z_tmp_stdout="${BUT_TEMP_DIR}/zbuto-invoke-${ZBUTO_INVOKE_SEQ}.stdout"
+  local -r z_tmp_stderr="${BUT_TEMP_DIR}/zbuto-invoke-${ZBUTO_INVOKE_SEQ}.stderr"
 
   # BURV bridge setup if enabled
   local z_burv_output=""
@@ -150,7 +161,7 @@ zbuto_invoke() {
   fi
 
   # The invoked argv gets its own nested subshell so a function that exits
-  # (buc_die, buc_reject) lands there instead of killing the capture shell
+  # (buc_die_now, buc_reject) lands there instead of killing the capture shell
   # before the status line is written — exit codes report faithfully rather
   # than masking to 127.
   ZBUTO_STATUS=$( (
@@ -174,7 +185,8 @@ zbuto_invoke() {
     ZBUTO_STDERR=$(<"${z_tmp_stderr}")
   fi
 
-  rm -f "${z_tmp_stdout}" "${z_tmp_stderr}"
+  # Left in place under BUT_TEMP_DIR for forensic
+  # debugging; cleanup is infrastructure's job, never module code's.
 
   ZBUTO_BURV_OUTPUT="${z_burv_output}"
   ZBUTO_BURV_OUTPUT_DIR="${z_burv_output:+${z_burv_output}/current}"
@@ -194,13 +206,13 @@ buto_unit_expect_ok_stdout() {
                                         "Command: $*"                               \
                                         "STDERR: ${ZBUTO_STDERR}"
 
-  test "${ZBUTO_STDOUT}" = "${z_expected}" || buto_fatal "Output mismatch"            \
+  test "${ZBUTO_STDOUT}" = "${z_expected}" || buto_fatal_now "Output mismatch"            \
                                                          "Command: $*"                \
                                                          "Expected: '${z_expected}'"  \
                                                          "Got:      '${ZBUTO_STDOUT}'"
 }
 
-buto_unit_expect_ok() {
+buto_unit_expect_ok_status() {
   set -e
 
   zbuto_invoke "$@"
@@ -227,12 +239,12 @@ buto_unit_expect_code() {
   set -e
 
   local z_expected="${1:-}"
-  test -n "${z_expected}" || buto_fatal "buto_unit_expect_code: expected code required"
+  test -n "${z_expected}" || buto_fatal_now "buto_unit_expect_code: expected code required"
   shift
 
   zbuto_invoke "$@"
 
-  test "${ZBUTO_STATUS}" = "${z_expected}" || buto_fatal "Exit code mismatch"          \
+  test "${ZBUTO_STATUS}" = "${z_expected}" || buto_fatal_now "Exit code mismatch"          \
                                                          "Command: $*"                 \
                                                          "Expected: ${z_expected}"     \
                                                          "Got:      ${ZBUTO_STATUS}"   \
@@ -248,16 +260,16 @@ buto_unit_expect_code() {
 
 zbuto_resolve_tabtarget() {
   local z_colophon="${1:-}"
-  test -n "${z_colophon}" || buto_fatal "zbuto_resolve_tabtarget: colophon required"
+  test -n "${z_colophon}" || buto_fatal_now "zbuto_resolve_tabtarget: colophon required"
 
   local z_tt_dir="${BURC_TABTARGET_DIR:-}"
-  test -n "${z_tt_dir}" || buto_fatal "BURC_TABTARGET_DIR not set -- buto_tt requires BUK environment"
+  test -n "${z_tt_dir}" || buto_fatal_now "BURC_TABTARGET_DIR not set -- buto_tt requires BUK environment"
   local z_matches=("${z_tt_dir}/${z_colophon}."*.sh)
 
   # Bash 3.2: no-match glob returns literal — check with test -e
-  test -e "${z_matches[0]}" || buto_fatal "No tabtarget found for colophon '${z_colophon}' in ${z_tt_dir}/"
+  test -e "${z_matches[0]}" || buto_fatal_now "No tabtarget found for colophon '${z_colophon}' in ${z_tt_dir}/"
 
-  test "${#z_matches[@]}" -eq 1 || buto_fatal "Multiple tabtargets found for colophon '${z_colophon}' in ${z_tt_dir}/"
+  test "${#z_matches[@]}" -eq 1 || buto_fatal_now "Multiple tabtargets found for colophon '${z_colophon}' in ${z_tt_dir}/"
 
   echo "${z_matches[0]}"
 }
@@ -266,7 +278,7 @@ buto_tt_expect_ok() {
   set -e
 
   local z_colophon="${1:-}"
-  test -n "${z_colophon}" || buto_fatal "buto_tt_expect_ok: colophon required"
+  test -n "${z_colophon}" || buto_fatal_now "buto_tt_expect_ok: colophon required"
   shift
 
   local z_tabtarget
@@ -287,8 +299,8 @@ buto_tt_expect_code() {
 
   local z_expected="${1:-}"
   local z_colophon="${2:-}"
-  test -n "${z_expected}" || buto_fatal "buto_tt_expect_code: expected code required"
-  test -n "${z_colophon}" || buto_fatal "buto_tt_expect_code: colophon required"
+  test -n "${z_expected}" || buto_fatal_now "buto_tt_expect_code: expected code required"
+  test -n "${z_colophon}" || buto_fatal_now "buto_tt_expect_code: colophon required"
   shift 2
 
   local z_tabtarget
@@ -296,7 +308,7 @@ buto_tt_expect_code() {
 
   zbuto_invoke "${z_tabtarget}" "$@"
 
-  test "${ZBUTO_STATUS}" = "${z_expected}" || buto_fatal "Exit code mismatch"          \
+  test "${ZBUTO_STATUS}" = "${z_expected}" || buto_fatal_now "Exit code mismatch"          \
                                                          "Colophon: ${z_colophon}"     \
                                                          "Tabtarget: ${z_tabtarget}"   \
                                                          "Expected: ${z_expected}"     \
@@ -306,7 +318,7 @@ buto_tt_expect_code() {
 }
 
 buto_tt_previous_output_capture() {
-  test -n "${ZBUTO_BURV_OUTPUT_DIR:-}" || buto_fatal "No previous tabtarget output"
+  test -n "${ZBUTO_BURV_OUTPUT_DIR:-}" || buto_fatal_now "No previous tabtarget output"
   echo "${ZBUTO_BURV_OUTPUT_DIR}"
 }
 
@@ -314,7 +326,7 @@ buto_tt_expect_fatal() {
   set -e
 
   local z_colophon="${1:-}"
-  test -n "${z_colophon}" || buto_fatal "buto_tt_expect_fatal: colophon required"
+  test -n "${z_colophon}" || buto_fatal_now "buto_tt_expect_fatal: colophon required"
   shift
 
   local z_tabtarget
@@ -340,8 +352,8 @@ buto_launch_expect_ok() {
 
   local z_launcher="${1:-}"
   local z_colophon="${2:-}"
-  test -n "${z_launcher}" || buto_fatal "buto_launch_expect_ok: launcher required"
-  test -n "${z_colophon}" || buto_fatal "buto_launch_expect_ok: colophon required"
+  test -n "${z_launcher}" || buto_fatal_now "buto_launch_expect_ok: launcher required"
+  test -n "${z_colophon}" || buto_fatal_now "buto_launch_expect_ok: colophon required"
   shift 2
 
   zbuto_invoke "${z_launcher}" "${z_colophon}" "$@"
@@ -357,8 +369,8 @@ buto_launch_expect_fatal() {
 
   local z_launcher="${1:-}"
   local z_colophon="${2:-}"
-  test -n "${z_launcher}" || buto_fatal "buto_launch_expect_fatal: launcher required"
-  test -n "${z_colophon}" || buto_fatal "buto_launch_expect_fatal: colophon required"
+  test -n "${z_launcher}" || buto_fatal_now "buto_launch_expect_fatal: launcher required"
+  test -n "${z_colophon}" || buto_fatal_now "buto_launch_expect_fatal: colophon required"
   shift 2
 
   zbuto_invoke "${z_launcher}" "${z_colophon}" "$@"

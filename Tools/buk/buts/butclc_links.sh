@@ -52,7 +52,7 @@ butclc_link_osc8_tcase() {
   z_osc_marker=$(printf '\033]8;;')
   case "${ZBUTO_STDERR}" in
     *"${z_osc_marker}"*) ;;
-    *) buto_fatal "OSC-8 sequence not found in output" "Got: ${ZBUTO_STDERR}" ;;
+    *) buto_fatal_now "OSC-8 sequence not found in output" "Got: ${ZBUTO_STDERR}" ;;
   esac
 }
 
@@ -62,19 +62,19 @@ butclc_link_fallback_tcase() {
   buto_fatal_on_error "${ZBUTO_STATUS}" "buh_link fallback failed" "STDERR: ${ZBUTO_STDERR}"
   case "${ZBUTO_STDERR}" in
     *"<https://example.com#hallmark>"*) ;;
-    *) buto_fatal "Fallback URL not found in output" "Got: ${ZBUTO_STDERR}" ;;
+    *) buto_fatal_now "Fallback URL not found in output" "Got: ${ZBUTO_STDERR}" ;;
   esac
   local z_osc_marker
   z_osc_marker=$(printf '\033]8;;')
   case "${ZBUTO_STDERR}" in
-    *"${z_osc_marker}"*) buto_fatal "OSC-8 should not appear in fallback mode" ;;
+    *"${z_osc_marker}"*) buto_fatal_now "OSC-8 should not appear in fallback mode" ;;
     *) ;;
   esac
 }
 
 butclc_link_variants_tcase() {
   buto_trace "buh_link variants succeed with correct arg counts"
-  buto_unit_expect_ok zbutclc_link_variants
+  buto_unit_expect_ok_status zbutclc_link_variants
 }
 
 # eof
