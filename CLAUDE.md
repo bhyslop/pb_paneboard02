@@ -221,6 +221,6 @@ git log --stat
 
 <!-- Kit guidance: hand-maintained @-include lines. Edit content in the
      @-targets, not here. -->
-@Tools/buk/claude-buk-core.md
-@Tools/jjk/claude-jjk-core.md
-@Tools/vvk/claude-vvk-core.md
+@Tools/buk/volis_buk.md
+@Tools/jjk/volis_jjk.md
+@Tools/vvk/volis_vvk.md
