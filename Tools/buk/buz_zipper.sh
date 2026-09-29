@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 # Copyright 2026 Scale Invariant, Inc.
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -390,12 +391,130 @@ buz_emit_context() {
 }
 
 ######################################################################
+# Terminal roll emission (the help-door face)
+
+# buz_emit_roll() - Emit one named tome's colophons as terminal lines, by group.
+# Args: tome_name, tabtarget_dir [, colophon_filter]
+# The terminal twin of buz_emit_context above: the same walk over that tome's run
+# of the shared roll, the same deferred group headers, the same
+# frontispiece-from-disk read that omits a colophon withheld from this tree. It
+# differs only in what it emits — operator-facing lines through the console
+# module rather than markdown to stdout — and in the optional filter, which
+# narrows the emission to one colophon matched either whole or with its group's
+# prefix dropped, so an operator may name a door the short way they read it in a
+# listing. A filter no colophon answers dies naming the whole family, since a
+# silent empty listing would read as "no such family" rather than "no such door".
+# Kit-ignorant like its twin: every fact printed comes from the registry.
+buz_emit_roll() {
+  zbuz_sentinel
+
+  local -r z_tome_name="${1:-}"
+  local -r z_tt_dir="${2:-}"
+  local -r z_filter="${3:-}"
+  test -n "${z_tome_name}" || buc_die_now "buz_emit_roll: tome name required"
+  test -n "${z_tt_dir}"    || buc_die_now "buz_emit_roll: tabtarget directory required"
+
+  # Resolve the named tome to its [start, end) slice of the shared roll.
+  local z_start=""
+  local z_end="${#z_buz_colophon_roll[@]}"
+  local z_t=""
+  for z_t in "${!z_buz_tome_name_roll[@]}"; do
+    test "${z_buz_tome_name_roll[z_t]}" = "${z_tome_name}" || continue
+    z_start="${z_buz_tome_index_roll[z_t]}"
+    if (( z_t + 1 < ${#z_buz_tome_index_roll[@]} )); then
+      z_end="${z_buz_tome_index_roll[z_t + 1]}"
+    fi
+    break
+  done
+  test -n "${z_start}" || buc_die_now "buz_emit_roll: unknown tome: ${z_tome_name}"
+
+  # Advance the group cursor past any groups that fall before this tome's start.
+  local z_group_cursor=0
+  while (( z_group_cursor < ${#z_buz_group_index_roll[@]} )) \
+        && (( z_buz_group_index_roll[z_group_cursor] < z_start )); do
+    z_group_cursor=$((z_group_cursor + 1))
+  done
+
+  local z_group_open=0
+  local z_emitted=0
+  local z_pending_desc=""
+  local z_prefix=""
+  local z_family=""
+  local z_i="${z_start}"
+
+  while (( z_i < z_end )); do
+    # Note (don't emit yet) the group header when we reach its starting index, so
+    # a group whose every row is withheld or filtered away never prints a header
+    # with nothing under it.
+    if (( z_group_cursor < ${#z_buz_group_index_roll[@]} )) \
+       && (( z_i == z_buz_group_index_roll[z_group_cursor] )); then
+      z_group_open=0
+      z_pending_desc="${z_buz_group_description_roll[z_group_cursor]}"
+      z_prefix="${z_buz_group_prefix_roll[z_group_cursor]}"
+      z_group_cursor=$((z_group_cursor + 1))
+    fi
+
+    local z_colophon="${z_buz_colophon_roll[z_i]}"
+    local z_matches=("${z_tt_dir}/${z_colophon}."*.sh)
+    if ! test -e "${z_matches[0]}"; then
+      z_i=$((z_i + 1))
+      continue
+    fi
+
+    # The family the refusal names is what stands on disk, gathered before the
+    # filter runs — a door withheld from this tree is not a door to offer.
+    z_family="${z_family:+${z_family} }${z_colophon}"
+
+    local z_short="${z_colophon#"${z_prefix}"}"
+    if test -n "${z_filter}" \
+       && test "${z_filter}" != "${z_colophon}" \
+       && test "${z_filter}" != "${z_short}"; then
+      z_i=$((z_i + 1))
+      continue
+    fi
+
+    if (( ! z_group_open )); then
+      if (( z_emitted )); then
+        buc_bare ""
+      fi
+      buc_bare "${z_pending_desc}"
+      z_group_open=1
+    fi
+
+    # Channel to plain words: what the operator has to type, not the enrollment's
+    # own vocabulary. A door whose folio is OPTIONAL says so in its description,
+    # which is why this says only how the folio arrives.
+    local z_takes="takes nothing"
+    case "${z_buz_channel_roll[z_i]:-}" in
+      "param1")  z_takes="takes one argument" ;;
+      "imprint") z_takes="named in the file"  ;;
+    esac
+
+    buc_bare "  ${z_matches[0]}  [${z_takes}]  ${z_buz_describe_roll[z_i]:-}"
+    z_emitted=1
+    z_i=$((z_i + 1))
+  done
+
+  if test -n "${z_filter}" && (( ! z_emitted )); then
+    buc_die_now "buz_emit_roll: no door answers '${z_filter}' - the family is: ${z_family}"
+  fi
+}
+
+######################################################################
 # Healthcheck (opt-in tabtarget validation — called by consumer, not by BUK)
 
 # buz_healthcheck() - Validate that all enrolled colophons have tabtargets on disk
 # Collects every enrolled colophon lacking a tabtarget and dies with the full
 # list (not first-only), so a completeness sweep names every gap in one pass.
 # Call after enrollment is complete.
+#
+# THE SWEEP IS THE SOURCE TREE'S PROOF, NEVER A GATE AT DISPATCH. No workbench
+# calls it: a tree routes whatever tabtargets stand, because a delivered tree
+# legitimately holds the subset of a kit's doors it uses, and a kit release that
+# adds a door must not break every consumer's workbench until they copy it. The
+# source tree proves its own roster complete by test. Recipemuster ruled this
+# first, relocating the sweep off its per-dispatch path onto a qualification
+# door withheld from delivery (its 260701 landing), and this tree follows it.
 buz_healthcheck() {
   zbuz_sentinel
 

@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 # Copyright 2026 Scale Invariant, Inc.
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +22,7 @@
 set -euo pipefail
 
 # Multiple inclusion detection
-test -z "${ZVVB_SOURCED:-}" || buc_die "Module vvb multiply sourced - check sourcing hierarchy"
+test -z "${ZVVB_SOURCED:-}" || buc_die_now "Module vvb multiply sourced - check sourcing hierarchy"
 ZVVB_SOURCED=1
 
 ######################################################################
@@ -48,7 +49,7 @@ zvvb_platform_capture() {
 }
 
 zvvb_kindle() {
-  test -z "${ZVVB_KINDLED:-}" || buc_die "Module vvb already kindled"
+  test -z "${ZVVB_KINDLED:-}" || buc_die_now "Module vvb already kindled"
 
   # Locate VVK directory (parent of this script)
   readonly ZVVB_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
@@ -58,7 +59,7 @@ zvvb_kindle() {
 
   # Public export - platform identifier (use capture function)
   VVB_PLATFORM=""
-  VVB_PLATFORM=$(zvvb_platform_capture) || buc_die "Failed to detect platform"
+  VVB_PLATFORM=$(zvvb_platform_capture) || buc_die_now "Failed to detect platform"
   readonly VVB_PLATFORM
 
   # Public export - canonical VVX binary (unsuffixed, platform-independent path)
@@ -68,7 +69,7 @@ zvvb_kindle() {
 }
 
 zvvb_sentinel() {
-  test "${ZVVB_KINDLED:-}" = "1" || buc_die "Module vvb not kindled - call zvvb_kindle first"
+  test "${ZVVB_KINDLED:-}" = "1" || buc_die_now "Module vvb not kindled - call zvvb_kindle first"
 }
 
 zvvb_binary_path_capture() {
@@ -93,7 +94,7 @@ vvb_run() {
   buc_log_args "Locating VVX binary"
 
   local z_binary=""
-  z_binary=$(zvvb_binary_path_capture) || buc_die "VVX binary not found for platform $(uname -s)-$(uname -m)"
+  z_binary=$(zvvb_binary_path_capture) || buc_die_now "VVX binary not found for platform $(uname -s)-$(uname -m)"
 
   buc_log_args "Binary: ${z_binary}"
   buc_log_args "Arguments: $*"
@@ -108,7 +109,7 @@ vvb_platform() {
   buc_doc_shown || return 0
 
   local z_platform=""
-  z_platform=$(zvvb_platform_capture) || buc_die "Unsupported platform: $(uname -s)-$(uname -m)"
+  z_platform=$(zvvb_platform_capture) || buc_die_now "Unsupported platform: $(uname -s)-$(uname -m)"
 
   echo "${z_platform}"
 }

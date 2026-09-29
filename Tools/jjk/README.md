@@ -1,406 +1,243 @@
 # Job Jockey Kit
 
-## What is Job Jockey?
-
-Job Jockey (JJ) is a lightweight system for managing project initiatives through conversation with Claude Code. It helps you track bounded heats, remember what's next, and keep a backlog of ideas without drowning in ceremony or context bloat.
-
-Think of it as a project notebook specifically designed for human-AI collaboration:
-- **Heats** are your current work (3-50 chat sessions worth)
-- **Paces** track what's done and what's next within a heat
-- **Itches** capture future ideas without losing focus
-- **Scars** record closed ideas with lessons learned
-
-The system is ephemeral by design: documents have clear lifecycles, completed work gets archived, and context stays lean. Everything is markdown, lives in git, and can move between computers with you.
-
-## Naming Prefixes
-
-All Job Jockey artifacts use the `jj` prefix with category-specific third letters:
-
-| Prefix | Category | Purpose |
-|--------|----------|---------|
-| `jja_` | Action | Slash commands |
-| `jjb_` | Brand | Current detected version |
-| `jjc_` | Chase | Steeplechase performance logs |
-| `jjh_` | Heat | Bounded initiative files |
-| `jji_` | Itch | Future work aggregate |
-| `jjk_` | sKill | (Future) Skill definitions |
-| `jjl_` | Ledger | Version history registry |
-| `jjm/` | Memory | State directory (`.claude/jjm/`) |
-| `jjn_` | Notch | (Future) JJ-aware git commits |
-| `jjs_` | Scar | Closed work aggregate |
-
-## Core Concepts
-
-### Heat
-A bounded initiative with **coherent goals that are clear and present**. Spans 3-50 chat sessions. Has a goal, context section, and list of paces. Lives as a dated file like `jjh_b251108-buk-portability.md`.
-
-Heat location indicates state:
-- `current/` — actively working
-- `retired/` — completed (retire date added to filename: `jjh_b251108-r251126-buk-portability.md`)
-
-A heat must be timely. If work is well-specified but not timely, it remains an itch until the time is right.
-
-### Pace
-A discrete action within the current heat. Appears in heat documents as structured sections. Pending paces can have detailed descriptions. Completed paces get condensed to brief summaries to save context.
-
-Paces can be worked on collaboratively (human drives, model assists) or **armed** for autonomous execution. To arm a pace, use `/jja-pace-arm` which validates the spec has clear objective, bounded scope, success criteria, and failure behavior. Armed paces can then be flown with `/jja-pace-fly`.
-
-### Itch
-Future work of any scope — heat-sized initiatives, individual paces, or smaller ideas — captured in the backlog because they're not timely for current work. The key attribute is **not now**: regardless of size or detail level, it's not ready to schedule. All itches live in a single aggregate backlog file (`jji_itch.md`).
-
-### Scar
-An itch that has been **closed with lessons learned**. Not deleted (we learned something), but won't be revisited. Different from "shelved" which implies "maybe later" — a scar is deliberately closed.
-
-All scars live in a single aggregate file (`jjs_scar.md`).
-
-### Silks
-The kebab-case identifier that names heats, paces, itches, and scars. Examples: `cloud-first-light`, `fix-quota-bug`, `buc-info-default-visibility`. Target 3-5 words — short enough to say aloud and fit in commit messages. Good silks are memorable and evocative.
-
-## How It Works
-
-### Day-to-Day Usage
-
-You work on a heat by talking with Claude Code. All commands route through the `mcp__vvx__jjx` MCP tool. As you make progress:
-- At session start, say "mount" to establish context and see proposed approach
-- Work on the pace together
-- Say "wrap" to mark complete, then mount the next pace
-- Say "notch" mid-pace when you want to commit progress without wrapping
-- New paces emerge via "slate"
-
-When new ideas come up that don't belong in current heat, add them to `jji_itch.md`.
-
-When a heat completes, say "retire" to move it to `retired/` with a datestamp.
-
-### Interaction Pattern
-
-The system is **conversational and collaborative**:
-- Claude proposes actions ("I'll mark this pace done and summarize it as...")
-- You approve or amend ("yes" / "change it to..." / "no, actually...")
-- Changes commit to git automatically after approval
-- You maintain control, Claude does the bookkeeping
-
-### Context Management
-
-The system is designed to minimize context usage:
-- Completed paces become one-line summaries
-- Only current heat is in regular context
-- Itches and scars stay out of context unless needed
-- Full history preserved in git, not in active documents
-
-## File Structure
-
-### `jjh_bYYMMDD-description.md` (Job Jockey Heat)
-Main context document for a heat.
-- **Active**: Named with begin date and description (e.g., `jjh_b251108-buk-portability.md`)
-- **Retired**: Begin date preserved, retire date added (e.g., `jjh_b251108-r251126-buk-portability.md`)
-- Located in: `.claude/jjm/current/` (active) or `.claude/jjm/retired/` (completed)
-
-### `jji_itch.md` (Job Jockey Itches)
-**All** itches live here — the single source of future work.
-- Brief sparks or detailed specifications
-- Items graduate from here to new heat files
-- Located in: `.claude/jjm/`
-
-### `jjs_scar.md` (Job Jockey Scars)
-Closed itches with lessons learned.
-- Not rejected, but deliberately closed
-- Includes context on why closed and what was learned
-- Located in: `.claude/jjm/`
-
-### `jjc_bYYMMDD-description.md` (Job Jockey Steeplechase)
-Performance log capturing how each heat actually ran.
-- Created lazily when first entry is logged
-- Naming matches the heat file (same begin date and silks)
-- Located in: `.claude/jjm/current/` during active work
-- On retirement: contents merged into heat file under `## Steeplechase` section
-
-## Directory Structure
-
-JJ memory lives at `.claude/jjm/` relative to CLAUDE.md. Commands live at `.claude/commands/`.
-
-```
-my-project/                 # Launch Claude Code here
-  CLAUDE.md
-  .claude/
-    commands/
-    jjm/
-      jji_itch.md
-      jjs_scar.md
-      current/
-        jjh_b251108-feature-x.md
-        jjc_b251108-feature-x.md
-      retired/
-        jjh_b251001-r251015-feature-y.md
-  src/
-  ...
-```
-
-## Itch Format
-
-All itches live in `jji_itch.md`. Each itch is a section with a descriptive header (no "Itch:" prefix — keeps entries clean for moving to scar file):
-
-```markdown
-# Itches
-
-## governor-implementation
-Create rbgp_create_governor for depot setup flow. Depends on understanding
-the full depot lifecycle. Could be armed for haiku once spec is clear.
-
-## image-retrieve-design
-Design rbtgo_image_retrieve operation from scratch. No existing implementation
-to extract from. Needs architectural decision on caching strategy.
-
-## quick-idea
-Brief spark about improving error messages.
-```
-
-When moving to scars, the section moves as-is with added closure context:
-
-```markdown
-# Scars
-
-## governor-implementation
-Create rbgp_create_governor for depot setup flow...
-
-**Closed**: Implemented as rbgp_create_governor in Payor module.
-Learned: Governor creation is a Payor operation since Payor owns depot lifecycle.
-```
-
-## Steeplechase Format
-
-The steeplechase file (`jjc_bYYMMDD-description.md`) captures three types of entries:
-
-### APPROACH Entry
-Logged when analyzing a pace and proposing how to approach it:
-```markdown
----
-### 2025-12-25 14:30 - specify-image-delete - APPROACH
-**Proposed approach**:
-- Read rbf_jettison implementation to extract step sequence
-- Apply completeness criteria from RBAGS pattern
-- Document in same format as rbtgo_director_create
----
-```
-
-### WRAP Entry
-Logged when marking a pace complete:
-```markdown
----
-### 2025-12-25 16:45 - specify-image-delete - WRAP
-**Outcome**: Documented rbtgo_image_delete with 5-step sequence extracted from rbf_delete
----
-```
-
-### FLY Entry
-Logged when executing an armed pace autonomously:
-```markdown
----
-### 2025-12-25 15:00 - update-config-refs - FLY
-**Spec**: Update all config references from old to new format
-**Execution trace**: Read 12 config files, modified 8 with reference updates
-**Result**: success
-**Modified files**: auth.ts, api.ts (8 files total)
----
-```
-
-On heat retirement, the entire steeplechase is appended to the heat file under a `## Steeplechase` section, creating a complete archive of how the heat ran.
-
-## Workflows
-
-### Starting a New Heat
-1. Create `jjh_bYYMMDD-description.md` in `.claude/jjm/current/` (use today's date)
-2. Include Paddock section with stable background information
-3. Include Paces section with initial checklist items
-4. Archive previous heat to `retired/` (if applicable)
-
-### Selecting Current Heat
-When starting a session or the user calls `/jja-heat-saddle`, Claude checks `.claude/jjm/current/`:
-- **0 heats**: No active work. Ask if user wants to start a new heat or promote an itch.
-- **1 heat**: Show heat and current pace
-- **2+ heats**: Ask user which heat to work on
-
-### Working on a Heat
-1. Use `/jja-heat-saddle` at session start - Claude shows context and proposes approach
-2. Approve approach or adjust, then work on the pace
-3. Use `/jja-pace-wrap` when complete - auto-notches, then analyzes next pace and proposes approach
-4. Approve and continue (no need for heat-saddle between paces)
-5. Use `/jja-notch` mid-pace if you want to checkpoint progress
-6. Repeat until heat is complete
-
-### Completing a Heat
-1. Verify all paces are complete or explicitly discarded
-2. Use `/jja-heat-retire` to move and rename heat file:
-   - Adds retire date (`rYYMMDD`) to filename, preserving begin date
-   - Moves from `current/` → `retired/`
-   - Commits the archival
-
-### Itch Triage
-When a new idea emerges:
-1. **Does it block current heat completion?** → Add as pace to current heat
-2. **Is it future work worth capturing?** → Add to `jji_itch.md`
-3. **Is it something we're deliberately closing?** → Add to `jjs_scar.md` with reason
-
-## Format Conventions
-
-- **All documents**: Markdown (`.md`)
-- **Dates**: YYMMDD format (e.g., 251108 for 2025-11-08)
-  - `b` prefix = begin date (when heat started)
-  - `r` prefix = retire date (when heat completed)
-- **Descriptions**: Lowercase with hyphens (e.g., `buk-portability`)
-- **Pace titles**: Bold (e.g., `**Audit BUK portability**`)
-- **Completed summaries**: Brief, factual, no line numbers (they go stale)
-
-## Heat Document Structure
-
-Heat files contain these sections:
-
-```markdown
-# Heat: [Name]
-
-## Paddock
-[Stable background info. Can grow as insights emerge during heat work.]
-
-## Done
-- First completed pace title
-- Second completed pace title
-...
-
-## Remaining
-- **Current pace title** ← First item is implicitly current (bold to highlight)
-  [Working notes for this pace only, if needed]
-- Next pace title
-- Another future pace
-...
-```
-
-### Section Details
-
-**Paddock**: Stable information that grows as architectural insights emerge. Goals, constraints, decisions, background.
-
-**Done**: Completed pace titles only. No verbose summaries - git commits carry that detail.
-
-**Remaining**: Unnumbered queue of paces. **First item is implicitly current** (bold it to highlight, may include working notes). Rest are future paces in priority order. Order can change freely. When current pace completes, move it to Done and first remaining item becomes current.
-
-**Design rationale**: Eliminates dedicated Current section to reduce document thrash. As paces move from Remaining → Done, fewer section movements mean cleaner diffs and less context distraction.
-
-## Design Principles
-
-1. **Ephemeral by design**: Documents have clear lifecycles, completed work gets archived
-2. **Conversational**: Claude proposes, you approve or amend, Claude executes
-3. **Context-conscious**: Minimize active context, maximize git history
-4. **Model-primary**: Claude reads/writes frequently, human adjusts occasionally
-5. **Clear naming**: Prefixes make purpose immediately obvious
-6. **Git-friendly**: Preserve history, commit after approval (one commit per action)
-7. **Minimal ceremony**: Easy to use, hard to misuse
-8. **Aggregate itches**: All itches in one file, all scars in one file — no sprawl
-9. **Portable**: Works across computers via relative paths
-10. **Do No Harm**: If paths are misconfigured or files missing, announce issue and stop — don't guess or auto-fix
-11. **Branch workflow**: Work happens on branches that get squashed on merge. Notch commits form the steeplechase — execution history lives in branch history until squash.
-
-## Tabtarget Stems
-
-Tabtargets in `tt/` use a two-tier naming scheme:
-
-| Stem | Purpose | Example |
-|------|---------|---------|
-| `jjw-` | Workflow commands (all user operations) | `jjw-hs.HeatSaddle.sh` |
-
-Additionally, `jjt-` is used for test suites (`jjt-f.TestFavor.sh`).
+Job Jockey is how one person and Claude Code carry a long piece of work together
+without either of them losing the thread.
+
+The problem it solves is memory. A chat session forgets everything when it ends;
+a person forgets more slowly but forgets too. So Job Jockey keeps the plan
+outside both of them, in a record that survives every session, and gives each
+session exactly the slice of that record its own work needs.
+
+You do three things with it. You break work into **heats** — bounded initiatives
+with an end you can name — and each heat into **paces**, the discrete actions
+that get it done. You open a session by typing a door at your shell, which
+stands up a working area for one pace and launches Claude Code inside it. And
+you talk to that session in a small vocabulary of verbs — *mount*, *notch*,
+*wrap* — that it turns into changes to the record.
+
+Nothing about this is autonomous. Every session you get is one you asked for.
+
+## The record
+
+The plan does not live in your project. It lives in a repository of its own —
+the **studbook** — which every project you work on shares.
+
+That separation is deliberate and it buys three things. Your project's history
+stays about your project, uncluttered by planning churn. Work that spans several
+repositories is planned in one place instead of being split across them. And the
+plan travels: a second machine clones the studbook and sees the same board.
+
+What the studbook holds, per heat:
+
+- The **paddock** — the heat's shape. What it is for, what has been decided and
+  will not be reopened, and what done looks like. It grows as the heat teaches
+  you things.
+- A **docket** per pace — what that one pace must accomplish. Not how; a docket
+  says what done looks like and points at what the session should read.
+- The **steeplechase** — the running journal. Every commit, every wrap, every
+  structural change, in order, with the reasoning the session wrote at the time.
+- Two aggregates, `jji_itch.md` and `jjz_scar.md`, for work you are deliberately
+  not doing now and work you have deliberately closed.
+
+You never edit these files by hand. A session reads and writes them through
+commands, and every command commits its own change.
+
+## Opening a session
+
+Sessions start at your shell, from a door in `tt/`. You name what you want to
+work on; the door works out which repository that implies, stands up the
+directories, and launches Claude Code in them.
+
+If you are unsure which door you want, `tt/jjw-0.Help.sh` lists every door with
+what it takes and what it does. It sorts to the top of `tt/`, which is what the
+digit is for.
+
+| Door | What it opens |
+|------|---------------|
+| `jjw-s.Saddle.sh` | **Saddle** — a working session on one pace. Name a pace and you get that pace; name a heat and you get its next actionable pace. |
+| `jjw-l.Lunge.sh` | **Lunge** — a groom session on one heat or one pace: assessment with no working area, for reading and planning rather than doing. |
+| `jjw-p.PlanHeats.sh` | **Ostler** — the planning seat over any number of heats, where dockets are cut and refined. Naming no heat opens it over everything at once. |
+| `jjw-o.Oversee.sh` | **Drover** — the ruling seat above a wave of working sessions. It reads what those sessions reported and rules on whether anything further is warranted. |
+| `jjw-i.InstantWork.sh` | **Vaquero** — a seat for work you want to do right now. Name a heat and then a repository; the session writes up the job itself, does the work, and closes before the chat ends. Both are required, and the repository must be one the heat already works in. |
+| `jjw-c.CheckLock.sh` | Report every lock the studbook holds and who holds it. Read-only. |
+
+Three more doors change something durably enough that they confirm before
+acting, which is why their names end in a capital letter:
+
+| Door | What it does |
+|------|--------------|
+| `jjw-M.Muck.sh` | Destroy a working area left standing. |
+| `jjw-A.ApplyEstateRules.sh` | Install this machine's shared context texts, which the working doors refuse to run without. |
+| `jjw-C.ClearLock.sh` | Dismiss a lock-holder that has gone derelict. |
+
+Breaking a lock is a person's act and only a person's. Behind a held lock there
+may be a live session on another machine, and a wrong break hands that session a
+stale view with nothing to catch it. A session that meets a held lock stops and
+reports it; you decide.
+
+The doors read only what you type. Where your shell happens to be sitting says
+nothing about what gets opened — the record decides that.
+
+## What a session stands in
+
+A door stands up a **kraal**: the set of directories one session works in, torn
+down when that session ends.
+
+- The **outspan** is the seat — where the session sits, where its scratch and
+  its message files stand. It holds no repository and dies with the kraal.
+- A **billet** is a working area on your project, checked out to a branch of that
+  pace's own. Work happens here and nowhere else.
+- Read-only peers stand beside them when the pace needs to read a repository it
+  may not write.
+
+When the pace is wrapped, the billet's branch lands on trunk as one commit,
+carrying its own history as ancestry. The detailed commits stay reachable; the
+trunk stays legible.
+
+## Working a session
+
+Inside a session you speak verbs. Say the word and the session runs the command
+behind it.
+
+The loop is three verbs long. You *mount* to begin — the session reads the
+pace's docket and its heat's paddock, states the goal in a sentence, and
+proposes an approach before touching anything. You work together. You *notch*
+whenever there is progress worth committing, and *wrap* when the pace is done.
+A session never wraps on its own; it asks you first.
+
+Around that loop, the rest:
+
+*Reading* — **muster** lists heats, **parade** shows one heat or pace whole,
+**scout** searches, **fettle** says what could start right now and what is
+holding the rest back, **riem** reports which repository a pace belongs to.
+
+*Shaping a heat* — **groom** reviews a heat against its own definition of done,
+**slate** adds a pace, **chivvy** adds one at the front, **cantle** adds one just
+after the current pace, **reslate** rewrites a docket, **curry** revises the
+paddock, **rail** reorders paces, **restring** moves paces to another heat,
+**dight** renames one, **whorl** edits a pace's name, repository or kind,
+**furlough** edits a heat's, **hopple** and **unhopple** set and lift the waits
+between paces.
+
+*Deciding how a pace runs* — **bridle** designates a pace for a model tier and
+writes the brief its session will follow; **unbridle** lifts that.
+
+*Heats* — **nominate** starts one, **retire** ends one. Both are yours alone: a
+session may recommend either, and never performs one unasked.
+
+*Elsewhere* — **foray** runs work on another machine, **unfurl** puts an image on
+the viewer, **cavvy** reads the registry of files copied between repositories and
+**rodear** writes it.
+
+## Identities
+
+Three names attach to the work, and they are not interchangeable.
+
+A **firemark** identifies a heat: `₣` and two characters, as in `₣CJ`. A
+**coronet** identifies a pace, and what you see printed is `₢`, the pace's
+current heat, an interpunct, and the pace's own five characters — `₢CJ·CAAKR`.
+The five characters are the identity and never change; the heat in front of them
+says where the pace lives today, and would be re-read if it moved. Commands
+accept either form.
+
+**Silks** are the readable name — `fix-quota-check`, `audit-portability` — and
+they are for people, not for lookups. They can be changed at any time, which is
+exactly why nothing resolves by them.
+
+## Naming prefixes
+
+Every name Job Jockey mints begins with `jj` and a letter saying what kind of
+thing it is.
+
+| Prefix | Names |
+|--------|-------|
+| `jjw-` | The doors in `tt/` |
+| `jjx_` | The commands a session calls |
+| `jjezs_` | The headers on messages passed between a session and the record |
+| `jjls_` | The branch a billet stands on |
+| `jjqb_` | The directories of a kraal |
+| `jji_` | The deferred-work aggregate, `jji_itch.md` |
+| `jjz_` | The closed-work aggregate, `jjz_scar.md` |
 
 ## Installation
 
-JJK is installed as part of VVK. All commands are accessed via the `mcp__vvx__jjx` MCP tool. No separate arcanum install step is needed — the Rust MCP layer creates `.claude/jjm/` directories on demand.
+Job Jockey installs together with the rest of the kit family; there is no
+separate step of its own. Its commands reach a session through a single tool, so
+a session that can call that tool has the whole surface.
 
-**Important**: Restart Claude Code after installation for new commands to become available.
+Restart Claude Code after installing, so the new tool is registered.
 
-## Available Commands
+## Glossary
 
-All commands are accessed via the `mcp__vvx__jjx` MCP tool. See `Tools/jjk/vov_veiled/jjk-claude-context.md` for the full command reference and verb table.
+Every Job Jockey word you will meet in output, in a door name, or in a session's
+own speech.
 
-## Terminology
-
-### Paddock
-The heat-wide context section in a heat document. Named after the prep area where horses gather before a race.
-
-The Paddock holds stable information that spans multiple paces:
-- Approach and guidelines for working the heat
-- Reference files and domain knowledge
-- Facts and insights that emerge during heat execution
-- Constraints, decisions, and architectural background
-
-Usage: "Add that insight to the Paddock" / "Check the Paddock for guidelines"
-
-In heat documents, the Paddock is the `## Paddock` section and its subsections.
-
-### Notch
-A JJ-aware git commit. Notches happen automatically on `/jja-pace-wrap`, or use `/jja-notch` mid-pace to checkpoint progress.
-
-Fire-and-forget design:
-1. Dispatcher validates heat context from conversation (no filesystem fallback)
-2. Checks for untracked files (warns if any - stage manually first)
-3. Spawns background haiku agent that does: git add -u, commit, push
-4. Returns immediately - user continues working
-
-Commit format:
-- With pace: `[jj:BRAND][HEAT/PACE] Message`
-- Without pace: `[jj:BRAND][HEAT] Message` (for general heat work)
-
-Example: `[jj:600][cloud-first-light/fix-quota-bug] Fix project quota check`
-
-Usage: "Notch these changes" / "Let me notch that"
-
-### Silks
-The kebab-case identifier that uniquely names JJ artifacts:
-- **Silks** are the kebab-case identifiers for heats, paces, itches, and scars (e.g., `cloud-first-light`, `fix-quota-bug`)
-- Every itch has silks; silks carry to scars when closed
-- Heats have silks (the description part of filename)
-- Steeplechases inherit the heat's silks
-- Usage: "What's the silks on that itch?" / "The heat silks are `rbags-specification`"
-
-
-Benefits:
-- Deterministic: same kit content always produces same brand
-- Traceable: correlate heat outcomes to specific JJ versions
-- Self-documenting: each command file declares its brand
-
-## Future Directions
-
-> **Note**: Items marked ~~strikethrough~~ are addressed by the Studbook Redesign heat (b260101).
-> See `.claude/jjm/current/jjh_b260101-jj-studbook-redesign.md` for the replacement architecture.
-
-### ~~Heat Creation Skill~~ → `jj-nominate`
-~~Create a dedicated skill for forming well-structured heats.~~
-Replaced by `jj-nominate` which allocates Favor, creates paddock stub, and registers in studbook.
-
-### ~~Heat Document Efficiency~~ → Studbook + Paddock
-~~Reduce thrash in heat files during active work.~~
-Replaced by Studbook (JSON registry) + Paddock (per-heat markdown) architecture. No more Done/Current/Remaining section churn.
-
-### Silk Design Guidance
-Make silks short and memorable for human cognition:
-- **Silks**: Kebab-case identifiers for heats, paces, itches, scars (e.g., `cloud-foundation-stabilize`, `fix-unbound-variable`)
-- **Target**: 3-5 words, short enough to say aloud and fit in commit messages
-- **Rationale**: Silks appear frequently in speech, commit messages, and steeplechase entries. Short + catchy reduces cognitive load and typos.
-- **Anti-patterns**: Avoid long descriptive names, avoid acronyms unless widely recognized in project, avoid generic names (e.g., `misc-fixes`, `stuff`)
-- **Mnemonic quality**: Good silks create mental hooks (e.g., `image-registry-listing` immediately evokes the feature; `gad-perf-analysis` links to GAD tool)
-- **Workshop**: When creating a new heat/itch/pace, generate 3-5 candidate silks and pick the one that "sticks" best
-
-### Configurable Autocommit
-Project-level control over automatic git commits:
-- Some projects want commits per pace wrap
-- Some want manual commit control
-- Some want no JJ-initiated commits at all
-- Configuration in CLAUDE.md JJ section: `autocommit: per-pace | per-notch | never`
-- Default behavior should match current (commits on wrap/notch)
-
-### ~~Steeplechase as Git Commit Discipline~~ → `jj-chalk` / `jj-rein`
-~~Experiment with moving steeplechase entries from heat files to git commits.~~
-Implemented as core feature: `jj-chalk` writes structured git commits (empty commits with Favor + emblem), `jj-rein` queries git log for steeplechase entries. Trophy extraction gathers git history at retirement.
-
-### ~~JSON Storage with jq Management~~ → `jjs_studbook.json`
-~~Consider storing itches and/or heats as JSON documents managed via jq.~~
-Implemented as `jjs_studbook.json` - central registry of heats/paces with Favor keys. Uses `jq --sort-keys --indent 2` for stable diffs. Paddock prose stays markdown (hybrid approach).
-
----
-
-*Command implementations live in the workbench. This document is the conceptual reference.*
+- **abuttal** — The written customs shared by everything on this machine, and the door that installs them: two files every session loads before it loads anything of your project's.
+- **billet** — The working area a session does its work in: your project, checked out on a branch belonging to the pace being worked. It is torn down when the session's kraal is.
+- **blotter** — The studbook's lock. One writer at a time; a session that finds it held stops and reports rather than waiting or breaking it.
+- **bridle** — Designate a pace to run at a particular model tier, and write the brief its session will follow. A pace with no designation is waiting for someone to make this judgment.
+- **cantle** — Add a pace immediately after the one being worked. Named for the saddle's raised back — the position just behind the rider.
+- **cashier** — Dismiss a lock-holder that has gone derelict. A person's act only, confirmed at the terminal; no session performs it.
+- **cavvy** — The registry of which files and directories stand copied across your repositories, at what expected degree of sameness. A cavvy is the herd of spare mounts a rider draws from.
+- **chivvy** — Add a pace at the front of the heat, ahead of everything else.
+- **cinch** — A decision recorded in a paddock or docket and not to be argued again. Both the noun and the act of recording one.
+- **coronet** — A pace's identity. The five characters are the pace and never change; printed, they come prefixed by `₢` and the heat the pace currently sits in — `₢CJ·CAAKR`. A coronet is a marking just above a horse's hoof.
+- **curry** — Revise a heat's paddock. Currying is grooming with a curry comb: working over the whole animal, not one spot.
+- **dight** — Change a pace's readable name. An old word for arraying or adorning.
+- **docket** — What one pace must accomplish. It states what done looks like and points at what to read; it does not prescribe how.
+- **drover** — A ruling session standing above a wave of working sessions. It works no code and holds no pace: it reads what those sessions reported and rules on whether anything further is warranted. It opens no session of its own — you do that.
+- **estancia** — The planning seat opened over no particular heat: the console for everything at once. An estancia is the great ranch house.
+- **fettle** — What could start right now, and what is holding everything else back. Asks only about the waits between paces, so a pace with nothing before it is ready even if it needs your attention to run.
+- **firemark** — A heat's permanent identity: `₣` and two characters, as in `₣CJ`. A firemark is a brand burned into the hide.
+- **foray** — Run work on another machine.
+- **furlough** — Edit a heat's own record: its name, whether it is running or paused, and which repositories its paces may touch.
+- **gazette** — The two files a session and the record pass documents through. The session writes what it wants recorded into one and reads what it asked for out of the other.
+- **groom** — Review a heat: its shape, its remaining paces, and whether anything its paddock calls for was never turned into a pace. Grooming is tending the horse, not riding it.
+- **heat** — A bounded initiative with an end you can name, three to fifty paces long. It is either racing or stabled, and when its work is done it retires.
+- **hopple** — Make paces wait on another pace. Hopples are the straps that keep a horse from wandering.
+- **itch** — Work worth remembering and not worth doing now, whatever its size. It is a reminder to you and carries no authority: nothing acts on an itch until you say so.
+- **kind** — What a pace *is*, as distinct from what tier it runs at: a lope, a poort, or neither. A pace carries one kind at most.
+- **kraal** — Everything one session stands in: its seat, its working area, and any read-only companions. A kraal is a stock enclosure, and it is torn down when the session ends.
+- **lope** — A pace whose work is a conversation with you rather than something to execute. It finishes when the thinking settles, when the answer turns out to be a few small changes, or when the question turns out to have been the wrong one.
+- **lunge** — Open a session that reads and plans but does not work: no working area, deliberately. Lunging is working a horse from the ground on a long line.
+- **mount** — Take up a pace: read its docket and its heat's paddock, state the goal, and propose an approach before anything is touched.
+- **muck** — Destroy a working area left standing behind a session that did not clean up. Mucking out is exactly what it sounds like, and it is confirmed before it runs.
+- **muster** — List the heats.
+- **nominate** — Start a heat. Yours alone; a session may recommend one and never creates one unasked.
+- **notch** — Commit progress mid-pace, with a message saying what was accomplished. A notch is a tally cut into a stick.
+- **ostler** — The planning seat, over any number of heats: where dockets are cut, refined and designated. An ostler is the inn's horse-keeper, who tends every horse and rides none.
+- **outfooted** — A copy that has fallen behind the original it tracks, with no changes of its own. Archaic racing usage: beaten on pure speed, nothing wrong with the horse.
+- **outspan** — A session's seat: where it sits and keeps its scratch. It holds no repository and dies with its kraal. Outspanning is unyoking the team at the end of a stage.
+- **overlanded** — A copy whose update has no simple recipe — an installer or a transform someone has to conduct. Overlanding is driving stock the long way, by a route that has to be known.
+- **pace** — One discrete action inside a heat. It carries a docket and gets worked in one session.
+- **paddock** — A heat's shape: what it is for, what has been decided and will not be reopened, and what done looks like. The paddock is where horses gather before a race.
+- **parade** — Show one heat or one pace whole. The parade is the pre-race walk past the stands.
+- **poort** — The kind carried by a pace that must run alone against something everything else shares. Before it starts, you confirm nothing else is running. A poort is a narrow mountain pass, taken single-file.
+- **racing** — A heat that is actively being worked. The other state is stabled.
+- **rail** — Reorder the paces within a heat.
+- **reslate** — Rewrite a pace's docket. Doing so discards any tier the pace had been designated for, since that judgment was made about the old text.
+- **restring** — Move paces from one heat to another. A string is the set of horses one rider is responsible for.
+- **retire** — End a heat. Yours alone, and it is preceded by an audit: the paddock's definition of done, read clause by clause, each one met with its evidence or named unmet.
+- **riem** — Report which repository a pace belongs to, or audit every pace that names none. A riem is the thong tying one ox into the team, so an ox with no riem is exactly what the audit hunts.
+- **ringer** — A copy that tracks an original elsewhere. A ringer is a horse run under another's name.
+- **rodear** — Write the registry of copied files. Yours alone; a session recommends and stops. A rodear is the roundup where cattle are sorted between owners.
+- **saddle** — Open a working session on a pace.
+- **scar** — Work deliberately closed, kept because something was learned. Not shelved, not pending: closed, in `jjz_scar.md`.
+- **scout** — Search the record.
+- **shied** — A copy holding content its original never had: diverged, not merely behind. Copying over it would destroy work, so it is always reported rather than fixed. The horse swerved off the line.
+- **silks** — A readable name, for people rather than for lookups. Silks change freely, which is why nothing resolves by them; they are a rider's racing colours.
+- **sire** — A repository a pace works in. Which one is a property of the pace, and it is what decides which project a door checks out for you.
+- **slate** — Add a pace to a heat, with its docket.
+- **spook** — Something in the workflow itself that snagged — a stale pointer, a confusing docket, a verb that fought you. Reported at wrap, so it can be fixed rather than re-suffered.
+- **stabled** — A heat that is paused: still live, still planned against, but nobody is working it. The other state is racing.
+- **steeplechase** — A heat's running journal: every commit and every closure in order, each carrying the reasoning written at the time.
+- **studbook** — The repository the whole plan lives in, shared by every project you work on and separate from all of them.
+- **taproot** — The authoritative copy of a file or tree that others track.
+- **unbridle** — Lift a pace's tier designation, returning it to undesignated.
+- **unfurl** — Put an image on the viewer, or replace one already there.
+- **unhopple** — Lift a wait between paces.
+- **unsound** — A copy whose original could not be read on this machine, so no comparison is possible and no guarantee about it is in force.
+- **veduta** — An image put on the viewer, with its optional dark counterpart. Italian painters' term for a rendered view — a scene made to be looked at, which is all Job Jockey knows about it.
+- **warrant** — The brief written when a pace is designated for a tier: what its session should do, and the criteria that would prove it done. Its session follows it, drives every criterion, and stops rather than closing on a failure.
+- **whorl** — Edit a pace's readable name, its repository, or its kind. A whorl is the hair spiral recorded on a horse's passport — the mark that tells one animal from another.
+- **wrap** — Close a pace: commit what is outstanding, write the journal entry, and land the branch. A session asks before wrapping; it never decides on its own that work is finished.

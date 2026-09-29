@@ -26,8 +26,9 @@ PBW_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
 # Source dependencies
 source "${PBW_SCRIPT_DIR}/../buk/buc_command.sh"
 # buc's logging path reaches buyf_strip_yawp, so yelp must accompany it — this
-# workbench previously sourced buc alone and would have failed inside buc_die.
+# workbench previously sourced buc alone and would have failed inside buc_die_now.
 source "${PBW_SCRIPT_DIR}/../buk/buym_yelp.sh"
+source "${PBW_SCRIPT_DIR}/../buk/bubc_constants.sh"
 source "${PBW_SCRIPT_DIR}/../buk/bug_git.sh"
 
 # Show filename on each displayed line
@@ -50,7 +51,7 @@ pbw_bundle_viewer() {
   local z_profile="debug"
   case " $* " in *" --release "*) z_profile="release" ;; esac
   local z_bin="viewer/target/${z_profile}/paneboard-viewer"
-  test -x "${z_bin}" || buc_die "viewer binary not found at ${z_bin}"
+  test -x "${z_bin}" || buc_die_now "viewer binary not found at ${z_bin}"
   local z_app="viewer/target/${z_profile}/PaneboardViewer.app"
   rm -rf "${z_app}"
   mkdir -p "${z_app}/Contents/MacOS"
@@ -69,8 +70,8 @@ pbw_route() {
   pbw_show "Routing command: ${z_command} with args: ${z_args}"
 
   # Verify BURD environment variables are present
-  test -n "${BURD_TEMP_DIR:-}" || buc_die "BURD_TEMP_DIR not set - must be called from BURD"
-  test -n "${BURD_NOW_STAMP:-}" || buc_die "BURD_NOW_STAMP not set - must be called from BURD"
+  test -n "${BURD_TEMP_DIR:-}" || buc_die_now "BURD_TEMP_DIR not set - must be called from BURD"
+  test -n "${BURD_NOW_STAMP:-}" || buc_die_now "BURD_NOW_STAMP not set - must be called from BURD"
 
   pbw_show "BURD environment verified"
 
@@ -82,9 +83,9 @@ pbw_route() {
       # A debugging session is only worth as much as its provenance: gate the
       # build so the running binary always corresponds to a commit, and a log
       # captured hours later can be traced to exact source.
-      bug_require_clean_tree "running the PoC"
+      bug_require_clean_tree_creed "running the PoC"
       echo "Building viewer + PaneBoard PoC, then launching..."
-      cargo build --manifest-path viewer/Cargo.toml "$@" || buc_die "viewer build failed"
+      cargo build --manifest-path viewer/Cargo.toml "$@" || buc_die_now "viewer build failed"
       pbw_bundle_viewer "$@"
       cd poc
       cargo build "$@" && cargo run "$@"
@@ -92,17 +93,17 @@ pbw_route() {
 
     # Build both crates (viewer + PoC), then run the timed PoC overlay (BURD_TOKEN_3 = seconds)
     pbw-t)
-      bug_require_clean_tree "running the timed PoC"
+      bug_require_clean_tree_creed "running the timed PoC"
       local z_timeout="${BURD_TOKEN_3:-10}"
       echo "Building viewer + PaneBoard PoC, then running timed (timeout=${z_timeout}s)..."
-      cargo build --manifest-path viewer/Cargo.toml "$@" || buc_die "viewer build failed"
+      cargo build --manifest-path viewer/Cargo.toml "$@" || buc_die_now "viewer build failed"
       pbw_bundle_viewer "$@"
       cd poc
       cargo build "$@" && cargo run "$@" -- --timeout "${z_timeout}"
       ;;
 
     *)
-      buc_die "Unknown command: ${z_command}"
+      buc_die_now "Unknown command: ${z_command}"
       ;;
   esac
 }
@@ -112,7 +113,7 @@ pbw_main() {
   local z_command="${1:-}"
   shift || true
 
-  test -n "${z_command}" || buc_die "No command specified"
+  test -n "${z_command}" || buc_die_now "No command specified"
 
   pbw_route "${z_command}" "$@"
 }

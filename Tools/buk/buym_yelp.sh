@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 # Copyright 2026 Scale Invariant, Inc.
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,12 +32,12 @@
 #   buym_   — every public declaration here.  The module is one file, so one
 #             prefix homes all of it and the groups below are section
 #             boundaries rather than sibling prefixes.
-#   zbuym_  — internal (kindle, sentinel, the tabtarget glob).
-#   BUYC_   — the kindle-time color palette, named for color and not for the
+#   zbuym_  — internal (kindle, palette, sentinel, the tabtarget glob).
+#   BUYC_   — the color palette, named for color and not for the
 #             configurators that select it.
 #
 # Groups, by section:
-#   configurators (set ZBUYM_CONFIG_MODE before kindle)
+#   configurators (set ZBUYM_CONFIG_MODE, then re-resolve the palette)
 #   yelp yawps    (set z_buym_yelp)
 #   format yawps  (set z_buym_format)
 #
@@ -58,30 +59,28 @@ ZBUYM_SOURCED=1
 ######################################################################
 # Configurators
 #
-# Called before kindle.  Each sets ZBUYM_CONFIG_MODE flag.
-# Kindle reads the mode and defines readonly BUYC_* palette.
-#
-# THESE THREE CARRY NO SENTINEL AND MUST NOT GAIN ONE.  Every regular function
-# opens on its module's sentinel by convention; these are the
-# deliberate exception, and the reason is the line above rather than oversight.
-# zbuym_sentinel LAZILY KINDLES rather than dying, so a guard here would kindle
-# the module at the moment the mode is being set — freezing the readonly BUYC_*
-# palette against the DEFAULT mode and discarding the caller's choice.  The
-# failure would be silent: wrong colors, no error.  A conformance read over this
-# rule will name these three; they are left standing knowingly, not overlooked.
+# Each sets ZBUYM_CONFIG_MODE and re-resolves the palette, so the caller's
+# mode wins whenever it is set — before kindle or after it.  Kindle splits
+# for exactly this: zbuym_kindle defines what the mode cannot reach (the ESC
+# byte, the diastema markers, the yawp slots), and zbuym_palette defines what
+# it can (BUYC_* and z_buym_use_hyperlinks).  The palette is therefore
+# assigned rather than sealed; the mode-independent constants stay readonly.
 
 ZBUYM_CONFIG_MODE="dispatch"
 
-buym_dispatch()      { ZBUYM_CONFIG_MODE="dispatch"; }
-buym_unconditional() { ZBUYM_CONFIG_MODE="unconditional"; }
-buym_plain()         { ZBUYM_CONFIG_MODE="plain"; }
+buym_dispatch()      { zbuym_sentinel; ZBUYM_CONFIG_MODE="dispatch";      zbuym_palette; }
+buym_unconditional() { zbuym_sentinel; ZBUYM_CONFIG_MODE="unconditional"; zbuym_palette; }
+buym_plain()         { zbuym_sentinel; ZBUYM_CONFIG_MODE="plain";         zbuym_palette; }
 
 ######################################################################
-# Module kindle — defines all constants and initializes mutable state
+# Palette resolve — the mode-dependent half, re-resolvable
+#
+# Reads ZBUYM_CONFIG_MODE and defines BUYC_* and z_buym_use_hyperlinks.
+# Assigned rather than sealed: a configurator calls this again to move the
+# palette onto a mode set after kindle.  Requires ZBUYM_ESC, which kindle
+# defines ahead of the first call.
 
-zbuym_kindle() {
-  test -z "${ZBUYM_KINDLED:-}" || return 0
-
+zbuym_palette() {
   local z_use_color=0
 
   case "${ZBUYM_CONFIG_MODE}" in
@@ -111,46 +110,57 @@ zbuym_kindle() {
       ;;
   esac
 
+  # --- Public color constants (BUYC_*) ---
+  if test "${z_use_color}" = "1"; then
+    BUYC_RESET="${ZBUYM_ESC}[0m"
+    BUYC_CYAN="${ZBUYM_ESC}[36m"
+    BUYC_MAGENTA="${ZBUYM_ESC}[35m"
+    BUYC_BRIGHT_YELLOW="${ZBUYM_ESC}[1;33m"
+    BUYC_BRIGHT_RED="${ZBUYM_ESC}[1;31m"
+    BUYC_BRIGHT_WHITE="${ZBUYM_ESC}[1;37m"
+    BUYC_LINK="${ZBUYM_ESC}[97;4m"
+    BUYC_HREF="${ZBUYM_ESC}[34;4m"
+    BUYC_GREEN="${ZBUYM_ESC}[32m"
+    BUYC_ORANGE="${ZBUYM_ESC}[33m"
+    BUYC_GRAY="${ZBUYM_ESC}[90m"
+  else
+    BUYC_RESET=""
+    BUYC_CYAN=""
+    BUYC_MAGENTA=""
+    BUYC_BRIGHT_YELLOW=""
+    BUYC_BRIGHT_RED=""
+    BUYC_BRIGHT_WHITE=""
+    BUYC_LINK=""
+    BUYC_HREF=""
+    BUYC_GREEN=""
+    BUYC_ORANGE=""
+    BUYC_GRAY=""
+  fi
+
+  # --- Hyperlink mode ---
+  # Mutable module state, not a kindle constant: the palette re-resolves, so
+  # this moves with the mode like the BUYC_* it stands beside.
+  local z_hyperlinks=0
+  if test "${z_use_color}" = "1" && test -z "${BURD_NO_HYPERLINKS:-}"; then
+    z_hyperlinks=1
+  fi
+  z_buym_use_hyperlinks="${z_hyperlinks}"
+}
+
+
+######################################################################
+# Module kindle — the mode-independent constants, the mutable state, and
+# the first palette resolve
+
+zbuym_kindle() {
+  test -z "${ZBUYM_KINDLED:-}" || return 0
+
   # --- ESC byte constant (ANSI-C quoting) ---
   # Real ESC byte (0x1B) via $'\033'.  Avoids "\033" literal strings that
   # break under bash 5.2+ where ${var/pat/rep} interprets \\ in the
   # replacement, collapsing adjacent backslashes and corrupting ANSI
   # sequences that follow OSC-8 String Terminators.
   readonly ZBUYM_ESC=$'\033'
-
-  # --- Public color constants (BUYC_*) ---
-  if test "${z_use_color}" = "1"; then
-    readonly BUYC_RESET="${ZBUYM_ESC}[0m"
-    readonly BUYC_CYAN="${ZBUYM_ESC}[36m"
-    readonly BUYC_MAGENTA="${ZBUYM_ESC}[35m"
-    readonly BUYC_BRIGHT_YELLOW="${ZBUYM_ESC}[1;33m"
-    readonly BUYC_BRIGHT_RED="${ZBUYM_ESC}[1;31m"
-    readonly BUYC_BRIGHT_WHITE="${ZBUYM_ESC}[1;37m"
-    readonly BUYC_LINK="${ZBUYM_ESC}[97;4m"
-    readonly BUYC_HREF="${ZBUYM_ESC}[34;4m"
-    readonly BUYC_GREEN="${ZBUYM_ESC}[32m"
-    readonly BUYC_ORANGE="${ZBUYM_ESC}[33m"
-    readonly BUYC_GRAY="${ZBUYM_ESC}[90m"
-  else
-    readonly BUYC_RESET=""
-    readonly BUYC_CYAN=""
-    readonly BUYC_MAGENTA=""
-    readonly BUYC_BRIGHT_YELLOW=""
-    readonly BUYC_BRIGHT_RED=""
-    readonly BUYC_BRIGHT_WHITE=""
-    readonly BUYC_LINK=""
-    readonly BUYC_HREF=""
-    readonly BUYC_GREEN=""
-    readonly BUYC_ORANGE=""
-    readonly BUYC_GRAY=""
-  fi
-
-  # --- Hyperlink mode ---
-  local z_hyperlinks=0
-  if test "${z_use_color}" = "1" && test -z "${BURD_NO_HYPERLINKS:-}"; then
-    z_hyperlinks=1
-  fi
-  readonly ZBUYM_USE_HYPERLINKS="${z_hyperlinks}"
 
   # --- Diastema markers (non-printing byte sequences) ---
   # Each marker is a unique non-printing sequence that yelp yawp functions
@@ -173,6 +183,8 @@ zbuym_kindle() {
   z_buym_yelp=""
   z_buym_format=""
   z_buym_tt_path=""
+
+  zbuym_palette
 
   readonly ZBUYM_KINDLED=1
 }
@@ -215,10 +227,10 @@ buym_link_yawp() {
   z_buym_yelp="${ZBUYM_DIASTEMA_LINK_URL}${z_url}${ZBUYM_DIASTEMA_LINK_TEXT}${z_display}${ZBUYM_DIASTEMA_END}"
 }
 
-# zbuym_tt_path colophon [imprint];  matched path -> z_buym_tt_path (empty on no match)
+# buym_tt_path colophon [imprint];  matched path -> z_buym_tt_path (empty on no match)
 # The single colophon->tabtarget-filename glob for the kit.  Callers own the
 # no-match policy (placeholder vs die) by inspecting the empty result.
-zbuym_tt_path() {
+buym_tt_path() {
   zbuym_sentinel
   local -r z_colophon="${1:-}"
   local z_matches
@@ -234,7 +246,7 @@ zbuym_tt_path() {
 buym_tt_yawp() {
   zbuym_sentinel
   local -r z_colophon="${1:-}"
-  zbuym_tt_path "${z_colophon}" "${2:-}"
+  buym_tt_path "${z_colophon}" "${2:-}"
   local z_path="${z_buym_tt_path}"
   if test -z "${z_path}"; then
     test -n "${2:-}" && z_path="??${z_colophon}.${2}??" || z_path="??${z_colophon}??"
@@ -299,7 +311,7 @@ buym_format_yawp() {
     local z_href_text="${BASH_REMATCH[2]}"
     local z_href_full="${BASH_REMATCH[0]}"
     local z_href_replacement=""
-    if test "${ZBUYM_USE_HYPERLINKS}" = "1"; then
+    if test "${z_buym_use_hyperlinks}" = "1"; then
       z_href_replacement="${BUYC_HREF}${ZBUYM_ESC}]8;;${z_href_url}${ZBUYM_ESC}\\${z_href_text}${ZBUYM_ESC}]8;;${ZBUYM_ESC}\\${BUYC_RESET}${z_ambient}"
     elif test -n "${BUYC_HREF}"; then
       z_href_replacement="${BUYC_HREF}${z_href_text}${BUYC_RESET}${z_ambient} <${z_href_url}>"
@@ -316,7 +328,7 @@ buym_format_yawp() {
     local z_link_text="${BASH_REMATCH[2]}"
     local z_link_full="${BASH_REMATCH[0]}"
     local z_link_replacement=""
-    if test "${ZBUYM_USE_HYPERLINKS}" = "1"; then
+    if test "${z_buym_use_hyperlinks}" = "1"; then
       z_link_replacement="${BUYC_LINK}${ZBUYM_ESC}]8;;${z_link_url}${ZBUYM_ESC}\\${z_link_text}${ZBUYM_ESC}]8;;${ZBUYM_ESC}\\${BUYC_RESET}${z_ambient}"
     elif test -n "${BUYC_LINK}"; then
       z_link_replacement="${BUYC_LINK}${z_link_text}${BUYC_RESET}${z_ambient} <${z_link_url}>"

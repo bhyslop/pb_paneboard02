@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 # Copyright 2026 Scale Invariant, Inc.
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,7 +42,7 @@ vvw_route() {
   local z_command="${1:-}"
   shift || true
 
-  test -n "${z_command}" || buc_die "No command specified"
+  test -n "${z_command}" || buc_die_now "No command specified"
 
   zburd_sentinel
 
@@ -53,11 +54,14 @@ vvw_route() {
     # Run VVX binary - primary command
     vvw-r)  exec "${z_vvb_cli}" vvb_run "$@" ;;
 
+    # Four-tier model probe - station diagnostic, on demand
+    vvw-mp) exec "${z_vvb_cli}" vvb_run vvx_model_probe "$@" ;;
+
     # Show platform
     vvx-p)  exec "${z_vvb_cli}" vvb_platform "$@" ;;
 
     # Unknown command
-    *)   buc_die "Unknown command: ${z_command}" ;;
+    *)   buc_die_now "Unknown command: ${z_command}" ;;
   esac
 }
 

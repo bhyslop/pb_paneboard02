@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 # Copyright 2025 Scale Invariant, Inc.
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -121,6 +122,14 @@ zbuut_create_tabtargets() {
 ######################################################################
 # External Functions (buut_*)
 
+# EVERY ARGUMENT-TAKING DOOR BELOW IS ENROLLED param1, so the dispatch takes the
+# first argument off the line and hands it over in BUZ_FOLIO rather than in the
+# positional parameters. Each such function binds its leading argument from
+# BUZ_FOLIO and reads the rest positionally, which is why none of them shifts.
+# An absent folio binds empty and dies at the usage check, the same refusal a
+# bare invocation has always raised. The internal helpers keep the ordinary
+# positional shape: the folio is decoded once, at the door.
+
 # List launchers in the moorings launcher directory
 buut_list_launchers() {
   buc_doc_brief "List all launchers in the moorings launcher directory"
@@ -142,8 +151,7 @@ buut_list_launchers() {
 
 # Create batch+logging tabtargets (default)
 buut_tabtarget_batch_logging() {
-  local z_launcher_path="${1:-}"
-  shift || true
+  local z_launcher_path="${BUZ_FOLIO:-}"
 
   buc_doc_brief "Create batch+logging tabtarget(s) (default mode)"
   buc_doc_param "launcher_path" "Path to launcher (e.g., rbmm_moorings/rbml_launchers/launcher.rbw_workbench.sh)"
@@ -159,8 +167,7 @@ buut_tabtarget_batch_logging() {
 
 # Create batch+nolog tabtargets (BURD_NO_LOG=1)
 buut_tabtarget_batch_nolog() {
-  local z_launcher_path="${1:-}"
-  shift || true
+  local z_launcher_path="${BUZ_FOLIO:-}"
 
   buc_doc_brief "Create batch+nolog tabtarget(s) (BURD_NO_LOG=1)"
   buc_doc_param "launcher_path" "Path to launcher (e.g., rbmm_moorings/rbml_launchers/launcher.rbw_workbench.sh)"
@@ -176,8 +183,7 @@ buut_tabtarget_batch_nolog() {
 
 # Create interactive+logging tabtargets (BURD_INTERACTIVE=1)
 buut_tabtarget_interactive_logging() {
-  local z_launcher_path="${1:-}"
-  shift || true
+  local z_launcher_path="${BUZ_FOLIO:-}"
 
   buc_doc_brief "Create interactive+logging tabtarget(s) (BURD_INTERACTIVE=1)"
   buc_doc_param "launcher_path" "Path to launcher (e.g., rbmm_moorings/rbml_launchers/launcher.cccw_workbench.sh)"
@@ -193,8 +199,7 @@ buut_tabtarget_interactive_logging() {
 
 # Create interactive+nolog tabtargets (both flags)
 buut_tabtarget_interactive_nolog() {
-  local z_launcher_path="${1:-}"
-  shift || true
+  local z_launcher_path="${BUZ_FOLIO:-}"
 
   buc_doc_brief "Create interactive+nolog tabtarget(s) (BURD_INTERACTIVE=1, BURD_NO_LOG=1)"
   buc_doc_param "launcher_path" "Path to launcher (e.g., rbmm_moorings/rbml_launchers/launcher.rbw_workbench.sh)"
@@ -212,8 +217,8 @@ export BURD_INTERACTIVE=1'
 
 # Create a launcher
 buut_launcher() {
-  local z_workbench_path="${1:-}"
-  local z_launcher_name="${2:-}"
+  local z_workbench_path="${BUZ_FOLIO:-}"
+  local z_launcher_name="${1:-}"
 
   buc_doc_brief "Create a launcher stub in rbmm_moorings/rbml_launchers/"
   buc_doc_param "workbench_path" "Path to workbench script (e.g., Tools/myw/myw_workbench.sh)"

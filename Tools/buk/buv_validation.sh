@@ -1,5 +1,6 @@
 #!/bin/bash
 # Copyright 2025 Scale Invariant, Inc.
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -55,8 +56,8 @@ buv_dir_empty() {
   # Per-call scratch name under BURD_TEMP_DIR: a monotonic counter, not mktemp
   # (BUV's first BURD_TEMP_DIR dependency, taken on deliberately) — never
   # deleted after — left for forensic debugging.
-  ZBUV_DIR_EMPTY_SEQ=$((${ZBUV_DIR_EMPTY_SEQ:-0} + 1))
-  local -r z_check_file="${BURD_TEMP_DIR}/buv-dir-empty-${ZBUV_DIR_EMPTY_SEQ}.txt"
+  z_buv_dir_empty_seq=$((${z_buv_dir_empty_seq:-0} + 1))
+  local -r z_check_file="${BURD_TEMP_DIR}/buv-dir-empty-${z_buv_dir_empty_seq}.txt"
   find "${z_dirpath}" -maxdepth 1 -mindepth 1 -print -quit > "${z_check_file}" \
     || buc_die_now "Failed to probe directory: ${z_dirpath}"
   test ! -s "${z_check_file}" || buc_die_now "Directory must be empty: ${z_dirpath}"
@@ -819,7 +820,7 @@ buv_report() {
     z_err=$(zbuv_check_capture "${z_i}")
     if test -z "${z_err}"; then
       zbuv_req_status "${z_i}"
-      if test "${ZBUV_REQ_STATUS}" = "opt" && test -z "${z_val}"; then
+      if test "${z_buv_req_status}" = "opt" && test -z "${z_val}"; then
         buc_step "  VACANT  ${z_varname} [${z_type}] (${z_desc})"
       else
         buc_step "  PASS  ${z_varname}=${z_display_val} [${z_type}]"
@@ -836,28 +837,28 @@ buv_report() {
 }
 
 # zbuv_group_gate_recite SCOPE TITLE — look up group gate from registry
-# Sets ZBUV_GRP_GATE_VAR and ZBUV_GRP_GATE_VAL (empty if ungated).
+# Sets z_buv_grp_gate_var and z_buv_grp_gate_val (empty if ungated).
 zbuv_group_gate_recite() {
   zbuv_sentinel
   local z_scope="${1:-}"
   local z_title="${2:-}"
 
-  ZBUV_GRP_GATE_VAR=""
-  ZBUV_GRP_GATE_VAL=""
+  z_buv_grp_gate_var=""
+  z_buv_grp_gate_val=""
 
   local z_s
   for z_s in "${!z_buv_grp_scope_roll[@]}"; do
     if test "${z_buv_grp_scope_roll[$z_s]}" = "${z_scope}" \
       && test "${z_buv_grp_title_roll[$z_s]}" = "${z_title}"; then
-      ZBUV_GRP_GATE_VAR="${z_buv_grp_gate_var_roll[$z_s]}"
-      ZBUV_GRP_GATE_VAL="${z_buv_grp_gate_val_roll[$z_s]}"
+      z_buv_grp_gate_var="${z_buv_grp_gate_var_roll[$z_s]}"
+      z_buv_grp_gate_val="${z_buv_grp_gate_val_roll[$z_s]}"
       return 0
     fi
   done
 }
 
 # zbuv_req_status INDEX — derive req/opt/cond from enrollment data
-# Sets ZBUV_REQ_STATUS.
+# Sets z_buv_req_status.
 zbuv_req_status() {
   zbuv_sentinel
   local z_idx="${1:-}"
@@ -865,11 +866,11 @@ zbuv_req_status() {
   local z_p1="${z_buv_p1_roll[$z_idx]}"
 
   if test -n "${z_gate_var}"; then
-    ZBUV_REQ_STATUS="cond"
+    z_buv_req_status="cond"
   elif test "${z_p1}" = "0"; then
-    ZBUV_REQ_STATUS="opt"
+    z_buv_req_status="opt"
   else
-    ZBUV_REQ_STATUS="req"
+    z_buv_req_status="req"
   fi
 }
 
@@ -880,6 +881,11 @@ zbuv_req_status() {
 buv_render() {
   zbuv_sentinel
   zbupr_sentinel
+  # buym's sentinel kindles it lazily, and the BUYC_* reads below expand before
+  # any callee's guard can run, so the kindle is forced here.  Where it stands
+  # no longer decides the color verdict: buym's configurators re-resolve the
+  # palette, so a later buym_unconditional reaches it whenever it is called.
+  zbuym_sentinel
 
   local z_scope="${1:-}"
   local z_label="${2:-}"
@@ -895,9 +901,9 @@ buv_render() {
   local z_desc=""
 
   echo ""
-  zbuc_tint BUYC_BRIGHT_WHITE "${z_label}"; echo "${z_buym_format}"
+  buym_format_yawp "${BUYC_BRIGHT_WHITE}" "${z_label}"; echo "${z_buym_format}"
   if test -n "${z_file_path}"; then
-    zbuc_tint BUYC_GRAY "File: ${z_file_path}"; echo "  ${z_buym_format}"
+    buym_format_yawp "${BUYC_GRAY}" "File: ${z_file_path}"; echo "  ${z_buym_format}"
   fi
   echo ""
 
@@ -917,15 +923,15 @@ buv_render() {
       z_current_group="${z_group}"
 
       zbuv_group_gate_recite "${z_scope}" "${z_group}"
-      if test -n "${ZBUV_GRP_GATE_VAR}"; then
-        bupr_section_begin "${z_group}" "${ZBUV_GRP_GATE_VAR}" "${ZBUV_GRP_GATE_VAL}"
+      if test -n "${z_buv_grp_gate_var}"; then
+        bupr_section_begin "${z_group}" "${z_buv_grp_gate_var}" "${z_buv_grp_gate_val}"
       else
         bupr_section_begin "${z_group}"
       fi
     fi
 
     zbuv_req_status "${z_i}"
-    bupr_section_item "${z_varname}" "${z_type}" "${ZBUV_REQ_STATUS}" "${z_desc}"
+    bupr_section_item "${z_varname}" "${z_type}" "${z_buv_req_status}" "${z_desc}"
   done
 
   # Close final group

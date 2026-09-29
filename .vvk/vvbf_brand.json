@@ -1,8 +1,11 @@
 {
-  "vvbc_commit": "f1f615cd014ac0e5a8265cee023dd929a267be11",
-  "vvbd_date": "260821-1537",
-  "vvbf_brand": "1059",
+  "vvbc_commit": "2fb303562feed16740449ecf07f5a1133b80dab8",
+  "vvbd_date": "260929-0900",
+  "vvbf_brand": "1081",
   "vvbk_kits": [
-    "buk"
-  ]
+    "buk",
+    "jjk",
+    "vvk"
+  ],
+  "vvbt_target": "pb_paneboard02"
 }

@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 # Copyright 2026 Scale Invariant, Inc.
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,22 +22,25 @@
 # This script lives at the root of an extracted parcel. It validates
 # the target environment and invokes the appropriate platform binary.
 #
-# Usage: ./vvi_install.sh /path/to/target/<BURC_RELPATH>
-#        where BURC_RELPATH is defined as ZVVI_BURC_RELPATH below
+# Usage: ./vvi_install.sh /path/to/target/repo/burc.env
+#        the path is the consumer's own BURC file — its moorings dirname is
+#        that consumer's choice (e.g. rbmm_moorings, jjmm_moorings), never
+#        this script's business.
 #
 # Note: This is a standalone bootstrap - cannot depend on BUK.
-# Local functions follow BCG patterns without sourcing dependencies.
+# Local functions follow the same console conventions without sourcing dependencies.
 
 set -euo pipefail
 
 ######################################################################
 # Constants
 
-# Canonical BURC relative path - single definition for this script
-readonly ZVVI_BURC_RELPATH="rbmm_moorings/burc.env"
+# Example relpath for the usage message only — the real path always arrives
+# as $1; no consumer moorings dirname is assumed or required.
+readonly ZVVI_BURC_RELPATH_EXAMPLE="<moorings-dir>/burc.env"
 
 ######################################################################
-# Local BCG-style functions (cannot source BUK)
+# Local console-style functions (cannot source BUK)
 
 zvvi_die() {
   echo "vvi_install: error: ${1}" >&2
@@ -78,9 +82,9 @@ zvvi_main() {
   if [[ -z "${z_burc_path}" ]]; then
     echo "vvi_install: Install VVK parcel to a target repository" >&2
     echo "" >&2
-    echo "Usage: $0 /path/to/target/${ZVVI_BURC_RELPATH}" >&2
+    echo "Usage: $0 /path/to/target/${ZVVI_BURC_RELPATH_EXAMPLE}" >&2
     echo "" >&2
-    echo "The target repository must have BURC configured (${ZVVI_BURC_RELPATH})." >&2
+    echo "The target repository must have BURC configured (its own burc.env)." >&2
     exit 1
   fi
 

@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 # Copyright 2025 Scale Invariant, Inc.
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,6 +29,13 @@
 
 set -euo pipefail
 shopt -s extglob
+
+# The surface forms of the governed words this dispatch speaks, so the lines
+# below expand a constant instead of spelling the word. The sourced file is
+# generated, declares readonly constants and calls nothing, and carries its own
+# inclusion guard - so it is safe here, where buc_command.sh is not yet loaded,
+# and a sibling sourcing the same file costs nothing.
+source "${BASH_SOURCE[0]%/*}/bubg_breviary.sh"
 
 BURE_VERBOSE=${BURE_VERBOSE:-0}
 
@@ -64,11 +72,21 @@ zbud_check_string() {
 zbud_setup() {
   zbud_show "Starting BDU setup"
 
+  # Three log modes, and this flag stands beside neither other one. No-log
+  # composes no names for a coordinator to write to, and interactive names the
+  # uncurated tee this mode removes; either pair states two answers to one
+  # question.
+  if test -n "${BURD_AMANUENSIS:-}"; then
+    test -z "${BURD_NO_LOG:-}"      || zbud_die "BURD_AMANUENSIS and BURD_NO_LOG are exclusive: no-log composes no log names to hand over"
+    test -z "${BURD_INTERACTIVE:-}" || zbud_die "BURD_AMANUENSIS and BURD_INTERACTIVE are exclusive: the uncurated tee is what this mode removes"
+  fi
+
   source            "${BURD_REGIME_FILE}"
 
   # Apply BURV (Bash Utility Regime Verification) overrides if set
   BURC_OUTPUT_ROOT_DIR="${BURV_OUTPUT_ROOT_DIR:-${BURC_OUTPUT_ROOT_DIR}}"
   BURC_TEMP_ROOT_DIR="${BURV_TEMP_ROOT_DIR:-${BURC_TEMP_ROOT_DIR}}"
+  BURC_LOOSEBOX_ROOT_DIR="${BURV_LOOSEBOX_ROOT_DIR:-${BURC_LOOSEBOX_ROOT_DIR}}"
 
   zbud_check_string "${BURD_REGIME_FILE}" BURC_STATION_FILE        1 256
   zbud_check_string "${BURD_REGIME_FILE}" BURC_LOG_LAST            1 256
@@ -77,6 +95,7 @@ zbud_setup() {
   zbud_check_string "${BURD_REGIME_FILE}" BURC_TABTARGET_DELIMITER 1 8
   zbud_check_string "${BURD_REGIME_FILE}" BURC_TEMP_ROOT_DIR       1 256
   zbud_check_string "${BURD_REGIME_FILE}" BURC_OUTPUT_ROOT_DIR     1 256
+  zbud_check_string "${BURD_REGIME_FILE}" BURC_LOOSEBOX_ROOT_DIR   1 256
   zbud_check_string "${BURD_REGIME_FILE}" BURC_TOOLS_DIR           1 256
 
   # Dispatch-provided directory variables (survive exec boundary for CLIs)
@@ -128,10 +147,46 @@ zbud_setup() {
     *)  BURD_TEMP_DIR="${PWD}/${BURD_TEMP_DIR}" ;;
   esac
   mkdir -p                           "${BURD_TEMP_DIR}" || zbud_die "Failed to create temp directory: ${BURD_TEMP_DIR}"
+
+  # SETTLED THROUGH THE FILESYSTEM, not merely prefixed. A relative root may
+  # spell a parent segment (a station's own regime can state "../temp-buk",
+  # a directory beside the checkout rather than beneath it); the working
+  # directory prefix above leaves that segment standing literally, and a
+  # consumer that compares this announced path against a canonical answer —
+  # cargo's, or a nested shell's own re-derived cwd — never matches it.
+  # `cd -P` resolves both the parent segment and any symlink on the way;
+  # bash builtins only.
+  BURD_TEMP_DIR="$(cd -P "${BURD_TEMP_DIR}" && pwd -P)" || zbud_die "Failed to settle temp directory: ${BURD_TEMP_DIR}"
   zbud_show "Generated temporary dir: ${BURD_TEMP_DIR}"
 
   # Setup transcript file path
   BURD_TRANSCRIPT="${BURD_TEMP_DIR}/transcript.txt"
+
+  # The checkout's own loosebox, where its derived and rebuildable build
+  # products stand. IT IS KEYED ON THE CHECKOUT'S DIRNAME AND THAT IS THE WHOLE
+  # OF WHAT MAKES IT SAFE TO SHARE A ROOT: on a plain station the root sits
+  # beside the checkouts and several of them reach it, so a key that were
+  # anything less than the directory each stands in would hand one checkout's
+  # products to another. z-launcher normalizes cwd to the repo root, so PWD's
+  # own basename IS that dirname.
+  #
+  # THE KEY IS THE SAME UNDER A STILE, where the harness composes the root
+  # beneath a scratch container the billet's dirname already keys. The dirname
+  # then appears twice on the path — once as the container's key, once here.
+  # That is the ruling and not a defect to repair: this composition holds one
+  # rule for both seats, and a composition that dropped the key where it looked
+  # redundant would be a second rule to keep in step.
+  BURD_LOOSEBOX_DIR="${BURC_LOOSEBOX_ROOT_DIR}/${PWD##*/}"
+  case "${BURD_LOOSEBOX_DIR}" in
+    /*) ;;
+    *)  BURD_LOOSEBOX_DIR="${PWD}/${BURD_LOOSEBOX_DIR}" ;;
+  esac
+  mkdir -p                           "${BURD_LOOSEBOX_DIR}" || zbud_die "Failed to create ${BUBG_LOOSEBOX_ROOT_DIR_BASE}: ${BURD_LOOSEBOX_DIR}"
+
+  # SETTLED for the same reason the temp directory is settled above: a
+  # relative loosebox root may spell a parent segment too.
+  BURD_LOOSEBOX_DIR="$(cd -P "${BURD_LOOSEBOX_DIR}" && pwd -P)" || zbud_die "Failed to settle ${BUBG_LOOSEBOX_ROOT_DIR_BASE}: ${BURD_LOOSEBOX_DIR}"
+  zbud_show "The ${BUBG_LOOSEBOX_ROOT_DIR_BASE} is ready: ${BURD_LOOSEBOX_DIR}"
 
   # Setup output directories under the output root (both fixed locations).
   #   current/  = this dispatch's outputs (fresh each run).
@@ -167,6 +222,13 @@ zbud_setup() {
   fi
   mkdir -p "${BURD_OUTPUT_DIR}" || zbud_die "Failed to create output directory: ${BURD_OUTPUT_DIR}"
 
+  # SETTLED for the same reason the temp directory is settled above. The
+  # previous directory is not itself settled by a cd — it need not exist yet
+  # on a first-ever dispatch — but is instead rederived as the settled
+  # output directory's own sibling, which carries no parent segment either.
+  BURD_OUTPUT_DIR="$(cd -P "${BURD_OUTPUT_DIR}" && pwd -P)" || zbud_die "Failed to settle output directory: ${BURD_OUTPUT_DIR}"
+  BURD_PREVIOUS_DIR="${BURD_OUTPUT_DIR%/*}/previous"
+
   zbud_show "Output directory ready: ${BURD_OUTPUT_DIR} (previous: ${BURD_PREVIOUS_DIR})"
 
   # Get Git context
@@ -188,6 +250,7 @@ zbud_setup() {
 
   # Export for child processes
   export BURD_TEMP_DIR
+  export BURD_LOOSEBOX_DIR
   export BURD_OUTPUT_DIR
   export BURD_PREVIOUS_DIR
   export BURD_NOW_STAMP
@@ -233,9 +296,17 @@ zbud_process_args() {
     BURD_LOG_SAME="${BURS_LOG_DIR}/same-${z_tag}.${BURC_LOG_EXT}"
     BURD_LOG_HIST="${BURS_LOG_DIR}/hist-${z_tag}-${BURD_NOW_STAMP}.${BURC_LOG_EXT}"
     mkdir -p "${BURS_LOG_DIR}"
-    : > "${BURD_LOG_LAST}"
-    : > "${BURD_LOG_SAME}"
-    : > "${BURD_LOG_HIST}"
+    if test -n "${BURD_AMANUENSIS:-}"; then
+      # The names are the dispatch's and the writing is the coordinator's, so
+      # the three cross the exec boundary here and nowhere else. No file is
+      # created: an absent member after this dispatch says the coordinator
+      # wrote none, where an empty file this dispatch had touched would lie.
+      export BURD_LOG_LAST BURD_LOG_SAME BURD_LOG_HIST
+    else
+      : > "${BURD_LOG_LAST}"
+      : > "${BURD_LOG_SAME}"
+      : > "${BURD_LOG_HIST}"
+    fi
   fi
 
   # Store target and extra arguments
@@ -275,10 +346,46 @@ zbud_curate_same() {
   done
 }
 
-# Function to curate logs for the historical log file (with timestamps)
+# Function to curate the historical log file (with timestamps). Reads the
+# coordinator's raw stream on stdin; the caller opens fd 3 onto BURD_LOG_HIST,
+# so each line's stamped form is appended there directly while the line itself
+# passes through untouched on stdout — the one filter does both jobs the fifo
+# pair used to split across two processes.
 zbud_curate_hist() {
-  while read -r z_line; do
-    printf "[%s] %s\n" "$(date +"%Y-%m-%d %H:%M:%S")" "${z_line}"
+  # The trailing `|| test -n` guard matches zbud_curate_same's: a coordinator
+  # whose final line carries no newline still gets stamped. Under the retired
+  # per-line plumbing the dispatch's own read loop dropped that line before
+  # either curate function saw it, so all three logs lost it alike; a stream
+  # fed by tee delivers it, and without this guard hist alone would drop what
+  # the same and last logs now keep.
+  #
+  # The stamp itself is taken by printf where bash can convert one (4.2+), and
+  # by a forked date where it cannot. That fork is the single largest cost left
+  # in the curation of a chatty door, and the floor this kit builds to is bash
+  # 3.2, so both arms have to stand; the version verdict is reached once, ahead
+  # of the loop, and the two arms emit the same bytes.
+  #
+  # `IFS=` matches zbud_curate_same's read for a reason this log carries alone.
+  # Under the default IFS a read strips the leading and trailing whitespace off
+  # every line it takes, so a stamped line's content began at its first
+  # non-blank byte — and a table carved out of this log then differed, byte for
+  # byte, from the same table carved out of a capture that kept its indentation.
+  # Sessions compare saved tables across two positions of the record, and this
+  # log is the only re-read channel a tabtarget leaves them, so the timestamp
+  # prefix stands and the bytes after it are the coordinator's own.
+  local z_stamp_is_builtin=0
+  if test "${BASH_VERSINFO[0]}" -gt 4 || { test "${BASH_VERSINFO[0]}" -eq 4 && test "${BASH_VERSINFO[1]}" -ge 2; }; then
+    z_stamp_is_builtin=1
+  fi
+
+  local z_line
+  while IFS= read -r z_line || test -n "${z_line}"; do
+    if test "${z_stamp_is_builtin}" -eq 1; then
+      printf "[%(%Y-%m-%d %H:%M:%S)T] %s\n" -1 "${z_line}" >&3
+    else
+      printf "[%s] %s\n" "$(date +"%Y-%m-%d %H:%M:%S")" "${z_line}" >&3
+    fi
+    printf '%s\n' "${z_line}"
   done
 }
 
@@ -378,19 +485,19 @@ zbud_main() {
   zbud_write_burx_initial
 
   # Detect unexpected BURD_ variables
-  local -r z_known="BURD_CONFIG_DIR BURD_MOORINGS_DIR BURD_REGIME_FILE BURD_NO_LOG BURD_INTERACTIVE BURD_COORDINATOR_SCRIPT BURD_LAUNCHER BURD_STATION_FILE BURD_TERM_COLS BURD_NOW_STAMP BURD_NOW_EPOCH BURD_TEMP_DIR BURD_OUTPUT_DIR BURD_PREVIOUS_DIR BURD_TRANSCRIPT BURD_GIT_CONTEXT BURD_LOG_LAST BURD_LOG_SAME BURD_LOG_HIST BURD_COMMAND BURD_TARGET BURD_CLI_ARGS BURD_TOKEN_1 BURD_TOKEN_2 BURD_TOKEN_3 BURD_TOKEN_4 BURD_TOKEN_5 BURD_TOOLS_DIR BURD_BUK_DIR BURD_TABTARGET_DIR BURD_TACKROOM BURD_OSTYPE BURD_COLOR"
-  ZBUD_UNEXPECTED=()
+  local -r z_known="BURD_CONFIG_DIR BURD_MOORINGS_DIR BURD_REGIME_FILE BURD_NO_LOG BURD_INTERACTIVE BURD_AMANUENSIS BURD_OUTRIDER BURD_COORDINATOR_SCRIPT BURD_LAUNCHER BURD_STATION_FILE BURD_TERM_COLS BURD_NOW_STAMP BURD_NOW_EPOCH BURD_TEMP_DIR BURD_LOOSEBOX_DIR BURD_OUTPUT_DIR BURD_PREVIOUS_DIR BURD_TRANSCRIPT BURD_GIT_CONTEXT BURD_LOG_LAST BURD_LOG_SAME BURD_LOG_HIST BURD_COMMAND BURD_TARGET BURD_CLI_ARGS BURD_TOKEN_1 BURD_TOKEN_2 BURD_TOKEN_3 BURD_TOKEN_4 BURD_TOKEN_5 BURD_TOOLS_DIR BURD_BUK_DIR BURD_TABTARGET_DIR BURD_TACKROOM BURD_OSTYPE BURD_COLOR"
+  z_bud_unexpected=()
   local z_var
   for z_var in $(compgen -v BURD_); do
     case " ${z_known} " in
       *" ${z_var} "*) : ;;
-      *) ZBUD_UNEXPECTED+=("${z_var}") ;;
+      *) z_bud_unexpected+=("${z_var}") ;;
     esac
   done
 
   # Die on unexpected variables
-  if test ${#ZBUD_UNEXPECTED[@]} -gt 0; then
-    zbud_die "Unexpected BURD_ variables: ${ZBUD_UNEXPECTED[*]}"
+  if test ${#z_bud_unexpected[@]} -gt 0; then
+    zbud_die "Unexpected BURD_ variables: ${z_bud_unexpected[*]}"
   fi
 
   # Build complete invocation array (always has ≥2 elements, so always safe under set -u)
@@ -403,7 +510,12 @@ zbud_main() {
 
   # Log command to all log files (or suppress all output if BURD_NO_LOG)
   if test -z "${BURD_NO_LOG:-}"; then
-    if test -n "${BURD_INTERACTIVE:-}"; then
+    if test -n "${BURD_AMANUENSIS:-}"; then
+      # The invocation and git-context lines belong to whoever writes the
+      # record, and under this mode that is the coordinator (BUr_fbc). The
+      # dispatch announces the paths it composed and writes nothing into them.
+      echo "log files:   ${BURD_LOG_LAST} ${BURD_LOG_SAME} ${BURD_LOG_HIST}"
+    elif test -n "${BURD_INTERACTIVE:-}"; then
       echo "log (interactive): ${BURD_LOG_HIST}"
       echo "command: ${z_invocation[*]}" >> "${BURD_LOG_HIST}"
       echo "Git context: ${BURD_GIT_CONTEXT}"  >> "${BURD_LOG_HIST}"
@@ -416,55 +528,74 @@ zbud_main() {
     fi
     echo "transcript:  ${BURD_TRANSCRIPT}"
     echo "output dir:  ${BURD_OUTPUT_DIR}"
+    echo "${BUBG_LOOSEBOX_ROOT_DIR_BASE}:    ${BURD_LOOSEBOX_DIR}"
   fi
 
   zbud_show "Executing coordinator"
 
   # Execute coordinator with logging
   set +e
-  zBURD_STATUS_FILE="${BURD_TEMP_DIR}/status-$$"
-  if test -n "${BURD_INTERACTIVE:-}" && test -z "${BURD_NO_LOG:-}"; then
-    # Interactive mode with logging: uncurated tee to historical log, preserves line buffering
-    "${z_invocation[@]}" 2>&1 | tee -a "${BURD_LOG_HIST}"
-    zBURD_EXIT_STATUS=${PIPESTATUS[0]}
-    echo "${zBURD_EXIT_STATUS}" > "${zBURD_STATUS_FILE}"
-    zbud_show "Coordinator status (interactive): ${zBURD_EXIT_STATUS}"
-  elif test -n "${BURD_NO_LOG:-}"; then
+  z_bud_status_file="${BURD_TEMP_DIR}/status-$$"
+  if test -n "${BURD_AMANUENSIS:-}" || test -n "${BURD_NO_LOG:-}"; then
+    # The two modes in which this dispatch tees nothing, for opposite reasons:
+    # no-log because there is no record, amanuensis because the record is the
+    # coordinator's to write. Both leave the child's streams untouched, so the
+    # arm is one. It stands first because the interactive test below no longer
+    # has to exclude no-log by hand.
     {
       "${z_invocation[@]}"
-      echo $? > "${zBURD_STATUS_FILE}"
-      zbud_show "Coordinator status: $(cat "${zBURD_STATUS_FILE}")"
+      echo $? > "${z_bud_status_file}"
+      zbud_show "Coordinator status: $(cat "${z_bud_status_file}")"
     }
+  elif test -n "${BURD_INTERACTIVE:-}"; then
+    # Interactive mode with logging: uncurated tee to historical log, preserves line buffering
+    "${z_invocation[@]}" 2>&1 | tee -a "${BURD_LOG_HIST}"
+    z_bud_exit_status=${PIPESTATUS[0]}
+    echo "${z_bud_exit_status}" > "${z_bud_status_file}"
+    zbud_show "Coordinator status (interactive): ${z_bud_exit_status}"
   else
+    # Non-interactive with logging. tee replicates the raw stream to the last
+    # log and to a private per-invocation capture under BURD_TEMP_DIR, then
+    # hands the remainder to the one long-lived hist filter — it stamps each
+    # line onto fd 3 (opened here onto BURD_LOG_HIST) and passes the line
+    # through untouched on its own stdout, so the terminal stays live on the
+    # fd it always has. Both filters keep the "pay for a chatty door's output
+    # once" shape the fifo pair had; only the plumbing between them changes.
+    # The same log is derived from the private capture once the pipeline
+    # returns — sequentially, nothing to wait on — and never from the shared
+    # last log, which every tabtarget writing into BURS_LOG_DIR shares.
+    local -r z_raw_capture="${BURD_TEMP_DIR}/raw-capture-$$"
+
     {
       "${z_invocation[@]}" 2>&1
-      echo $? > "${zBURD_STATUS_FILE}"
-      zbud_show "Coordinator status: $(cat "${zBURD_STATUS_FILE}")"
-    } | while IFS= read -r z_line; do
-        printf '%s\n' "${z_line}" >> "${BURD_LOG_LAST}"
-        printf '%s\n' "${z_line}" | zbud_curate_same >> "${BURD_LOG_SAME}"
-        printf '%s\n' "${z_line}" | zbud_curate_hist >> "${BURD_LOG_HIST}"
-        printf '%s\n' "${z_line}"  # to stdout
-      done
+      echo $? > "${z_bud_status_file}"
+      zbud_show "Coordinator status: $(cat "${z_bud_status_file}")"
+    } | tee -a "${BURD_LOG_LAST}" "${z_raw_capture}" | zbud_curate_hist 3>>"${BURD_LOG_HIST}"
+
+    zbud_curate_same < "${z_raw_capture}" >> "${BURD_LOG_SAME}"
+    rm -f "${z_raw_capture}"
   fi
 
-  zBURD_EXIT_STATUS=$(<"${zBURD_STATUS_FILE}")
-  rm                     "${zBURD_STATUS_FILE}"
+  z_bud_exit_status=$(<"${z_bud_status_file}")
+  rm                     "${z_bud_status_file}"
 
   # Write BURX completion state
-  zbud_write_burx_completion "${zBURD_EXIT_STATUS}"
+  zbud_write_burx_completion "${z_bud_exit_status}"
 
   set -e
 
-  # Generate checksum for the log files (only when enabled)
-  if test -z "${BURD_NO_LOG:-}"; then
+  # Generate checksum for the log files (only when this dispatch wrote them).
+  # Under the amanuensis mode the digest is the coordinator's, taken after the
+  # last byte of the same log is written, because only the writer knows when
+  # that is (BUr_yht).
+  if test -z "${BURD_NO_LOG:-}" && test -z "${BURD_AMANUENSIS:-}"; then
     zbud_generate_checksum "${BURD_LOG_SAME}" "${BURD_LOG_HIST}"
     zbud_show "Checksum generated"
   fi
 
-  zbud_show "BDU completed with status: ${zBURD_EXIT_STATUS}"
+  zbud_show "BDU completed with status: ${z_bud_exit_status}"
 
-  exit "${zBURD_EXIT_STATUS}"
+  exit "${z_bud_exit_status}"
 }
 
 # Direct execution only — sourcing (e.g. a test harness calling

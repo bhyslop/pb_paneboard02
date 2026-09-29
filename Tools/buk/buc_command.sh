@@ -1,5 +1,6 @@
 #!/bin/bash
 # Copyright 2025 Scale Invariant, Inc.
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,19 +31,19 @@ ZBUC_SOURCED=1
 # prefixes ride buym's WARN/FAIL span markers.
 
 # Global context variable for info and error messages
-ZBUC_CONTEXT=""
+z_buc_context=""
 
 # Help mode flag
-ZBUC_DOC_MODE=false
+z_buc_doc_mode=false
 
 
 ######################################################################
 # Internal logging helpers
 
 # Usage: zbuc_make_tag <depth> "<label>"
-#   Computes ZBUC_TAG for the given stack depth/label (no I/O).
+#   Computes z_buc_tag for the given stack depth/label (no I/O).
 # Usage: zbuc_tag_args <depth> "<label>" [arg...]
-#   Computes ZBUC_TAG and logs args directly to the transcript.
+#   Computes z_buc_tag and logs args directly to the transcript.
 #
 # Bash stack quirk:
 #   BASH_SOURCE[i] / FUNCNAME[i] index the current frame,
@@ -51,7 +52,7 @@ ZBUC_DOC_MODE=false
 #       file = BASH_SOURCE[N]
 #       line = BASH_LINENO[N-1]
 # Usage: zbuc_make_tag <depth> "<label>"
-#   Computes ZBUC_TAG for the given stack depth/label (no I/O).
+#   Computes z_buc_tag for the given stack depth/label (no I/O).
 #   Note: With depth=0 or too-deep stacks, file/line may be empty (by design).
 zbuc_make_tag() {
   local z_d="${1:-1}"
@@ -59,7 +60,7 @@ zbuc_make_tag() {
   local z_label="${2:-}"
   local z_file="${BASH_SOURCE[z_d]##*/}"
   local z_line="${BASH_LINENO[z_d-1]}"
-  ZBUC_TAG="${z_label}${z_file}:${z_line}: "
+  z_buc_tag="${z_label}${z_file}:${z_line}: "
 }
 
 zbuc_tag_args() {
@@ -72,14 +73,14 @@ zbuc_tag_args() {
   for z_arg in "$@"; do
     buym_strip_yawp "${z_arg}"
     printf '%s\n' "${z_buym_format}"
-  done | zbuc_log "${ZBUC_TAG}" " ---- "
+  done | zbuc_log "${z_buc_tag}" " ---- "
 }
 
 ######################################################################
 # Public logging wrappers
 
 buc_log_args() { zbuc_tag_args 3 "buc_log_args " "$@"; }
-buc_log_pipe() { zbuc_make_tag 3 "buc_log_pipe "; zbuc_log "${ZBUC_TAG}" " ---- "; }
+buc_log_pipe() { zbuc_make_tag 3 "buc_log_pipe "; zbuc_log "${z_buc_tag}" " ---- "; }
 
 buc_step()     { zbuc_tag_args 3 "buc_step     " "$@"; zbuc_print 0 BUYC_BRIGHT_WHITE "$*"; }
 buc_code()     { zbuc_tag_args 3 "buc_code     " "$@"; zbuc_print 0 BUYC_CYAN         "$*"; }
@@ -102,9 +103,9 @@ buc_success() {
 # cold caller before bubc is sourced — stays exit 1, "imprecise death".
 buc_die_now() {
   local z_status=$?
-  zbuc_tag_args 3 "buc_die_now      " "ERROR: [${ZBUC_CONTEXT:-}] $*"
+  zbuc_tag_args 3 "buc_die_now      " "ERROR: [${z_buc_context:-}] $*"
   buym_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
-  zbuc_print -1 "" "${z_pfx} [${ZBUC_CONTEXT:-}] $*"
+  zbuc_print -1 "" "${z_pfx} [${z_buc_context:-}] $*"
   if test -n "${BUBC_band_base:-}"                                \
      && test "${z_status}" -ge "${BUBC_band_base}"                \
      && test "${z_status}" -lt "$((BUBC_band_base + BUBC_band_width))"; then
@@ -124,9 +125,9 @@ buc_reject() {
   test -n "${z_code}"           || buc_die_now "buc_reject: band code required"
   test "${z_code}" -ge "${BUBC_band_base}" 2>/dev/null || buc_die_now "buc_reject: code '${z_code}' below band"
   test "${z_code}" -lt "$((BUBC_band_base + BUBC_band_width))" || buc_die_now "buc_reject: code '${z_code}' above band"
-  zbuc_tag_args 3 "buc_reject   " "ERROR: [${ZBUC_CONTEXT:-}] $*"
+  zbuc_tag_args 3 "buc_reject   " "ERROR: [${z_buc_context:-}] $*"
   buym_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
-  zbuc_print -1 "" "${z_pfx} [${ZBUC_CONTEXT:-}] $*"
+  zbuc_print -1 "" "${z_pfx} [${z_buc_context:-}] $*"
   exit "${z_code}"
 }
 
@@ -144,13 +145,13 @@ buc_tabtarget() {
   local z_colophon="$1"
   shift
   local z_extra="${*:+ $*}"
-  zbuym_tt_path "${z_colophon}"
+  buym_tt_path "${z_colophon}"
   test -n "${z_buym_tt_path}" || buc_die_now "buc_tabtarget: no tabtarget found for colophon '${z_colophon}'"
   buc_bare "        ${z_buym_tt_path}${z_extra}"
 }
 
 buc_context() {
-  ZBUC_CONTEXT="$1"
+  z_buc_context="$1"
 }
 
 # Enable trace to stderr safely if supported
@@ -168,27 +169,27 @@ zbuc_disable_trace() {
 }
 
 zbuc_doc_mode_predicate() {
-  test "${ZBUC_DOC_MODE}" = "true"
+  test "${z_buc_doc_mode}" = "true"
 }
 
 buc_doc_env_row() {
   set -e
 
-  local env_var_name="${1}"
-  local env_var_info="${2}"
+  local z_env_var_name="${1}"
+  local z_env_var_info="${2}"
 
   # Trim trailing spaces from variable name
-  env_var_name="${env_var_name%% *}"
+  z_env_var_name="${z_env_var_name%% *}"
 
   # In doc mode, show documentation only (no validation — env vars may not be set)
   if zbuc_doc_mode_predicate; then
     zbuc_tint BUYC_MAGENTA "${1}"
-    echo "  ${z_buym_format}:  ${env_var_info}"
+    echo "  ${z_buym_format}:  ${z_env_var_info}"
     return 0
   fi
 
   # In execute mode, validate variable is set
-  test -n "${!env_var_name:-}" || buc_warn "${env_var_name} is not set"
+  test -n "${!z_env_var_name:-}" || buc_warn "${z_env_var_name} is not set"
 }
 
 # Idiomatic last step of environment documentation in furnish.
@@ -200,14 +201,14 @@ buc_doc_env_done() {
   return 1
 }
 
-ZBUC_USAGE_STRING="UNFILLED"
+z_buc_usage_string="UNFILLED"
 
 buc_doc_brief() {
   set -e
-  ZBUC_USAGE_STRING="${ZBUC_CONTEXT}"
+  z_buc_usage_string="${z_buc_context}"
   zbuc_doc_mode_predicate || return 0
   echo
-  zbuc_tint BUYC_BRIGHT_WHITE "${ZBUC_CONTEXT}"
+  zbuc_tint BUYC_BRIGHT_WHITE "${z_buc_context}"
   echo "  ${z_buym_format}"
   echo "    brief: $1"
 }
@@ -220,20 +221,20 @@ buc_doc_lines() {
 
 buc_doc_param() {
   set -e
-  ZBUC_USAGE_STRING="${ZBUC_USAGE_STRING} <<$1>>"
+  z_buc_usage_string="${z_buc_usage_string} <<$1>>"
   zbuc_doc_mode_predicate || return 0
   echo "    required: $1 - $2"
 }
 
 buc_doc_oparm() {
   set -e
-  ZBUC_USAGE_STRING="${ZBUC_USAGE_STRING} [<<$1>>]"
+  z_buc_usage_string="${z_buc_usage_string} [<<$1>>]"
   zbuc_doc_mode_predicate || return 0
   echo "    optional: $1 - $2"
 }
 
 zbuc_usage() {
-  zbuc_tint BUYC_CYAN "${ZBUC_USAGE_STRING}"
+  zbuc_tint BUYC_CYAN "${z_buc_usage_string}"
   printf '    usage: %s\n' "${z_buym_format}"
 }
 
@@ -247,14 +248,14 @@ buc_doc_shown() {
 }
 
 buc_set_doc_mode() {
-  ZBUC_DOC_MODE=true
+  z_buc_doc_mode=true
 }
 
 buc_usage_die() {
   set -e
-  local usage; usage=$(zbuc_usage)
+  local z_usage; z_usage=$(zbuc_usage)
   buym_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
-  zbuc_tint "" "${z_pfx} ${usage}"
+  zbuc_tint "" "${z_pfx} ${z_usage}"
   printf '%s\n' "${z_buym_format}"
   exit 1
 }
@@ -278,17 +279,17 @@ zbuc_tint() {
 # yawp spans resolve, the named ambient and gray operation sigil are
 # terminal-aware, and a cold display does not trip set -u.
 zbuc_print() {
-  local min_verbosity="$1"
-  local ambient_name="$2"
+  local z_min_verbosity="$1"
+  local z_ambient_name="$2"
   shift 2
 
-  # Always print if min_verbosity is -1, otherwise check BURE_VERBOSE
-  if test "${min_verbosity}" -eq -1 || test "${BURE_VERBOSE:-0}" -ge "${min_verbosity}"; then
+  # Always print if z_min_verbosity is -1, otherwise check BURE_VERBOSE
+  if test "${z_min_verbosity}" -eq -1 || test "${BURE_VERBOSE:-0}" -ge "${z_min_verbosity}"; then
     zbuym_sentinel
     while test $# -gt 0; do
-      zbuc_tint "${ambient_name}" "$1"
-      if test -n "${ZBUC_CONTEXT}"; then
-        printf '%s%s%s %s\n' "${BUYC_GRAY}" "${ZBUC_CONTEXT}" "${BUYC_RESET}" "${z_buym_format}" >&2
+      zbuc_tint "${z_ambient_name}" "$1"
+      if test -n "${z_buc_context}"; then
+        printf '%s%s%s %s\n' "${BUYC_GRAY}" "${z_buc_context}" "${BUYC_RESET}" "${z_buym_format}" >&2
       else
         printf '%s\n' "${z_buym_format}" >&2
       fi
@@ -322,15 +323,15 @@ zbuc_log() {
 # Die if condition is true (non-zero)
 # Usage: buc_die_if <condition> <message1> [<message2> ...]
 buc_die_if() {
-  local condition="$1"
+  local z_condition="$1"
   shift
 
-  test "${condition}" -ne 0 || return 0
+  test "${z_condition}" -ne 0 || return 0
 
   set -e
-  local context="${ZBUC_CONTEXT:-}"
+  local z_context="${z_buc_context:-}"
   buym_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
-  zbuc_print -1 "" "${z_pfx} [$context] $1"
+  zbuc_print -1 "" "${z_pfx} [${z_context}] $1"
   shift
   zbuc_print -1 "" "$@"
   exit 1
@@ -339,31 +340,31 @@ buc_die_if() {
 # Die unless condition is true (zero)
 # Usage: buc_die_unless <condition> <message1> [<message2> ...]
 buc_die_unless() {
-  local condition="$1"
+  local z_condition="$1"
   shift
 
-  test "${condition}" -eq 0 || return 0
+  test "${z_condition}" -eq 0 || return 0
 
   set -e
-  local context="${ZBUC_CONTEXT:-}"
+  local z_context="${z_buc_context:-}"
   buym_fail_yawp "ERROR:"; local z_pfx="${z_buym_yelp}"
-  zbuc_print -1 "" "${z_pfx} [$context] $1"
+  zbuc_print -1 "" "${z_pfx} [${z_context}] $1"
   shift
   zbuc_print -1 "" "$@"
   exit 1
 }
 
 zbuc_show_help() {
-  local prefix="$1"
-  local title="$2"
-  local env_func="$3"
+  local z_prefix="$1"
+  local z_title="$2"
+  local z_env_func="$3"
 
-  echo "$title"
+  echo "${z_title}"
   echo
 
-  if test -n "${env_func}"; then
+  if test -n "${z_env_func}"; then
     echo "Environment Variables:"
-    "$env_func"
+    "${z_env_func}"
     echo
   fi
 
@@ -371,7 +372,7 @@ zbuc_show_help() {
 
   local z_decl z_flag z_cmd
   while read -r z_decl z_flag z_cmd; do
-    [[ "${z_cmd}" =~ ^${prefix}[a-z][a-z0-9_]*$ ]] || continue
+    [[ "${z_cmd}" =~ ^${z_prefix}[a-z][a-z0-9_]*$ ]] || continue
     buc_context "${z_cmd}"
     "${z_cmd}"
   done < <(declare -F)
@@ -426,11 +427,11 @@ buc_require() {
 
 buc_execute() {
   set -e
-  local prefix="$1"
-  local title="$2"
-  local env_func="$3"
-  local command="${4:-}"
-  shift 3; test -z "${command}" || shift
+  local z_prefix="$1"
+  local z_title="$2"
+  local z_env_func="$3"
+  local z_command="${4:-}"
+  shift 3; test -z "${z_command}" || shift
 
   export BUC_VERBOSE="${BUC_VERBOSE:-0}"
 
@@ -444,15 +445,15 @@ buc_execute() {
   fi
 
   # Validate prefix pattern, furnish deps, then dispatch command
-  if test -n "${command}" && [[ "${command}" =~ ^${prefix}[a-z][a-z0-9_]*$ ]]; then
-    buc_context "${command}"
-    test -z "${env_func}" || "${env_func}" "${command}"
-    declare -F "${command}" >/dev/null || buc_die_now "Function not found: ${command}"
-    "${command}" "$@"
+  if test -n "${z_command}" && [[ "${z_command}" =~ ^${z_prefix}[a-z][a-z0-9_]*$ ]]; then
+    buc_context "${z_command}"
+    test -z "${z_env_func}" || "${z_env_func}" "${z_command}"
+    declare -F "${z_command}" >/dev/null || buc_die_now "Function not found: ${z_command}"
+    "${z_command}" "$@"
   else
-    test -z "${command}" || buc_warn "Unknown command: ${command}"
+    test -z "${z_command}" || buc_warn "Unknown command: ${z_command}"
     buc_set_doc_mode
-    zbuc_show_help "${prefix}" "${title}" "${env_func}"
+    zbuc_show_help "${z_prefix}" "${z_title}" "${z_env_func}"
     echo
     exit 1
   fi
@@ -550,12 +551,35 @@ buc_native_path_capture() {
 # Sets z_buc_clipboard_tool to the probed tool name (empty when none present)
 # so the caller can log the outcome. Emits nothing on either stream and never
 # dies — the caller owns any user-visible announcement, and a copy is always
-# a convenience, never load-bearing. Reads only its argument — no kindle
-# state — so it stays unit-testable in isolation.
+# a convenience, never load-bearing. Reads its argument and one environment
+# variable — no kindle state — so it stays unit-testable in isolation.
+#
+# A CLIPBOARD IS A STATION RESOURCE AND NEVER A HOST ONE. It belongs where the
+# human sits, and a tool can only ever write the clipboard of the host it runs
+# on — so the predicate's true contract is that the execution host IS the
+# station, and SSH_CONNECTION is the exact cheap signature of that identity
+# failing. The guard declines before probing anything, because over ssh a tool
+# that is present answers for the wrong machine: clip.exe under an sshd session
+# exits 0 onto a window station no desktop can paste from, which is a false
+# verdict rather than a failed copy, and the caller's announcement inherits it.
+# The cause is named on the log channel alone — the streams stay the caller's,
+# as the paragraph above requires.
+#
+# DELIVERING the convenience remotely is out of scope by decision rather than by
+# omission. OSC 52 is the only channel reaching the station's clipboard through
+# ssh, riding the terminal stream rather than the host, but it is
+# fire-and-forget with terminal-dependent support — so an announcement over it
+# would be unverifiable, which is this same dishonesty rebuilt one layer up.
 buc_clipboard_copy_predicate() {
   local -r z_text="${1:?buc_clipboard_copy_predicate: text required}"
 
   z_buc_clipboard_tool=""
+
+  if test -n "${SSH_CONNECTION:-}"; then
+    buc_log_args "Clipboard copy declined: SSH_CONNECTION stands, so the execution host is not the station and no clipboard reachable here is the operator's"
+    return 1
+  fi
+
   local z_copied=0
   if command -v pbcopy >/dev/null 2>&1; then
     z_buc_clipboard_tool="pbcopy"

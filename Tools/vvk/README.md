@@ -54,12 +54,18 @@ vvx guard [--limit <bytes>] [--warn <bytes>]
 
 ## Installation
 
-VVK is installed by kit arcanums (e.g., JJK). The arcanum:
-1. Copies `Tools/vvk/` from source repo
-2. Copies release binaries from `Tools/vok/release/*/vvr`
-3. Emits slash commands that invoke vvx
+VVK reaches a consumer by parcel. The forge mints one per target with the
+`tt/vow-R.ParcelRelease.sh` tabtarget, naming the target's own `burc.env` —
+the argument `vvi_install.sh` takes — and cutting exactly the kits it declares;
+the parcel carries `Tools/vvk/` and one
+platform binary (`bin/vvx-<platform>`) built from VOK at release time. The install
+writes it at the canonical `Tools/vvk/bin/vvx`, an ordinary delivered file the
+consumer commits with the rest of its install delta; only the forge ignores its
+own build output. `vvi_install.sh` at the parcel root emplaces it (the
+rescue door for a dark station); `tt/buw-pe.ParcelEmplace.sh` is the maintenance
+door on a lit station.
 
-**Do not install VVK manually.** Use the appropriate kit arcanum.
+**Do not install VVK by hand.** Emplace a parcel.
 
 ## Relationship to VOK
 

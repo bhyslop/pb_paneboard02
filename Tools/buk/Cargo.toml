@@ -1,0 +1,46 @@
+# Copyright 2026 Scale Invariant, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[package]
+name = "buk"
+version = "0.0.1"
+edition = "2021"
+description = "The substrate's own self-test - plain rust hurdles that spawn bash and judge it from outside the dying process"
+license = "Apache-2.0"
+
+# A LIBRARY AND NO BINARY, and the emptiness of the binary side is the point.
+# The substrate is bash; nothing here is a program the estate runs. What this
+# crate holds is hurdles and the support they share, so the lib exists to give
+# the hurdles a home to import from and cargo a target to hang them on.
+#
+# THE SUBSTRATE STAYS WHOLE WITH NO RUST TOOLCHAIN PRESENT. Nothing under
+# Tools/buk outside this manifest's own reach is compiled, sourced or read by
+# cargo; a station holding no toolchain runs every substrate door exactly as
+# before and only this suite is out of its reach.
+[lib]
+name = "buk"
+path = "src/lib.rs"
+
+# THE COMPOSING SURFACE, AND THE ONLY DEPENDENCY. A hurdle that reaches the temp
+# root, composes a repository or spawns a door reaches it through the kennel's
+# surface and never through a bare std::env or a git of its own; that surface is
+# the only home the lure sheaf admits, so this crate takes the kennel to reach it
+# rather than growing a second one.
+#
+# A REGULAR DEPENDENCY RATHER THAN A DEV ONE, because the support this crate's
+# own lib holds is built on that surface, and a dev-dependency is out of scope
+# for lib code. Nothing ships either way: this crate builds no binary at all.
+[dependencies]
+bkk = { path = "../bkk/bk0", features = ["lure"] }

@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 # Copyright 2025 Scale Invariant, Inc.
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -57,8 +58,9 @@ jjw_route() {
   jjw_show "Routing command: ${z_command} with args: $*"
 
   zburd_sentinel
-  zjjz_healthcheck
 
+  # No roster sweep at dispatch: a tree routes whatever tabtargets stand, and the
+  # source tree proves its roster complete by test (buz_healthcheck's own comment).
   jjw_show "BURD environment verified"
 
   buz_exec_lookup "${z_command}" "${JJW_SCRIPT_DIR}" "$@"
@@ -68,7 +70,7 @@ jjw_main() {
   local z_command="${1:-}"
   shift || true
 
-  test -n "${z_command}" || buc_die "No command specified"
+  test -n "${z_command}" || buc_die_now "No command specified"
 
   jjw_route "${z_command}" "$@"
 }

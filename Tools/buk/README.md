@@ -17,6 +17,7 @@ A portable, graftable bash infrastructure for building maintainable command-line
 - [BUK Components](#buk-components)
   - [Module Prefix Registry](#module-prefix-registry)
 - [Creating a New Workbench](#creating-a-new-workbench)
+- [Module Contract](#module-contract)
 - [Reference Implementation: BURC/BURS](#reference-implementation-burcburs)
 
 ---
@@ -26,7 +27,7 @@ A portable, graftable bash infrastructure for building maintainable command-line
 BUK provides a three-layer architecture for bash-based CLI tools:
 
 1. **BUK Core** (`Tools/buk/*.sh`) - Portable utilities with no project-specific knowledge
-2. **BURC** (`.buk/burc.env`) - Project-level configuration defining repository structure
+2. **BURC** (`mymm_moorings/burc.env`) - Project-level configuration defining repository structure
 3. **BURS** (`../station-files/burs.env`) - Developer/machine-level configuration (not in git)
 
 This separation allows BUK to be copied wholesale into any project and configured through regime files rather than code modification.
@@ -41,12 +42,11 @@ This separation allows BUK to be copied wholesale into any project and configure
 
 **Naming Pattern**: `launcher.{workbench_name}.sh`
 
-**Location**: `.buk/` directory at project root
+**Location**: `rbml_launchers/` subdirectory of the moorings directory (the subdirectory name is fixed by the kit; the moorings directory itself is yours to name)
 
 **Examples**:
-- `.buk/launcher.buw_workbench.sh` - BUK workbench launcher
-- `.buk/launcher.cccw_workbench.sh` - CCCK workbench launcher
-- `.buk/launcher.rbw_workbench.sh` - RBW workbench launcher
+- `mymm_moorings/rbml_launchers/launcher.buw_workbench.sh` - BUK workbench launcher
+- `mymm_moorings/rbml_launchers/launcher.myw_workbench.sh` - a consumer's workbench launcher (`myw` is a naming specimen throughout this file, standing for your own prefix)
 
 **Creation**: Use `tt/buw-tt-cl.CreateLauncher.sh` to create new launchers.
 
@@ -77,60 +77,18 @@ This ensures tests exercise real dispatch paths with proper isolation.
 
 **Examples**:
 - `Tools/buk/buw_workbench.sh` - BUK workbench (manages BUK itself)
-- `Tools/ccck/cccw_workbench.sh` - CCCK workbench (container control)
-- `Tools/rbk/rbw_workbench.sh` - RBW workbench (recipe bottle management)
+- `Tools/myk/myw_workbench.sh` - a consumer's workbench (naming specimen)
 
-**Structure**:
-
-```bash
-#!/bin/bash
-set -euo pipefail
-
-# Route function
-workbench_route() {
-  local z_command="$1"
-  shift
-
-  case "${z_command}" in
-    cmd1) workbench_cmd1 "$@" ;;
-    cmd2) workbench_cmd2 "$@" ;;
-    *)
-      echo "ERROR: Unknown command: ${z_command}" >&2
-      exit 1
-      ;;
-  esac
-}
-
-# Command implementations
-workbench_cmd1() {
-  # Implementation
-}
-
-workbench_cmd2() {
-  # Implementation
-}
-
-# Main entry point
-workbench_main() {
-  local z_command="${1:-}"
-  shift || true
-
-  if [ -z "${z_command}" ]; then
-    echo "ERROR: No command specified" >&2
-    exit 1
-  fi
-
-  workbench_route "${z_command}" "$@"
-}
-
-workbench_main "$@"
-```
+**Structure**: a workbench holds no command logic. It kindles the dispatch
+environment and its zipper, then hands the colophon to `buz_exec_lookup`, which
+execs the CLI module the zipper enrolled for it. `Tools/buk/buw_workbench.sh` is
+the whole pattern in under eighty lines; the rules it follows are stated in
+[Module Contract](#module-contract).
 
 **Key Characteristics**:
-- Single-file router that routes commands
-- Follows multi-call pattern (single script, multiple commands via case routing)
-- Loads configuration (BURC/BURS) as needed
-- Can delegate to other scripts for complex operations
+- Routes by zipper lookup, never by a hand-written `case`
+- Kindles BUK's dispatch and zipper modules, then its own zipper
+- Delegates every command to an executable CLI module
 - Crash-fast error handling (`set -euo pipefail`)
 
 ---
@@ -144,10 +102,10 @@ workbench_main "$@"
 **Two-Layer Dispatch**:
 
 ```
-tt/jjt-f.TestFavor.sh → Launcher → BUD → jjt_testbench.sh
+tt/myt-s.Scenario.sh → Launcher → BUD → myt_testbench.sh
                                               │
                                               ▼ invokes
-                                    tt/jjw-tfP1.ProvisionPhase1.sh → Launcher → BUD → jjw_workbench.sh
+                                    tt/myw-p.Provision.sh → Launcher → BUD → myw_workbench.sh
                                               │                           ▲
                                               ▼ assesses                  │
                                          [pass/fail]                 environment
@@ -158,29 +116,29 @@ tt/jjt-f.TestFavor.sh → Launcher → BUD → jjt_testbench.sh
 
 **Structure**: Setup preconditions → invoke tabtarget → assess results → report
 
-**Examples**:
-- `Tools/jjk/jjt_testbench.sh` - Job Jockey test scenarios
+The names in the diagram above are naming specimens; BUK itself ships no testbench.
 
 ---
 
 ### Zipper
 
-**Definition**: A zipper is a BCG-compliant module that kindles array constants mapping colophons to their implementing modules and commands. Testbenches use symbolic constants instead of hardcoded colophon strings.
+**Definition**: A zipper is a module obeying the [Module Contract](#module-contract) whose kindle enrolls each colophon with its implementing module and command, and sets a symbolic constant holding the colophon string. Testbenches use those constants instead of hardcoded colophon strings.
 
 **Naming Pattern**: `{prefix}z_zipper.sh`
 
 **Location**: `Tools/{toolkit}/` subdirectory
 
 **Examples**:
-- `Tools/buk/buz_zipper.sh` - BUK zipper (base registry infrastructure)
-- `Tools/rbk/rbz_zipper.sh` - RBW zipper (Recipe Bottle colophon registry)
+- `Tools/buk/buz_zipper.sh` - the base registry every zipper enrolls into
+- `Tools/buk/buwz_zipper.sh` - BUK workbench zipper (a complete zipper to copy)
 
 **Key Functions**:
-- `buz_register(colophon, module, command)` — Register a tuple, sets `z1z_buz_colophon`
+- `buz_enroll VARNAME colophon module command channel description` — enroll one colophon; all six arguments required, and `VARNAME` is set to the colophon string
+- `buz_exec_lookup colophon base_dir [args...]` — the workbench's dispatch: exec `base_dir/module command`, with the folio in `BUZ_FOLIO`
 
 **Design Rationale**:
 - Symbolic constants eliminate hardcoded colophon strings in tests
-- Parallel arrays provide O(1) lookup by index
+- Parallel arrays keep one row per enrolled colophon
 - Each toolkit's zipper owns its colophon registry
 
 ---
@@ -292,10 +250,8 @@ BUD extracts the colophon using `${filename%%${BURC_TABTARGET_DELIMITER}*}` and 
 ### Config Regimes
 
 **Definition**: A Config Regime is a structured configuration system consisting of:
-- **Specification** - Markdown document defining variables, types, and constraints
 - **Assignment** - Shell-sourceable file (`.env`) containing actual values
-- **Validator** - Script that enforces type rules and constraints
-- **Renderer** - Script that displays configuration in human-readable format
+- **Regime Script** - Multi-call script that enrolls every variable's type and constraints, validates them, and renders them in human-readable form
 
 **Namespace Identity**: Unique uppercase prefix (e.g., `BURC_`, `BURS_`, `RBRN_`, `RBRR_`) prevents variable collisions.
 
@@ -305,15 +261,11 @@ BUD extracts the colophon using `${filename%%${BURC_TABTARGET_DELIMITER}*}` and 
    - Concise filename (frequently sourced)
    - Shell-sourceable: `VAR=value` syntax, no spaces around `=`
    - Can use `${VAR}` expansion for derived values
-   - Example: `.buk/burc.env`
+   - Example: `mymm_moorings/burc.env`
 
-2. **Specification File** (`{regime}_specification.md`)
-   - Documents all variables, types, and constraints
-   - Self-documenting, readable
-   - Example: `Tools/buk/burc_specification.md`
-
-3. **Regime Script** (`{regime}_regime.sh`)
+2. **Regime Script** (`{regime}_regime.sh`)
    - Multi-call script with subcommands
+   - Enrolls every variable — its type, its constraints, its one-line purpose — the delivered home of the regime's own documentation
    - Subcommands: `validate`, `render`, `info`
    - Example: `Tools/buk/burc_regime.sh`
 
@@ -323,10 +275,10 @@ BUD extracts the colophon using `${filename%%${BURC_TABTARGET_DELIMITER}*}` and 
 
 **Examples**:
 
-| Regime | Assignment | Specification | Validator/Renderer |
-|--------|-----------|---------------|-------------------|
-| BURC | `.buk/burc.env` | `Tools/buk/burc_specification.md` | `Tools/buk/burc_regime.sh` |
-| BURS | `../station-files/burs.env` | `Tools/buk/burs_specification.md` | `Tools/buk/burs_regime.sh` |
+| Regime | Assignment | Regime Script |
+|--------|-----------|---------------|
+| BURC | `mymm_moorings/burc.env` | `Tools/buk/burc_regime.sh` |
+| BURS | `../station-files/burs.env` | `Tools/buk/burs_regime.sh` |
 
 **Type System**:
 
@@ -349,130 +301,120 @@ BUK provides validation functions in `buv_validation.sh`:
 
 ```
 Project Root/
-├── .buk/                              # Launcher directory (project-specific bootstrap)
+├── mymm_moorings/                     # Moorings: the project's bootstrap config (name is yours; naming specimen)
 │   ├── burc.env                       # BURC assignment (project structure config)
-│   ├── launcher.buw_workbench.sh      # BUK launcher (with validation)
-│   ├── launcher.cccw_workbench.sh     # CCCK launcher (with validation)
-│   └── launcher.rbw_workbench.sh      # RBW launcher (with validation)
+│   └── rbml_launchers/                # Launcher stubs (subdirectory name is fixed by the kit)
+│       ├── launcher.buw_workbench.sh  # BUK launcher stub
+│       └── launcher.myw_workbench.sh  # your launcher stub (naming specimen)
 │
 ├── tt/                                # TabTargets (tab-completion-friendly commands)
-│   ├── buw-ll.ListLaunchers.sh        # List all launchers
-│   ├── buw-rv.ValidateRegimes.sh      # Validate BURC/BURS
-│   └── ccck-ps.ProcessStatus.sh       # Container status
+│   ├── z-launcher.sh                  # The trampoline every tabtarget execs into
+│   ├── buw-tt-ll.ListLaunchers.sh     # List all launchers
+│   ├── buw-rcv.ValidateConfigRegime.sh # Validate BURC
+│   └── myw-p.Provision.sh             # your command (naming specimen)
 │
-├── Tools/                             # Tool scripts (portable, reusable)
-│   ├── buk/                           # BUK core utilities (graftable module)
-│   │   ├── bud_dispatch.sh # Dispatch system
-│   │   ├── buc_command.sh  # Command utilities
-│   │   ├── but_test.sh     # Test utilities
-│   │   ├── buv_validation.sh # Validation (type system)
+├── Tools/                             # BURC_TOOLS_DIR: installed kits and your own toolkits
+│   ├── buk/                           # BUK core utilities (installed from a parcel)
+│   │   ├── bul_launcher.sh            # Shared launcher logic every stub sources
+│   │   ├── bud_dispatch.sh            # Dispatch system
+│   │   ├── buc_command.sh             # Command utilities
+│   │   ├── buv_validation.sh          # Validation (type system)
 │   │   ├── buw_workbench.sh           # BUK workbench
-│   │   ├── burc_specification.md      # BURC spec
-│   │   ├── burc_regime.sh             # BURC validator/renderer
-│   │   ├── burs_specification.md      # BURS spec
-│   │   ├── burs_regime.sh             # BURS validator/renderer
+│   │   ├── buwz_zipper.sh             # BUK workbench zipper
+│   │   ├── burc_regime.sh             # BURC regime module
+│   │   ├── burs_regime.sh             # BURS regime module
+│   │   ├── burs_template.sh           # BURS field list and defaults
 │   │   └── README.md                  # This file
 │   │
-│   ├── ccck/                          # CCCK workbench
-│   │   └── cccw_workbench.sh
-│   │
-│   └── rbk/                           # RBW workbench
-│       └── rbw_workbench.sh
+│   └── myk/                           # your toolkit (naming specimen)
+│       ├── myw_workbench.sh
+│       ├── myz_zipper.sh
+│       └── myp_cli.sh
 │
-└── ../station-files/                  # Developer machine configs (NOT in git)
+├── .vvk/                              # Brand file naming the parcel installed here
+│
+└── ../station-files/                  # Developer machine configs (NOT in git; a sibling of the root)
     └── burs.env                       # BURS assignment (station config)
 ```
+
+Which step creates each directory:
+
+| Directory | Created by |
+|-----------|------------|
+| `mymm_moorings/` | you, by hand, before the install |
+| `mymm_moorings/rbml_launchers/` | you, by hand, before the install; `buw-tt-cl` writes into it and refuses where it does not stand |
+| `tt/` | you, by hand, before the install; `z-launcher.sh` in it is yours to write, a kit's tabtargets are copied from a tree that has them, and the `buw-tt-c*` doors write your own |
+| `Tools/` | you, by hand, before the install; the install writes into it and refuses where it does not stand |
+| `Tools/buk/` | the parcel install |
+| `.vvk/` | the parcel install |
+| `Tools/myk/` | you: your own workbench, zipper and CLI modules, written against the [Module Contract](#module-contract) |
+| `../station-files/` | you, or a station door the starter kit templates (see [Installation](#installation)); outside the repository |
 
 **Execution Flow**:
 
 ```
 User invokes TabTarget:
-  $ tt/buw-ll.ListLaunchers.sh
-       ├── Colophon: buw-ll
+  $ tt/buw-tt-ll.ListLaunchers.sh
+       ├── Colophon: buw-tt-ll
        └── Frontispiece: ListLaunchers
 
-1. TabTarget delegates to Launcher
-   → .buk/launcher.buw_workbench.sh buw-ll
+1. TabTarget execs the trampoline
+   → tt/z-launcher.sh, with BURD_LAUNCHER=launcher.buw_workbench.sh
 
-2. Launcher validates regimes
-   → burc_regime.sh validate .buk/burc.env
-   → burs_regime.sh validate ../station-files/burs.env
-   → (If validation fails, display info and exit)
+2. Trampoline resolves the launcher stub
+   → mymm_moorings/rbml_launchers/launcher.buw_workbench.sh
+   → changes to the repository root, exports BURD_CONFIG_DIR (the moorings), execs the stub
 
-3. Launcher delegates to BURD
-   → bud_dispatch.sh buw-ll
+3. Launcher stub sources bul_launcher.sh, which validates regimes
+   → loads and enforces BURC from BURD_CONFIG_DIR/burc.env
+   → loads and enforces BURS from the station file BURC names
+   → (If the station file is missing, prints the setup it needs and exits)
 
-4. BURD sets up environment
+4. Launcher delegates to BURD
+   → bud_dispatch.sh buw-tt-ll.ListLaunchers.sh
+
+5. BURD sets up environment
    → Parses colophon, frontispiece, imprint(s) from filename
    → Creates temp/output directories
-   → Sources BURS (station config)
    → Sets up logging
 
-5. BURD invokes Workbench
-   → buw_workbench.sh buw-ll [imprints...]
-   → Passes colophon as command, imprints as arguments
+6. BURD invokes Workbench
+   → buw_workbench.sh, colophon as command, imprints as arguments
 
-6. Workbench routes colophon
-   → Case statement routes colophon "buw-ll" to implementation
-   → Passes imprints to implementation
-   → Executes command logic
+7. Workbench routes colophon
+   → Kindles its zipper, then buz_exec_lookup execs the CLI module enrolled for "buw-tt-ll"
    → Returns exit status
 
-7. BURD cleans up
+8. BURD cleans up
    → Writes transcript
    → Propagates exit status
 ```
+
+The trampoline is the only file that knows the moorings directory's name.
+The kit reads `BURD_CONFIG_DIR` rather than any fixed name, which is what lets one BUK serve every repository;
+so the trampoline is yours to write, and no door generates it.
 
 ---
 
 ## Installation
 
-### Quick Start: Copy BUK into Your Project
+BUK arrives from a parcel: the parcel's install door writes it under the tools directory of a repository that already stands, and commits nothing.
+The ordered road that stands such a repository up — with a ready template for every file placed by hand, the bootstrap seed among them — is the parcel starter kit's.
+That kit stands beside this one in the parcel it arrived in; read its README before your first install.
 
-1. **Copy BUK directory**:
-   ```bash
-   cp -r /path/to/source/Tools/buk ./Tools/
-   ```
+What follows is the contract BUK places on a repository, each requirement stated once here and in full where the pointer leads.
 
-2. **Create `.buk` directory and BURC file**:
-   ```bash
-   mkdir -p .buk
-   cat > .buk/burc.env <<'EOF'
-   # Bash Utility Regime Configuration (BURC)
-   # Project-level configuration for BUK
+- **A config regime file**, `burc.env`, in a moorings directory of your naming at the repository root.
+  It declares exactly the ten variables `Tools/buk/burc_regime.sh` enrolls, and its validator refuses fewer or more; the install door reads three of them — `BURC_PROJECT_ROOT`, `BURC_TOOLS_DIR` and `BURC_MANAGED_KITS`. See [Config Regimes](#config-regimes).
+- **The trampoline**, `tt/z-launcher.sh`, which is yours to write and no door generates.
+  It has two duties: export `BURD_CONFIG_DIR` naming the moorings directory, and resolve the launcher a tabtarget names under that directory's `rbml_launchers/` subdirectory, a name the kit reads as a literal. See [Architecture](#architecture).
+- **Launcher stubs and tabtargets**, one stub per workbench and one tabtarget per door you use.
+  The doors write your own, a kit's tabtargets are copied from a tree that has them, and only the first stub and the first tabtarget are placed by hand, in exactly the shapes those doors emit. See [Launchers](#launchers) and [TabTargets](#tabtargets).
+- **The doors you use, and no more.** A workbench routes whatever tabtargets stand and sweeps nothing at dispatch, so a partial roster is a smaller installation rather than a broken one. A kit's canonical tabtargets carry nothing of the repository they stand in, so copy the ones you want from a tree that has them, byte for byte, and mint only your own with the creation doors. The colophons BUK enrolls stand in `Tools/buk/buwz_zipper.sh`, and the source tree proves its own roster complete by test. See [Zipper](#zipper).
+- **A station file**, per machine and never committed, at the path `BURC_STATION_FILE` names from the repository root.
+  Its fields and defaults stand in `Tools/buk/burs_template.sh`, and every door run before it exists stops and prints the fields it needs. See [Config Regimes](#config-regimes).
 
-   BURC_STATION_FILE=../station-files/burs.env
-   BURC_TABTARGET_DIR=tt
-   BURC_TABTARGET_DELIMITER=.
-   BURC_TOOLS_DIR=Tools
-   BURC_TEMP_ROOT_DIR=../temp-buk
-   BURC_OUTPUT_ROOT_DIR=../output-buk
-   BURC_LOG_LAST=last
-   BURC_LOG_EXT=txt
-   EOF
-   ```
-
-3. **Create TabTarget directory**:
-   ```bash
-   mkdir -p tt
-   ```
-
-4. **Create station file location**:
-   ```bash
-   mkdir -p ../station-files
-   cat > ../station-files/burs.env <<'EOF'
-   # Bash Utility Regime Station (BURS)
-   # Developer/machine-level configuration for BUK
-
-   BURS_LOG_DIR=../_logs_buk
-   EOF
-   ```
-
-5. **Validate installation**:
-   ```bash
-   Tools/buk/burc_regime.sh validate .buk/burc.env
-   Tools/buk/burs_regime.sh validate ../station-files/burs.env
-   ```
+Your own workbench's launcher stub is then one door away — `tt/buw-tt-cl.CreateLauncher.sh Tools/myk/myw_workbench.sh myw_workbench` — and its tabtargets are made with the `buw-tt-c*` doors naming that stub.
 
 ---
 
@@ -627,19 +569,6 @@ The log directory is specified by `BURS_LOG_DIR` in the station configuration.
 
 ---
 
-### BUT - Bash Utility Test
-
-**File**: `Tools/buk/but_test.sh`
-
-**Purpose**: Testing framework for bash scripts.
-
-**Key Functions**:
-- Test case definition
-- Assertion helpers
-- Test runner
-
----
-
 ### BUV - Bash Utility Validation
 
 **File**: `Tools/buk/buv_validation.sh`
@@ -699,7 +628,7 @@ buv_opt_bool "OPTIONAL_DEBUG_FLAG" || exit 1
 **Commands**:
 
 **TabTarget Subsystem** (`buw-tt-*`):
-- `buw-tt-ll` - List launchers in `.buk/`
+- `buw-tt-ll` - List launchers in `rbml_launchers/`
 - `buw-tt-cbl <launcher> <name>...` - Create batch+logging tabtarget (default)
 - `buw-tt-cbn <launcher> <name>...` - Create batch+nolog tabtarget
 - `buw-tt-cil <launcher> <name>...` - Create interactive+logging tabtarget
@@ -717,11 +646,12 @@ buv_opt_bool "OPTIONAL_DEBUG_FLAG" || exit 1
 
 To create a new workbench:
 
-1. **Study existing workbenches** as templates:
-   - `Tools/buk/buw_workbench.sh` - Simple routing example
-   - `Tools/rbk/rbw_workbench.sh` - Module delegation pattern
+1. **Study the delivered workbench** as a template:
+   - `Tools/buk/buw_workbench.sh` - the workbench, kindling and routing
+   - `Tools/buk/buwz_zipper.sh` - its zipper, enrolling each colophon to a CLI module
+   - `Tools/buk/burs_cli.sh` - a CLI module the zipper enrolls
 
-2. **Create the workbench script** in `Tools/{prefix}/`
+2. **Create the workbench, its zipper and its CLI modules** in `Tools/{prefix}/`, following the [Module Contract](#module-contract)
 
 3. **Create the launcher** using `buw-tt-cl`:
    ```bash
@@ -730,8 +660,110 @@ To create a new workbench:
 
 4. **Create tabtargets** using `buw-tt-cbl` (or appropriate variant):
    ```bash
-   tt/buw-tt-cbl.CreateTabTargetBatchLogging.sh .buk/launcher.myw_workbench.sh myw-cmd.CommandName
+   tt/buw-tt-cbl.CreateTabTargetBatchLogging.sh mymm_moorings/rbml_launchers/launcher.myw_workbench.sh myw-cmd.CommandName
    ```
+
+---
+
+## Module Contract
+
+Every BUK module follows these rules, and a module of your own that follows them
+dispatches, kindles and documents itself the way BUK's do. Each rule names a
+delivered module that shows it; when in doubt, read that module.
+
+`myk`, `myw`, `myz` and `myp` below are naming specimens standing for your own
+prefix.
+
+### Every module
+
+| Rule | Shown in |
+|------|----------|
+| The file is `{prefix}_{word}.sh`, and `set -euo pipefail` runs before any other statement | `Tools/buk/burs_regime.sh` |
+| A public function is named `{prefix}_{word}`; a private one is named `z{prefix}_{word}` | `Tools/buk/buz_zipper.sh` (`buz_enroll` public, `zbuz_kindle` private) |
+| Locals are declared `local`, named `z_{word}`, and made `local -r` when never reassigned | `Tools/buk/buz_zipper.sh` (`buz_enroll`) |
+| Every expansion is braced and quoted: `"${z_name}"`, never `$z_name` | `Tools/buk/buz_zipper.sh` |
+| A failure dies through `buc_die_now "message"`, never `echo` and `exit` | `Tools/buk/buz_zipper.sh` (`buz_enroll`) |
+| The code runs under bash 3.2, the macOS default shell | `Tools/buk/buz_zipper.sh` (`buz_emit_const_str` states why its interface is per-pair) |
+
+### A sourced module
+
+A module other files `source` carries state only once it is kindled, so
+sourcing it defines functions and nothing more.
+
+| Rule | Shown in |
+|------|----------|
+| It guards against a second inclusion at the top: `test -z "${Z<PREFIX>_SOURCED:-}" \|\| return 0`, then `Z<PREFIX>_SOURCED=1`. Where a second inclusion means a wrong sourcing hierarchy, it dies instead of returning | `Tools/buk/buwz_zipper.sh` (returns); `Tools/buk/burs_regime.sh` (dies) |
+| A module holding state defines `z{prefix}_kindle`, which dies if already kindled, sets up that state, and ends `readonly Z<PREFIX>_KINDLED=1` | `Tools/buk/burs_regime.sh` (`zburs_kindle`) |
+| It defines `z{prefix}_sentinel`, which dies unless `Z<PREFIX>_KINDLED` is `1` | `Tools/buk/burs_regime.sh` (`zburs_sentinel`) |
+| Every function that reads kindled state calls the sentinel first | `Tools/buk/buz_zipper.sh` (`buz_enroll` calls `zbuz_sentinel`) |
+| A kindle that needs another module kindled calls that module's sentinel first | `Tools/buk/buwz_zipper.sh` (`zbuwz_kindle` calls `zbuz_sentinel`) |
+| Kindling is the caller's explicit act, in dependency order | `Tools/buk/buw_workbench.sh` |
+
+### A CLI module
+
+A CLI module is what a zipper enrolls. It is executed, never sourced, and it
+must be committed executable.
+
+| Rule | Shown in |
+|------|----------|
+| It sources `buc_command.sh` and `buym_yelp.sh` from `${BURD_BUK_DIR}` | `Tools/buk/burs_cli.sh` |
+| Each command is a function `{prefix}_{verb}`, and a helper that is not a command is `z`-prefixed, since the help listing shows every function carrying the prefix | `Tools/buk/burs_cli.sh`; the listing is `zbuc_show_help` in `Tools/buk/buc_command.sh` |
+| Each command opens with `buc_doc_brief "what it does"`, then `buc_doc_shown \|\| return 0`, so the help listing can call it without running it | `Tools/buk/burs_cli.sh` (`burs_validate`) |
+| A furnish function `z{prefix}_furnish` opens with its `buc_doc_env_row` lines and `buc_doc_env_done \|\| return 0`, then sources and kindles what the commands need | `Tools/buk/burs_cli.sh` (`zburs_furnish`) |
+| The last line of code is `buc_execute {prefix}_ "Title" z{prefix}_furnish "$@"` | `Tools/buk/burs_cli.sh` |
+
+### A zipper
+
+| Rule | Shown in |
+|------|----------|
+| It is a sourced module named `{prefix}z_zipper.sh`, with the guard, kindle and sentinel above | `Tools/buk/buwz_zipper.sh` |
+| Its kindle calls `zbuz_sentinel`, then one `buz_enroll` per colophon: constant name, colophon, CLI module filename, command function, channel, description | `Tools/buk/buwz_zipper.sh` |
+| The channel says how the command receives its folio: `""` for none, `"imprint"` for the tabtarget filename's third token, `"param1"` for the first argument; the command reads it from `BUZ_FOLIO` | `Tools/buk/buwz_zipper.sh`; decoded in `buz_exec_lookup`, `Tools/buk/buz_zipper.sh` |
+
+`buz_tome_seat` is needed only by a project that projects its colophons as
+constants into generated code; a zipper that only dispatches may omit it.
+
+### A workbench
+
+| Rule | Shown in |
+|------|----------|
+| It sources `buc_command.sh`, `buym_yelp.sh`, `buv_validation.sh`, `burd_regime.sh` and `buz_zipper.sh` from BUK, then its own zipper | `Tools/buk/buw_workbench.sh` |
+| It kindles `zbuv_kindle`, `zburd_kindle`, `zbuz_kindle`, then its own zipper's kindle | `Tools/buk/buw_workbench.sh` |
+| It routes by calling `zburd_sentinel`, then `buz_exec_lookup "${z_command}" "<directory holding its CLI modules>" "$@"` | `Tools/buk/buw_workbench.sh` (`buw_route`) |
+
+A consumer workbench, whole, in the shape `Tools/buk/buw_workbench.sh` takes:
+
+```bash
+#!/bin/bash
+set -euo pipefail
+
+MYW_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
+
+source "${BURD_BUK_DIR}/buc_command.sh"
+source "${BURD_BUK_DIR}/buym_yelp.sh"
+source "${BURD_BUK_DIR}/buv_validation.sh"
+source "${BURD_BUK_DIR}/burd_regime.sh"
+source "${BURD_BUK_DIR}/buz_zipper.sh"
+source "${MYW_SCRIPT_DIR}/myz_zipper.sh"
+
+buc_context "${0##*/}"
+
+zbuv_kindle
+zburd_kindle
+zbuz_kindle
+zmyz_kindle
+
+myw_main() {
+  local z_command="${1:-}"
+  shift || true
+  test -n "${z_command}" || buc_die_now "No command specified"
+
+  zburd_sentinel
+  buz_exec_lookup "${z_command}" "${MYW_SCRIPT_DIR}" "$@"
+}
+
+myw_main "$@"
+```
 
 ---
 
@@ -745,7 +777,7 @@ BURC and BURS are BUK's own Config Regimes, serving as both:
 
 **Purpose**: Project-level configuration defining repository structure.
 
-**Assignment File**: `.buk/burc.env`
+**Assignment File**: `mymm_moorings/burc.env`
 
 **Variables**:
 
@@ -757,6 +789,7 @@ BURC and BURS are BUK's own Config Regimes, serving as both:
 | `BURC_TOOLS_DIR` | string | Directory containing tool scripts |
 | `BURC_TEMP_ROOT_DIR` | string | Parent directory for temp directories |
 | `BURC_OUTPUT_ROOT_DIR` | string | Parent directory for output directories |
+| `BURC_LOOSEBOX_ROOT_DIR` | string | Parent directory holding one checkout-keyed loosebox per checkout |
 | `BURC_LOG_LAST` | xname | Basename for "last run" log file |
 | `BURC_LOG_EXT` | xname | Extension for log files (without dot) |
 
@@ -768,6 +801,7 @@ BURC_TABTARGET_DELIMITER=.
 BURC_TOOLS_DIR=Tools
 BURC_TEMP_ROOT_DIR=../temp-buk
 BURC_OUTPUT_ROOT_DIR=../output-buk
+BURC_LOOSEBOX_ROOT_DIR=../loosebox-buk
 BURC_LOG_LAST=last
 BURC_LOG_EXT=txt
 ```
@@ -850,13 +884,8 @@ command | tee logfile; exit ${PIPESTATUS[0]}
 
 ### Coding Standards
 
-All BUK utilities follow these enterprise bash patterns:
-
-- **Bash 3.2 compatibility** - Works with macOS default shell
-- **Multi-call script pattern** - Single script handles multiple commands via case routing
-- **Crash-fast error handling** - Use `set -euo pipefail` at script start
-- **Braced, quoted variable expansion** - Always `"${var}"`, never `$var`
-- **Kindle/sentinel boilerplate** - Guard against multiple source inclusion
+Every BUK module follows the [Module Contract](#module-contract), which states
+each rule beside a delivered module that shows it.
 
 ---
 
@@ -866,7 +895,7 @@ BUK's current scope covers portable CLI infrastructure and configuration managem
 
 ### Standards Installation & Awareness
 
-Vision: Inject enterprise bash practices into development workflows from session start, leveraging patterns like BCG as anchor standards. Rather than relying on LLM training defaults, developers work with pre-configured awareness of anti-patterns and best practices. This prevents bad suggestions before they appear.
+Vision: Inject enterprise bash practices into development workflows from session start, with the Module Contract as the anchor standard. Rather than relying on LLM training defaults, developers work with pre-configured awareness of anti-patterns and best practices. This prevents bad suggestions before they appear.
 
 May eventually involve:
 - Integration with CLAUDE.md to document enterprise bash standards
@@ -884,10 +913,10 @@ May eventually involve:
 
 ### Code Validation Skills
 
-Vision: Skills that validate bash code against enterprise standards in real-time, catching deviations early. Anchored by BCG anti-patterns and best practices.
+Vision: Skills that validate bash code against enterprise standards in real-time, catching deviations early. Anchored by the Module Contract.
 
 May eventually involve:
-- Skills like `/validate-bash`, `/check-bcg-compliance`
+- Skills like `/validate-bash`, `/check-module-contract`
 - Integration with workbench validation functions
 - Forensic output for code review and standards enforcement
 
@@ -897,10 +926,10 @@ May eventually involve:
 
 When extending BUK:
 
-1. **Follow coding standards** - See the "Coding Standards" section above
+1. **Follow the module contract** - See the "Module Contract" section above
 2. **Maintain portability** - No project-specific logic in `Tools/buk/`
 3. **Use Config Regimes** - Configuration belongs in regime files, not code
-4. **Write specifications** - Document new regimes in `{regime}_specification.md`
+4. **Document the regime** - Enroll every variable's type, constraints, and purpose in the regime script (`{regime}_regime.sh`)
 5. **Add validation** - Use BVU type system for all config variables
 6. **Update README** - Keep this file as the authoritative source
 

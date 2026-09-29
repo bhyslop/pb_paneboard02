@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 # Copyright 2025 Scale Invariant, Inc.
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -64,6 +65,11 @@ fi
 test -z "${ZBURC_SOURCED:-}" || buc_die_now "Module burc multiply sourced - check sourcing hierarchy"
 ZBURC_SOURCED=1
 
+# The surface forms of the governed words this module speaks, so an enrollment
+# description below expands a constant instead of spelling the word. The sourced
+# file carries its own inclusion guard, so a sibling sourcing it costs nothing.
+source "${BASH_SOURCE[0]%/*}/bubg_breviary.sh"
+
 ######################################################################
 # Internal Functions (zburc_*)
 
@@ -94,6 +100,7 @@ zburc_kindle() {
   buv_group_enroll "Build Output"
   buv_string_enroll  BURC_TEMP_ROOT_DIR         1  512  "Parent dir for per-dispatch scratch subdirs (temp-<stamp>)"
   buv_string_enroll  BURC_OUTPUT_ROOT_DIR       1  512  "Parent dir containing 'current/', cleared and recreated each dispatch"
+  buv_string_enroll  BURC_LOOSEBOX_ROOT_DIR     1  512  "Parent dir holding one checkout-keyed ${BUBG_LOOSEBOX_ROOT_DIR_BASE} per checkout, for derived rebuildable build products"
 
   buv_group_enroll "Logging"
   buv_xname_enroll   BURC_LOG_LAST              1   64  "Filename stem for last-run log"

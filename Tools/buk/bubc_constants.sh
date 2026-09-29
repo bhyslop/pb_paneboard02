@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 # Copyright 2026 Scale Invariant, Inc.
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -168,7 +169,12 @@ readonly BUBC_band_variorum=118  # census-delta rejection (this work introduces 
 # validated because the validator is absent. It shares no spawn path with any
 # gate above, standing ahead of all of them by construction.
 readonly BUBC_band_desuetude=119 # stale-bootstrap rejection (moorings launcher stub predating the bootstrap contract; regenerate through buut_launcher)
-# Free codes: 120-122, allocated upward from 120.
+# The metage gate: a composed arm of the kraal's CLAUDE.md stands over the
+# composed-size ceiling. One gate, fired after every figure is printed. Distinct
+# from every gate above: it is the only door that measures a composition, and
+# it chains with no other gate along any spawn path.
+readonly BUBC_band_metage=120    # composed-size rejection (a composed arm stands over the ceiling)
+# Free codes: 121-122, allocated upward from 121.
 # Self-test probe pins the band top, proving full-width propagation:
 readonly BUBC_band_selftest=123  # BUK self-test deliberate rejection (buw-xb fixture)
 
