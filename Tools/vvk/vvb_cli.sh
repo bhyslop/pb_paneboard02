@@ -21,14 +21,15 @@
 
 set -euo pipefail
 
-source "${BURD_BUK_DIR}/buc_command.sh"
-source "${BURD_BUK_DIR}/buym_yelp.sh"
-source "${BURD_TOOLS_DIR}/vvk/vvb_bash.sh"
+source "${BURD_BUK_DIR}/buc_command.sh" || exit 1
+source "${BURD_BUK_DIR}/buym_yelp.sh" || exit 1
 
 zvvb_furnish() {
   buc_doc_env_row "BURD_BUK_DIR          " "BUK module directory (dispatch-provided)"
   buc_doc_env_row "BURD_TOOLS_DIR        " "Project tools root directory (dispatch-provided)"
   buc_doc_env_done || return 0
+
+  source "${BURD_TOOLS_DIR}/vvk/vvb_bash.sh" || buc_die_now "Failed to source vvb_bash.sh"
 
   zvvb_kindle
 }

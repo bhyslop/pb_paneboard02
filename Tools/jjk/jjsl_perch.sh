@@ -20,15 +20,14 @@
 # JJSL Perch - the studbook neutrality gate, dispatch-side seat.
 #
 # The predicate has two seats and this is the shell one: the dispatch preflight
-# saddle and lunge share, so a kraal is refused before it exists. The equerry
+# the launch doors share, so a kraal is refused before it exists. The equerry
 # carries the other, at the one entry every jjx command passes
 # (jjdb_perch_gate, vov_veiled/jjk/src/jjr0/jjrvb_blotter.rs) — that seat cannot
 # reach this moment, because dispatch never enters the command surface, which
 # is why the predicate is stated twice rather than called once. Both name the
 # same findings and the same remedy, and differ only in genre: the equerry's
 # rides an INTERDICTUM token and breaks its remedy onto its own line, this one
-# carries the threshold genre's token at the operator's terminal (JJS0
-# jjdz_denegatio, whose instance census names this seat its type specimen).
+# carries the threshold genre's token at the operator's terminal.
 #
 # It carries no BUZ_FOLIO, reads no cwd, and takes the clone's root as its
 # argument — so a test drives it against a scratch store by sourcing this file
@@ -47,7 +46,7 @@ ZJJSL_PERCH_SOURCED=1
 # citation resolved only through the dispatcher would die `unbound variable`
 # under `set -u` on exactly that path. The breviary carries its own guard, so
 # every sibling gate sourcing it too costs nothing.
-source "${BASH_SOURCE[0]%/*}/jjsb_breviary.sh"
+source "${BASH_SOURCE[0]%/*}/jjsb_breviary.sh" || buc_die_now "Failed to source jjsb_breviary.sh"
 
 # The branch a dark studbook clone rests on. Bash face of the equerry's
 # JJDB_PERCH_BRANCH (vov_veiled/jjk/src/jjr0/jjrvb_blotter.rs), which carries the
@@ -89,7 +88,9 @@ jjsl_perch_gate() {
   # some other branch, so it is its own finding: the operator has to hear
   # "detached", not a bare sha.
   local z_head=""
-  if z_head=$(git -C "${z_root}" symbolic-ref --quiet HEAD); then
+  local z_head_status=0
+  z_head=$(git -C "${z_root}" symbolic-ref --quiet HEAD) || z_head_status=$?
+  if test "${z_head_status}" -eq 0; then
     test "${z_head}" = "${z_ref}" \
       || z_findings="it stands on ${z_head} rather than the perch (${z_ref})"
   else
@@ -108,7 +109,7 @@ jjsl_perch_gate() {
     # included.
     local -a z_lines=()
     local z_line=""
-    while IFS= read -r z_line; do
+    while IFS= read -r z_line || test -n "${z_line}"; do
       test -z "${z_line}" || z_lines+=("${z_line}")
     done <<< "${z_dirt}"
 

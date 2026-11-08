@@ -24,8 +24,8 @@
 
 set -euo pipefail
 
-source "${BURD_BUK_DIR}/buc_command.sh"
-source "${BURD_BUK_DIR}/buym_yelp.sh"
+source "${BURD_BUK_DIR}/buc_command.sh" || exit 1
+source "${BURD_BUK_DIR}/buym_yelp.sh" || exit 1
 
 ######################################################################
 # Furnish and Main
@@ -48,6 +48,12 @@ zjjsl_furnish() {
   buc_doc_env_row "BURD_COLOR            " "Resolved color verdict (dispatch-provided); the abuttal diff forces git's color from it"
   case "${z_command}" in
     jjsl_sight|jjsl_cashier|jjsl_found|jjsl_abuttal|jjsl_ostler|jjsl_drover|jjsl_help) ;;
+    # The salutations door means a FILE by its folio — the portrait every letter
+    # is filled with — so it earns its own row, on the admission's reason below.
+    jjsl_salute) buc_doc_env_row "BUZ_FOLIO             " "The portrait file every salutation is filled with; the directory to lay them in follows as the next argument (param1 channel)" ;;
+    # The corpus-trunk door's folio is OPTIONAL — naming none drops the
+    # template's paragraph of further trees — so it earns a row saying so.
+    jjsl_germinate) buc_doc_env_row "BUZ_FOLIO             " "Optional: a file of further trees this estate bars or opens; naming none drops that paragraph (param1 channel)" ;;
     # The admission door takes a folio like a dispatch door and means something
     # else by it — the infield clone to admit, never a coronet or firemark to
     # resolve — so it earns a row of its own rather than the generic one, which
@@ -63,16 +69,16 @@ zjjsl_furnish() {
 
   local -r z_jjk_dir="${BURD_TOOLS_DIR}/jjk"
 
-  source "${z_jjk_dir}/jjsl_wicket.sh"
+  source "${z_jjk_dir}/jjsl_wicket.sh" || buc_die_now "Failed to source jjsl_wicket.sh"
 
   # The studbook neutrality gate the working doors carry, in its own module so a
   # test can source it against a scratch store without this dispatcher running
   # (see its header).
-  source "${z_jjk_dir}/jjsl_perch.sh"
+  source "${z_jjk_dir}/jjsl_perch.sh" || buc_die_now "Failed to source jjsl_perch.sh"
 
   # The station date gate beside it, in its own module for the same reason and
   # driven the same way (see its header).
-  source "${z_jjk_dir}/jjsl_gnomon.sh"
+  source "${z_jjk_dir}/jjsl_gnomon.sh" || buc_die_now "Failed to source jjsl_gnomon.sh"
 
   # Every door kindles the zipper, unconditionally. A hand-kept subset was
   # tried here once and cost the founding door's own no-argument refusal: its
@@ -84,8 +90,8 @@ zjjsl_furnish() {
   # sourcing two small files and a few dozen array appends — noise beside the
   # process this command already pays to start — so nothing is bought by
   # excluding the two doors (sight, cashier) that happen not to need it.
-  source "${BURD_BUK_DIR}/buz_zipper.sh"
-  source "${z_jjk_dir}/jjz_zipper.sh"
+  source "${BURD_BUK_DIR}/buz_zipper.sh" || buc_die_now "Failed to source buz_zipper.sh"
+  source "${z_jjk_dir}/jjz_zipper.sh" || buc_die_now "Failed to source jjz_zipper.sh"
   zbuz_kindle
   zjjz_kindle
 

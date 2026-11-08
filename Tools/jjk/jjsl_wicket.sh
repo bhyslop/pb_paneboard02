@@ -18,8 +18,9 @@
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
 # JJSL Wicket - the shell face of the JJ operator doors over vvx: the dispatch
-# stiles (saddle, lunge, ostler) plus the lock-hygiene (sight, cashier),
-# studbook founding (found), and estate-abuttal (abuttal) ceremonies.
+# stiles (saddle, ostler) plus the lock-hygiene (sight, cashier),
+# studbook founding (salute, found, germinate), and estate-abuttal (abuttal)
+# ceremonies.
 #
 # A wicket is the small gate set within the main one, taken singly and on foot
 # while the great gate stays shut. That is what these doors are beside the
@@ -34,7 +35,7 @@
 # door tabtargets carry their own BURD_NO_LOG in their BURD_* block (the TUI they
 # hand the terminal to cannot run under the log tee), because a dispatch-mode flag
 # is the tabtarget's static property, never ambient environment (BUr_q2m).
-# The stile's approach itself is Rust: vvx jjo_usher (jjrds_stile.rs).
+# The stile's approach itself is Rust: vvx jjj_usher (jjrds_stile.rs).
 
 set -euo pipefail
 
@@ -49,12 +50,7 @@ ZJJSL_SOURCED=1
 # citation resolved only through the dispatcher would die `unbound variable`
 # under `set -u` on exactly that path. The breviary carries its own guard, so
 # every sibling gate sourcing it too costs nothing.
-source "${BASH_SOURCE[0]%/*}/jjsb_breviary.sh"
-
-# The dirname the estate keeps under the operator's home. Standing presumption,
-# not discovery: every repo and clone on this station lives beneath it, and the
-# abuttal text below asserts the same geography in prose.
-zjjsl_estate_dirname="projects"
+source "${BASH_SOURCE[0]%/*}/jjsb_breviary.sh" || buc_die_now "Failed to source jjsb_breviary.sh"
 
 # The studbook's fixed dirname within the infield peer ring. Bash face of the
 # equerry's JJDB_STUDBOOK_DIRNAME (vov_veiled/jjk/src/jjr0/jjrvb_blotter.rs).
@@ -79,21 +75,26 @@ zjjsl_studbook_remote="origin"
 # corpus landing consigns to the remote from a vulgate billet and never through
 # the clone, so a local line could stand only where something carried it forward
 # by hand, and a freshly cloned studbook carries the counterpart and no local line
-# at all — the station this read has to serve first. JJSVD-dispatch.adoc
-# jjdd_abuttal, "Canon is read at the corpus trunk's remote counterpart, which the
-# door gleans first".
+# at all — the station this read has to serve first.
 zjjsl_corpus_counterpart="refs/remotes/${zjjsl_studbook_remote}/${zjjsl_corpus_trunk}"
 
-# The abuttal's canon: the studbook subdirectory holding the estate's written
-# customs, and the two texts within it. Each text is emplaced as a CLAUDE.md at
-# the root it governs. These are REF-relative paths, never working-tree ones:
-# canon is read out of the corpus counterpart ref, so which branch the studbook clone
-# happens to have checked out is not a fact this door depends on — the same
-# checkout-agnosticism the equerry's own studbook reads have (jjdb_read_pinned,
-# and jjrsu_read over it for the salutations).
+# The infield text's canon: the studbook subdirectory holding the estate's
+# written customs, and the text within it, emplaced as the infield's CLAUDE.md.
+# These are REF-relative paths, never working-tree ones: canon is read out of the
+# corpus counterpart ref, so which branch the studbook clone happens to have
+# checked out is not a fact this door depends on — the same checkout-agnosticism
+# the equerry's own studbook reads have (jjdb_read_pinned, and jjrsu_read over it
+# for the salutations).
 zjjsl_abuttal_dirname="estate"
-zjjsl_abuttal_home_basename="abuttal-home.md"
-zjjsl_abuttal_projects_basename="abuttal-projects.md"
+zjjsl_abuttal_infield_basename="abuttal-infield.md"
+
+# The geography text emplaced above the infield: BUK's own standing context file,
+# no estate's canon, the same over every infield one directory holds. It is read
+# from the launch stand's own copy of BUK — which the seat carries whole, as every
+# parcel does — so two estates sharing one parent directory emplace one text.
+# Bash face of the equerry's JJRDA_GEOGRAPHY_RELPATH
+# (vov_veiled/jjk/src/jjr0/jjrda_abuttal.rs), which the lading read shares.
+zjjsl_abuttal_oikoumene_relpath="Tools/buk/buai0/buais_oikoumene.md"
 
 ######################################################################
 # Internal
@@ -103,17 +104,20 @@ zjjsl_kindle() {
   ZJJSL_VVX="${PWD}/Tools/vvk/bin/vvx"
 
   # The remedy names what stands where the reader stands, told apart without
-  # guessing: a brand file under .vvk/ at the repository root means the engine
+  # guessing: a record under .vvm/ at the repository root means the engine
   # arrived by parcel, whose root carries the install bootstrap that emplaces it;
   # a repository with none is a forge, which builds it. A forge that also carries
-  # a brand file is offered both, the build first.
+  # a record is offered both, the build first. A record in a tree that is
+  # no repository is the forge's seat, which the main checkout's build lays.
   if ! test -x "${ZJJSL_VVX}"; then
-    local -r z_build_remedy="build first (tt/vow-b.Build.sh)"
-    local -r z_emplace_remedy="re-emplace the engine from its parcel: run vvi_install.sh at the extracted parcel's root, naming this repository's burc.env"
+    local -r z_build_remedy="build first (tt/bkw-w.Whistle.sh, then tt/vow-b.Build.sh)"
+    local -r z_emplace_remedy="re-emplace the engine from its parcel: run bpi_install.sh at the extracted parcel's root, naming this repository's burc.env"
+    local -r z_lay_remedy="build at the forge's main checkout (its tt/bkw-w.Whistle.sh, then tt/vow-b.Build.sh), which lays this seat"
     local z_remedy="${z_build_remedy}"
-    if test -f "${PWD}/.vvk/vvbf_brand.json"; then
+    if test -f "${PWD}/.vvm/vvmt_tamga.json"; then
       z_remedy="${z_emplace_remedy}"
       test ! -f "${PWD}/tt/vow-b.Build.sh" || z_remedy="${z_build_remedy}, or ${z_emplace_remedy}"
+      test -e "${PWD}/.git" || z_remedy="${z_lay_remedy}"
     fi
     buc_die_now "${JJSB_DENEGATIO_BASE_VERSAL} — the equerry-binary gate: no built binary stands at ${ZJJSL_VVX} - ${z_remedy} (JJr_s5f)"
   fi
@@ -125,38 +129,36 @@ zjjsl_kindle() {
   ZJJSL_INFIELD="${PWD%/*}"
   readonly ZJJSL_INFIELD
 
-  ZJJSL_ESTATE_ROOT="${HOME}/${zjjsl_estate_dirname}"
-  readonly ZJJSL_ESTATE_ROOT
-
   ZJJSL_STUDBOOK_ROOT="${ZJJSL_INFIELD}/${zjjsl_studbook_dirname}"
   readonly ZJJSL_STUDBOOK_ROOT
 
-  # Corpus coordinates of the two texts — what is read; and the dispatch-temp
-  # directory they are rendered into — where the comparison and the operator's
-  # diff then see them. The rendered copies carry the canon dirname and
-  # basenames, so a path printed at the confirm gate still reads as canon.
-  ZJJSL_ABUTTAL_HOME_COORD="${zjjsl_corpus_counterpart}:${zjjsl_abuttal_dirname}/${zjjsl_abuttal_home_basename}"
-  readonly ZJJSL_ABUTTAL_HOME_COORD
-
-  ZJJSL_ABUTTAL_PROJECTS_COORD="${zjjsl_corpus_counterpart}:${zjjsl_abuttal_dirname}/${zjjsl_abuttal_projects_basename}"
-  readonly ZJJSL_ABUTTAL_PROJECTS_COORD
+  # The infield text's corpus coordinate — what is read; and the dispatch-temp
+  # directory it is rendered into — where the comparison and the operator's diff
+  # then see it. The rendered copy carries the canon dirname and basename, so a
+  # path printed at the confirm gate still reads as canon.
+  ZJJSL_ABUTTAL_INFIELD_COORD="${zjjsl_corpus_counterpart}:${zjjsl_abuttal_dirname}/${zjjsl_abuttal_infield_basename}"
+  readonly ZJJSL_ABUTTAL_INFIELD_COORD
 
   test -n "${BURD_TEMP_DIR:-}" || buc_die_now "jjsl abuttal: no BURD_TEMP_DIR - canon renders there, so this door must run under BUK dispatch"
 
   ZJJSL_ABUTTAL_CANON_DIR="${BURD_TEMP_DIR}/${zjjsl_abuttal_dirname}"
   readonly ZJJSL_ABUTTAL_CANON_DIR
 
-  ZJJSL_ABUTTAL_HOME_CANON="${ZJJSL_ABUTTAL_CANON_DIR}/${zjjsl_abuttal_home_basename}"
-  readonly ZJJSL_ABUTTAL_HOME_CANON
+  ZJJSL_ABUTTAL_INFIELD_CANON="${ZJJSL_ABUTTAL_CANON_DIR}/${zjjsl_abuttal_infield_basename}"
+  readonly ZJJSL_ABUTTAL_INFIELD_CANON
 
-  ZJJSL_ABUTTAL_HOME_ECHO="${HOME}/CLAUDE.md"
-  readonly ZJJSL_ABUTTAL_HOME_ECHO
+  ZJJSL_ABUTTAL_INFIELD_ECHO="${ZJJSL_INFIELD}/CLAUDE.md"
+  readonly ZJJSL_ABUTTAL_INFIELD_ECHO
 
-  ZJJSL_ABUTTAL_PROJECTS_CANON="${ZJJSL_ABUTTAL_CANON_DIR}/${zjjsl_abuttal_projects_basename}"
-  readonly ZJJSL_ABUTTAL_PROJECTS_CANON
+  # The geography text needs no render: it stands as a file in the stand's own
+  # BUK, and that file is what the comparison and the diff read. Its echo is the
+  # infield's parent, found from the stand like the infield itself and never from
+  # the operator's home, which the engine binds nowhere.
+  ZJJSL_ABUTTAL_OIKOUMENE_CANON="${PWD}/${zjjsl_abuttal_oikoumene_relpath}"
+  readonly ZJJSL_ABUTTAL_OIKOUMENE_CANON
 
-  ZJJSL_ABUTTAL_PROJECTS_ECHO="${ZJJSL_ESTATE_ROOT}/CLAUDE.md"
-  readonly ZJJSL_ABUTTAL_PROJECTS_ECHO
+  ZJJSL_ABUTTAL_OIKOUMENE_ECHO="${ZJJSL_INFIELD%/*}/CLAUDE.md"
+  readonly ZJJSL_ABUTTAL_OIKOUMENE_ECHO
 
   readonly ZJJSL_KINDLED=1
 }
@@ -172,13 +174,6 @@ zjjsl_sentinel() {
 zjjsl_door() {
   zjjsl_sentinel
   local -r z_door="${1}"
-  # The turn bound, when the CALLING DOOR is an unattended one. It is a
-  # parameter of this body and never an argument the operator types: each door
-  # is a whole posture, so the operator picks the posture by picking the door
-  # and types a target either way. Every rule ABOUT the bound is the equerry's —
-  # the sub-frontier gate above all — because the tier it gates on is not known
-  # until the plan resolves, and this shell reads no store.
-  local -r z_turns="${2:-}"
   local -r z_target="${BUZ_FOLIO:-}"
   if test -z "${z_target}"; then
     buc_tabtarget "${JJZ_DISPATCH_HELP}"
@@ -194,29 +189,28 @@ zjjsl_door() {
   # a station whose log.date carries no timezone would hand every billet a git
   # log its reader cannot place.
   jjsl_gnomon_gate "${ZJJSL_STUDBOOK_ROOT}"
-  if test -n "${z_turns}"; then
-    exec "${ZJJSL_VVX}" jjo_usher --door "${z_door}" --target "${z_target}" --kit-root "${PWD}" \
-      --headless "${z_turns}"
-  fi
-  exec "${ZJJSL_VVX}" jjo_usher --door "${z_door}" --target "${z_target}" --kit-root "${PWD}"
+  exec "${ZJJSL_VVX}" jjj_usher --door "${z_door}" --target "${z_target}" --kit-root "${PWD}" \
+    || buc_die_now "jjsl ${z_door}: cannot exec the ${JJSB_EQUERRY_BASE} at ${ZJJSL_VVX}"
 }
 
 ######################################################################
 # The estate abuttal
 #
 # The abuttal is the estate's written customs: two CLAUDE.md texts every
-# session on this station loads ahead of any project's own — estate geography
-# at the home root, estate rules at the projects root. Canon lives in the
-# studbook, on its corpus trunk — where the operator edits it through a vulgate
-# billet like any other corpus text — and is read at that trunk's remote
-# counterpart, never from the clone's working tree and never from a local line,
-# whichever branch the clone happens to stand on; the copies at the two roots are
-# echoes, and jjsl_abuttal is their only writer.
+# session on this station loads ahead of any project's own — the geography of
+# every estate in the directory holding the infield, and this estate's rules at
+# the infield root. The geography text is BUK's own, read from the launch stand's
+# copy of the kit. The infield text's canon lives in the studbook, on its corpus
+# trunk — where the operator edits it through a vulgate billet like any other
+# corpus text — and is read at that trunk's remote counterpart, never from the
+# clone's working tree and never from a local line, whichever branch the clone
+# happens to stand on. The copies at the two directories are echoes, and
+# jjsl_abuttal is their only writer.
 #
 # Both working doors refuse ahead of the approach when an echo is absent or has
 # drifted from canon. The check is content, never presence: the texts this
 # replaced were present and asserted, unconditionally, that the session reading
-# them had started at the projects root — false in every child session, so every
+# them had started at the infield root — false in every child session, so every
 # session that loaded them correctly judged them wrong and overrode the file.
 # A top-level instruction a session can see is false trains that session to
 # override the whole file, which is why a stale echo is a refusal and not a
@@ -242,17 +236,16 @@ zjjsl_abuttal_render() {
 
   local -r z_coord="${1}"
   local -r z_dest="${2}"
+  local -r z_probe_stderr="${ZJJSL_ABUTTAL_CANON_DIR}/canon_probe_stderr.txt"
 
-  git -C "${ZJJSL_STUDBOOK_ROOT}" cat-file -e "${z_coord}" 2>/dev/null \
-    || buc_die_now "${JJSB_DENEGATIO_BASE_VERSAL} — the canon-absent gate: no canon at ${z_coord} in ${ZJJSL_STUDBOOK_ROOT} - the counterpart is filled by gleaning, so either this clone has never reached the studbook remote, or that remote's corpus trunk does not carry the estate abuttal (JJr_s73)"
+  git -C "${ZJJSL_STUDBOOK_ROOT}" cat-file -e "${z_coord}" 2>"${z_probe_stderr}" \
+    || buc_die_now "${JJSB_DENEGATIO_BASE_VERSAL} — the canon-absent gate: no canon at ${z_coord} in ${ZJJSL_STUDBOOK_ROOT} - the counterpart is filled by gleaning, so either this clone has never reached the studbook remote, or that remote's corpus trunk does not carry the estate abuttal (JJr_s73) — see ${z_probe_stderr}"
 
   git -C "${ZJJSL_STUDBOOK_ROOT}" show "${z_coord}" > "${z_dest}" \
     || buc_die_now "jjsl abuttal: cannot render canon ${z_coord} from ${ZJJSL_STUDBOOK_ROOT} to ${z_dest}"
 }
 
-# Glean the studbook before canon is read out of it — JJSVD-dispatch.adoc
-# jjdd_abuttal, "Canon is read at the corpus trunk's remote counterpart, which the
-# door gleans first", which carries why the beat is owed.
+# Glean the studbook before canon is read out of it.
 #
 # THE EQUERRY PERFORMS IT, and that is why this is one line rather than a bash
 # fetch. The law is already written once and driven, so a second statement of it
@@ -271,33 +264,53 @@ zjjsl_abuttal_render() {
 zjjsl_corpus_freshen() {
   zjjsl_sentinel
 
-  "${ZJJSL_VVX}" jjo_freshen --kit-root "${PWD}" \
-    || buc_die_now "jjsl abuttal: the studbook could not be gleaned - see the refusal above"
+  local z_engine_status=0
+  "${ZJJSL_VVX}" jjj_freshen --kit-root "${PWD}" \
+    || z_engine_status=$?
+  test "${z_engine_status}" -eq 0 \
+    || buc_die_now "jjsl abuttal: the studbook could not be gleaned from this stand (exit ${z_engine_status}) - see the refusal above"
 }
 
-# Prove the station can carry canon at all: the estate the abuttal's prose
-# asserts is the ring the launch stand actually stands in, and both texts stand
-# at the studbook's corpus counterpart. Emplacing a rule that says the estate is one
-# place onto a station where it is another would install the very falsehood the
-# abuttal retires.
+# Prove the station can carry canon at all — the infield text stands at the
+# studbook's corpus counterpart and the geography text stands in the stand's own
+# BUK — and that neither binds itself to a home. The estate is the launch stand's
+# peer ring, found as the stand's parent, never as a fixed dirname under the
+# operator's home.
 zjjsl_abuttal_verify() {
   zjjsl_sentinel
-
-  test "${ZJJSL_INFIELD}" = "${ZJJSL_ESTATE_ROOT}" \
-    || buc_die_now "${JJSB_DENEGATIO_BASE_VERSAL} — the estate-ring gate: the launch stand's peer ring is ${ZJJSL_INFIELD}, but the abuttal's text asserts the estate is ${ZJJSL_ESTATE_ROOT} - reconcile the two before emplacing (JJr_s8y)"
 
   mkdir -p "${ZJJSL_ABUTTAL_CANON_DIR}" \
     || buc_die_now "jjsl abuttal: cannot create canon render directory ${ZJJSL_ABUTTAL_CANON_DIR}"
 
   zjjsl_corpus_freshen
 
-  zjjsl_abuttal_render "${ZJJSL_ABUTTAL_HOME_COORD}"     "${ZJJSL_ABUTTAL_HOME_CANON}"
-  zjjsl_abuttal_render "${ZJJSL_ABUTTAL_PROJECTS_COORD}" "${ZJJSL_ABUTTAL_PROJECTS_CANON}"
+  zjjsl_abuttal_render "${ZJJSL_ABUTTAL_INFIELD_COORD}" "${ZJJSL_ABUTTAL_INFIELD_CANON}"
+
+  test -f "${ZJJSL_ABUTTAL_OIKOUMENE_CANON}" \
+    || buc_die_now "jjsl abuttal: no geography text stands at ${ZJJSL_ABUTTAL_OIKOUMENE_CANON} - this launch stand carries BUK without it, so lay or install the stand again from the build that delivered this door"
+
+  zjjsl_abuttal_position_gate
+}
+
+# Refuse a text that binds itself to an absolute home path, before it is compared
+# or emplaced. The judgment is the engine's — jjj_abuttal names each binding's
+# text, line and form (JJr_s8y) — because a rust interior can own it, and this
+# seam only hands over the two texts the door is about to stand behind. A station
+# whose infield moves therefore meets one named refusal instead of emplacing
+# geography false for wherever the infield used to be.
+zjjsl_abuttal_position_gate() {
+  zjjsl_sentinel
+
+  local z_engine_status=0
+  "${ZJJSL_VVX}" jjj_abuttal --text "${ZJJSL_ABUTTAL_OIKOUMENE_CANON}" --text "${ZJJSL_ABUTTAL_INFIELD_CANON}" \
+    || z_engine_status=$?
+  test "${z_engine_status}" -eq 0 \
+    || buc_die_now "jjsl abuttal: a text this door emplaces binds itself to a home (exit ${z_engine_status}) - see the refusal above"
 }
 
 # True when the echo is byte-identical to its canon. The comparison is git's,
 # not a builtin's: git is already the floor this whole system stands on, while
-# `cmp` and `diff` are neither BUK-allowlisted nor worth declaring, and the same
+# `cmp` and `diff` are neither on BUK's allowlist nor worth declaring, and the same
 # invocation that answers the question here renders the answer for the operator
 # at the confirm gate below — one mechanism, so display and verdict cannot
 # disagree. Fail-closed by construction: git reports an unreadable path as a
@@ -323,11 +336,11 @@ zjjsl_abuttal_gate() {
 
   buym_tt_yawp "${JJZ_DISPATCH_ABUTTAL}"; local -r z_tt="${z_buym_yelp}"
 
-  zjjsl_abuttal_current_predicate "${ZJJSL_ABUTTAL_HOME_CANON}" "${ZJJSL_ABUTTAL_HOME_ECHO}" \
-    || buc_die_now "${JJSB_DENEGATIO_BASE_VERSAL} — the abuttal drift gate: the estate abuttal is absent or drifted at ${ZJJSL_ABUTTAL_HOME_ECHO} (canon ${ZJJSL_ABUTTAL_HOME_CANON}) - emplace it with ${z_tt} (JJr_ssp)"
+  zjjsl_abuttal_current_predicate "${ZJJSL_ABUTTAL_OIKOUMENE_CANON}" "${ZJJSL_ABUTTAL_OIKOUMENE_ECHO}" \
+    || buc_die_now "${JJSB_DENEGATIO_BASE_VERSAL} — the abuttal drift gate: the estate abuttal is absent or drifted at ${ZJJSL_ABUTTAL_OIKOUMENE_ECHO} (canon ${ZJJSL_ABUTTAL_OIKOUMENE_CANON}) - emplace it with ${z_tt} (JJr_ssp)"
 
-  zjjsl_abuttal_current_predicate "${ZJJSL_ABUTTAL_PROJECTS_CANON}" "${ZJJSL_ABUTTAL_PROJECTS_ECHO}" \
-    || buc_die_now "${JJSB_DENEGATIO_BASE_VERSAL} — the abuttal drift gate: the estate abuttal is absent or drifted at ${ZJJSL_ABUTTAL_PROJECTS_ECHO} (canon ${ZJJSL_ABUTTAL_PROJECTS_CANON}) - emplace it with ${z_tt} (JJr_ssp)"
+  zjjsl_abuttal_current_predicate "${ZJJSL_ABUTTAL_INFIELD_CANON}" "${ZJJSL_ABUTTAL_INFIELD_ECHO}" \
+    || buc_die_now "${JJSB_DENEGATIO_BASE_VERSAL} — the abuttal drift gate: the estate abuttal is absent or drifted at ${ZJJSL_ABUTTAL_INFIELD_ECHO} (canon ${ZJJSL_ABUTTAL_INFIELD_CANON}) - emplace it with ${z_tt} (JJr_ssp)"
 }
 
 # Emplace one echo. Absent, it is written outright; divergent, the change the
@@ -388,87 +401,80 @@ jjsl_help() {
 
 jjsl_saddle() {
   zjjsl_sentinel
-  zjjsl_door "saddle"
-}
-
-jjsl_lunge() {
-  zjjsl_sentinel
-  zjjsl_door "lunge"
-}
-
-# The unattended door: the SADDLE's own approach, launched with nobody at the
-# keyboard and bounded.
-#
-# A SECOND DOOR OVER ONE MECHANISM, on this heat's own precedent — the ostler and
-# the drover part at their charge and share everything else, and these two part
-# at one posture. What the equerry holds is a flag, so nothing here forks the
-# approach: the whole difference reaching the stile is a number.
-#
-# It is a second DOOR rather than a flag on the saddle because the two are
-# different acts to the operator, not one act with a knob. A door is what the
-# operator chooses; an unattended run is a thing they decide to do, and it earns
-# its own name in the family listing.
-jjsl_unattended() {
-  zjjsl_sentinel
-  zjjsl_door "saddle" "${JJZ_UNATTENDED_TURNS}"
+  zjjsl_door "${JJSB_SADDLE_BASE}"
 }
 
 # The two groom doors, and everything they share.
 #
-# Both stand a groom kraal over ZERO OR MORE heats — no billet of any kind, a
-# store this session can work in nowhere else — and they part only in the charge
-# the equerry composes: the OSTLER tends, the DROVER drives. One mechanism, two
-# fronts, so the shell half is one body called twice rather than two bodies to
-# drift apart.
+# Both stand a groom kraal over the whole estate — no billet of any kind, a store
+# this session can work in nowhere else — and they part at the mandamus the
+# equerry composes, sharing the mechanism between: the OSTLER tends, alone or on
+# one tropa; the DROVER drives, on the one tropa it is handed. One mechanism, two
+# fronts, so the gates and the exec are one body called twice, and each door
+# assembles only its own arguments.
 #
-# The heats arrive by two roads because the folio channel carries exactly one:
-# BUZ_FOLIO holds the first, the shell holds the rest, and the two are joined
-# here into repeated --heat options. NAMING NONE IS NOT A MISUSE TO GUARD
-# AGAINST — it is the estate console, which provisions every registered sire —
-# so unlike the stiles above these doors assert no target and die on nothing.
-#
-# The heat tokens pass through unchecked. Typing them has ONE home, the equerry,
-# which strips the ₣ glyph an operator reads off a report and names a coronet
-# back to them as a pace where a heat was wanted; a second check here would be a
-# second wording to drift.
+# The folio channel carries exactly one value: BUZ_FOLIO holds the first, the
+# shell holds the rest, and each door joins the two into the one option its verb
+# takes. Every value passes through unchecked. Judging a key against the roster
+# and refusing a wrong count each have ONE home, the equerry verb, and a second
+# check here would be a second wording to drift.
 zjjsl_groom_door() {
   zjjsl_sentinel
   local -r z_verb="${1}"
-  shift
 
   zjjsl_abuttal_gate
   jjsl_perch_gate "${ZJJSL_STUDBOOK_ROOT}"
   jjsl_gnomon_gate "${ZJJSL_STUDBOOK_ROOT}"
 
-  local -a z_heats=()
-  test -z "${BUZ_FOLIO:-}" || z_heats+=(--heat "${BUZ_FOLIO}")
-  local z_heat=""
-  for z_heat in "$@"; do
-    z_heats+=(--heat "${z_heat}")
-  done
-
-  exec "${ZJJSL_VVX}" "${z_verb}" ${z_heats[@]+"${z_heats[@]}"} --kit-root "${PWD}"
+  exec "${ZJJSL_VVX}" "$@" --kit-root "${PWD}" \
+    || buc_die_now "jjsl ${z_verb}: cannot exec the ${JJSB_EQUERRY_BASE} at ${ZJJSL_VVX}"
 }
 
 # Ostler: the operator's planning seat, where dockets are cut, curried, reslated
 # and indult. Named for the inn's horse-groom, who tends every horse and rides
 # none.
+#
+# It takes no argument or one tropa key, joined here into the repeated option the
+# verb takes. NAMING NONE IS NOT A MISUSE TO GUARD AGAINST — it is the estate
+# console, which provisions every registered sire — so unlike the stiles above
+# this door asserts no target and dies on nothing. One key makes the heats that
+# tropa's record names the session's subject; a second key or a heat is the
+# verb's to refuse.
 jjsl_ostler() {
   zjjsl_sentinel
-  zjjsl_groom_door jjo_ostler "$@"
+  local -a z_args=(jjj_ostler)
+  test -z "${BUZ_FOLIO:-}" || z_args+=("--${JJSB_TROPA_BASE}" "${BUZ_FOLIO}")
+  local z_key=""
+  for z_key in "$@"; do
+    z_args+=("--${JJSB_TROPA_BASE}" "${z_key}")
+  done
+  zjjsl_groom_door "${z_args[@]}"
 }
 
-# Drover: the ruling layer over a wave of heats — the overseer role, which reads
-# each session's report and rules at a deliberately high bar on whether any
+# Drover: the ruling layer over the strappers — the overseer role, which
+# reads each strapper's report and rules at a deliberately high bar on whether any
 # further action is warranted. Named for the drover who drives a herd where the
 # ostler tends one horse.
+#
+# It takes ONE tropa key, the tropa this drover rules, or none — and none lists
+# the roster and stands nothing. Several drovers can stand at once, each on a
+# tropa of its own, and the tropa's record is composed into its orders out of the
+# studbook. Whatever arrives is joined here into the repeated option, and the
+# count and the roster are the verb's to judge, so naming two or naming a key off
+# the roster reaches the one wording that says what this door takes.
 #
 # IT HOLDS NO LAUNCH POWER, and that is the door's contract rather than an
 # omission: the operator remains the sole dispatcher, so this door stands the
 # ruling seat up and dispatches nothing from it.
 jjsl_drover() {
   zjjsl_sentinel
-  zjjsl_groom_door jjo_drover "$@"
+  local -a z_args=(jjj_drover)
+  test -z "${BUZ_FOLIO:-}" || z_args+=("--${JJSB_TROPA_BASE}" "${BUZ_FOLIO}")
+  local z_key=""
+  for z_key in "$@"; do
+    z_args+=("--${JJSB_TROPA_BASE}" "${z_key}")
+  done
+  zjjsl_groom_door "${z_args[@]}"
 }
 
 # The VAQUERO door: the immediate-work crossing.
@@ -495,54 +501,59 @@ jjsl_vaquero() {
 
   if test -z "${BUZ_FOLIO:-}"; then
     buc_tabtarget "${JJZ_DISPATCH_HELP}"
-    buc_die_now "jjsl vaquero: no heat supplied - this door opens a crossing over one heat on one sire, and takes both; the door above lists every door and what each takes"
+    buc_die_now "jjsl ${JJSB_VAQUERO_BASE}: no heat supplied - this door opens a crossing over one heat on one sire, and takes both; the door above lists every door and what each takes"
   fi
   local -r z_sire="${1:-}"
   if test -z "${z_sire}"; then
     buc_tabtarget "${JJZ_DISPATCH_HELP}"
-    buc_die_now "jjsl vaquero: no sire supplied - this crossing provisions a work billet at dispatch, so the tree it is cut from must be named, and it must already stand in the heat"
+    buc_die_now "jjsl ${JJSB_VAQUERO_BASE}: no sire supplied - this crossing provisions a work billet at dispatch, so the tree it is cut from must be named, and it must already stand in the heat"
   fi
 
   zjjsl_abuttal_gate
   jjsl_perch_gate "${ZJJSL_STUDBOOK_ROOT}"
   jjsl_gnomon_gate "${ZJJSL_STUDBOOK_ROOT}"
 
-  exec "${ZJJSL_VVX}" jjo_vaquero --heat "${BUZ_FOLIO}" --sire "${z_sire}" --kit-root "${PWD}"
+  exec "${ZJJSL_VVX}" jjj_vaquero --heat "${BUZ_FOLIO}" --sire "${z_sire}" --kit-root "${PWD}" \
+    || buc_die_now "jjsl ${JJSB_VAQUERO_BASE}: cannot exec the ${JJSB_EQUERRY_BASE} at ${ZJJSL_VVX}"
 }
 
-# Sight every JJ blotter lock and report — read-only, always safe MECHANICALLY
-# (JJSVD jjdd_cashier, sight-and-report mode). Breaks nothing; a script or the
-# operator may run it freely. An AGENT may not run it in service of lock
-# recovery — sight is the cashier's on-ramp, and cashiering is a human-only
-# ceremony: the agent's whole move on lock-held is stop and surface.
+# Sight every JJ blotter lock and report — read-only, always safe MECHANICALLY.
+# Breaks nothing; a script or the operator may run it freely. An AGENT may not
+# run it in service of lock recovery — sight is the cashier's on-ramp, and
+# cashiering is a human-only ceremony: the agent's whole move on lock-held is
+# stop and surface.
 jjsl_sight() {
   zjjsl_sentinel
   buc_step "Lock recovery is a human-only ceremony: an agent stops at lock-held and surfaces it - never cashiers (operator doors: tt/jjw-c.CheckLock.sh, tt/jjw-C.ClearLock.sh)"
-  "${ZJJSL_VVX}" jjo_probate --cwd "${PWD}"
+  local z_engine_status=0
+  "${ZJJSL_VVX}" jjj_probate --cwd "${PWD}" \
+    || z_engine_status=$?
+  test "${z_engine_status}" -eq 0 \
+    || buc_die_now "jjsl sight: the lock report failed (exit ${z_engine_status}) - see the refusal above"
 }
 
-# Cashier a derelict lock-holder (JJSVD jjdd_cashier, break mode). A HUMAN-ONLY
-# ceremony: the confirm gate is THIS door's contract, not the break sequence's —
-# the sequence is mechanism, the deliberateness is the door's — and the gate is
+# Cashier a derelict lock-holder. A HUMAN-ONLY ceremony, run whole in one
+# process: the Rust verb shows the report, offers each held lock on its own, and
+# breaks one only on the operator's typed word at the controlling terminal -
+# leased on the value the report showed, so a lock that moved since refuses. One
+# process is what carries that value from report to break. The gate is
 # deliberately unskippable (no BURE_CONFIRM route, in either value): the
 # operator's typed word at their own terminal is the only key. An agent never
 # runs this door; it stops and surfaces the lock-held refusal instead.
 jjsl_cashier() {
   zjjsl_sentinel
   test -z "${BURE_CONFIRM:-}" || buc_die_now "jjsl cashier: this gate cannot be skipped or preset - cashiering is a human-only ceremony, typed by the operator at this terminal"
-  local -r z_cwd="${PWD}"
 
-  # The report the operator judges from - the Rust verb owns its format.
-  "${ZJJSL_VVX}" jjo_probate --cwd "${z_cwd}"
-
-  buc_require "About to CASHIER the locks reported above - dismissing whoever holds them." "cashier"
-
-  "${ZJJSL_VVX}" jjo_probate --cwd "${z_cwd}" --break
+  local z_engine_status=0
+  "${ZJJSL_VVX}" jjj_probate --cwd "${PWD}" --break \
+    || z_engine_status=$?
+  test "${z_engine_status}" -eq 0 \
+    || buc_die_now "jjsl cashier: the cashier failed (exit ${z_engine_status}) - see the refusal above"
 }
 
-# Muck: destroy a named billet (JJSVD jjdd_muck). Plan-then-confirm:
-# the report is shown first, the operator answers, then the destroy runs — the
-# constellation's one deliberate data-loss surface.
+# Muck: destroy a named billet. Plan-then-confirm: the report is shown first,
+# the operator answers, then the destroy runs — the constellation's one
+# deliberate data-loss surface.
 jjsl_muck() {
   zjjsl_sentinel
   zjjsl_muck_confirmed
@@ -561,50 +572,136 @@ zjjsl_muck_confirmed() {
   fi
 
   # The report the operator judges from - the Rust door owns its format.
-  "${ZJJSL_VVX}" jjo_condemn --cwd "${z_cwd}" --target "${z_target}"
+  local z_plan_status=0
+  "${ZJJSL_VVX}" jjj_condemn --cwd "${z_cwd}" --target "${z_target}" \
+    || z_plan_status=$?
+  test "${z_plan_status}" -eq 0 \
+    || buc_die_now "jjsl muck: the report for ${z_target} failed (exit ${z_plan_status}) - see the refusal above"
 
   buc_require "About to MUCK the billet reported above - deliberate data loss, dismissing whatever it carries." "muck"
 
-  "${ZJJSL_VVX}" jjo_condemn --cwd "${z_cwd}" --target "${z_target}" --execute
+  local z_engine_status=0
+  "${ZJJSL_VVX}" jjj_condemn --cwd "${z_cwd}" --target "${z_target}" --execute \
+    || z_engine_status=$?
+  test "${z_engine_status}" -eq 0 \
+    || buc_die_now "jjsl muck: the destroy of ${z_target} failed (exit ${z_engine_status}) - see the refusal above"
 }
 
-# Found the studbook from nothing (JJSAS Founding-and-cutover, jjdb_found_studbook).
-# An irreversible ceremony — a genesis commit pushed to the studbook remote — so
+# Found the studbook: write the empty store - or a gallops handed in - as a
+# revision pushed to the studbook remote, the genesis where the remote carries no
+# record line and the next revision over the store where one stands. Burying a
+# standing store is recoverable from its history and still a deliberate act, so
 # the confirm gate is THIS door's contract, mirroring cashier: the resolved plan
-# is shown first (the door's own dry run), the operator answers, then the real
-# found runs. The invocation cwd elects the hippodrome (a bare tabtarget run
-# self-anchors to the kit repo, itself a legitimate hippodrome).
+# is shown first (the door's own dry run), naming what stands and what will be
+# written, the operator answers, then the real found runs. The founding is no
+# repository's act: the stand this trampoline anchors to is read only for its
+# parent, the infield.
 #
-# Takes the studbook REMOTE as its folio and the salutation directory as the
-# second argument. The remote has no default: no estate's address is compiled
-# into the equerry, and the plan the operator confirms prints the remote named
-# here. A relative salutation directory resolves against the launch stand's
-# root, where this trampoline anchors.
+# Takes the studbook REMOTE as its folio, the salutation directory as the second
+# argument, and optionally a gallops file to import as the third. The remote has
+# no default: no estate's address is compiled into the equerry, and the plan the
+# operator confirms prints the remote named here. A relative path resolves
+# against the launch stand's root, where this trampoline anchors.
 jjsl_found() {
   zjjsl_sentinel
   local -r z_cwd="${PWD}"
   local -r z_remote="${BUZ_FOLIO:-}"
   if test -z "${z_remote}"; then
     buc_tabtarget "${JJZ_DISPATCH_HELP}"
-    buc_die_now "jjsl found: no studbook remote supplied - the founding publishes its genesis to the remote you name, and no estate's remote is compiled in; name it, then the salutation directory"
+    buc_die_now "jjsl found: no studbook remote supplied - the founding publishes to the remote you name, and no estate's remote is compiled in; name it, then the salutation directory"
   fi
   local -r z_salutations="${1:-}"
   if test -z "${z_salutations}"; then
     buc_tabtarget "${JJZ_DISPATCH_HELP}"
-    buc_die_now "jjsl found: no salutation directory supplied - the founding seeds the estate's salutation texts, one per roster entry, from the directory you name"
+    buc_die_now "jjsl found: no salutation directory supplied - the founding lays the estate's salutation texts, one per roster entry, from the directory you name"
+  fi
+  local -r z_import="${2:-}"
+  local -a z_import_args=()
+  if test -n "${z_import}"; then
+    z_import_args=(--import "${z_import}")
   fi
 
   # The plan the operator judges from - the Rust door owns its format.
-  "${ZJJSL_VVX}" jjo_found --cwd "${z_cwd}" --remote "${z_remote}" --salutations "${z_salutations}" --dry-run
+  local z_plan_status=0
+  "${ZJJSL_VVX}" jjj_found --cwd "${z_cwd}" --remote "${z_remote}" --salutations "${z_salutations}" "${z_import_args[@]+"${z_import_args[@]}"}" --dry-run \
+    || z_plan_status=$?
+  test "${z_plan_status}" -eq 0 \
+    || buc_die_now "jjsl found: the founding plan failed (exit ${z_plan_status}) - see the refusal above"
 
-  buc_require "About to FOUND the studbook shown above - a genesis commit pushed to its remote, irreversible." "found"
+  buc_require "About to FOUND the studbook shown above - a revision pushed to its remote, writing the empty store over whatever stands there." "found"
 
-  "${ZJJSL_VVX}" jjo_found --cwd "${z_cwd}" --remote "${z_remote}" --salutations "${z_salutations}"
+  local z_engine_status=0
+  "${ZJJSL_VVX}" jjj_found --cwd "${z_cwd}" --remote "${z_remote}" --salutations "${z_salutations}" "${z_import_args[@]+"${z_import_args[@]}"}" \
+    || z_engine_status=$?
+  test "${z_engine_status}" -eq 0 \
+    || buc_die_now "jjsl found: the founding failed (exit ${z_engine_status}) - see the refusal above"
 }
 
-# Admit a sire to the register (JJS0 jjsuv_keuring). Takes BOTH the clone and
-# the handle, on the crossing door's precedent: the clone is the folio and the
-# handle the second argument.
+# Lay the salutations the founding is then handed: one text per roster stem,
+# each the starter kit's letter from this launch stand with the portrait filled
+# into its one substitution. Writes nothing but the directory named, so it takes
+# no confirm gate; the Rust door refuses an empty portrait and any template
+# carrying a substitution it was not handed, laying nothing on either.
+#
+# Takes the PORTRAIT file as its folio and the directory to lay into as the
+# second argument. A relative path resolves against the launch stand's root,
+# where this trampoline anchors.
+jjsl_salute() {
+  buc_doc_brief "Lay the salutations a founding is handed, one per roster stem, the portrait filled into each"
+  buc_doc_param "portrait" "the file holding the estate's portrait of how it works"
+  buc_doc_param "directory" "where to lay the salutations - the directory the founding is then handed"
+  buc_doc_shown || return 0
+
+  zjjsl_sentinel
+  local -r z_portrait="${BUZ_FOLIO:-}"
+  if test -z "${z_portrait}"; then
+    buc_tabtarget "${JJZ_DISPATCH_HELP}"
+    buc_die_now "jjsl salute: no portrait supplied - every letter carries the estate's portrait of how it works, written once in a file you name; name it, then the directory to lay the salutations in"
+  fi
+  local -r z_out="${1:-}"
+  if test -z "${z_out}"; then
+    buc_tabtarget "${JJZ_DISPATCH_HELP}"
+    buc_die_now "jjsl salute: no salutation directory supplied - name the directory to lay them in, the one the founding is then handed"
+  fi
+
+  local z_engine_status=0
+  "${ZJJSL_VVX}" jjj_salute --cwd "${PWD}" --portrait "${z_portrait}" --out "${z_out}" \
+    || z_engine_status=$?
+  test "${z_engine_status}" -eq 0 \
+    || buc_die_now "jjsl salute: the salutations were not laid (exit ${z_engine_status}) - see the refusal above"
+}
+
+# Cut the corpus trunk once the studbook is founded: the estate's infield text,
+# rendered from this launch stand's starter-kit template, as a parentless root
+# on the corpus line, pushed to the studbook's origin. The founding leaves that
+# line untouched, and this door refuses where it already stands, so it is cut
+# once and edited through a vulgate billet from then on.
+#
+# Takes an OPTIONAL folio: a file holding the further trees this estate bars or
+# opens, filled into the template's one substitution. Naming none drops that
+# paragraph, as the template instructs where there are none.
+jjsl_germinate() {
+  buc_doc_brief "Cut the corpus trunk: the estate's infield text as the corpus line's root, pushed to the studbook's origin"
+  buc_doc_oparm "further" "a file of further trees this estate bars or opens - naming none drops that paragraph"
+  buc_doc_shown || return 0
+
+  zjjsl_sentinel
+  local -r z_further="${BUZ_FOLIO:-}"
+  local -a z_further_args=()
+  if test -n "${z_further}"; then
+    z_further_args=(--further "${z_further}")
+  fi
+
+  local z_engine_status=0
+  "${ZJJSL_VVX}" jjj_germinate --cwd "${PWD}" "${z_further_args[@]+"${z_further_args[@]}"}" \
+    || z_engine_status=$?
+  test "${z_engine_status}" -eq 0 \
+    || buc_die_now "jjsl germinate: the corpus trunk was not cut (exit ${z_engine_status}) - see the refusal above"
+}
+
+# Admit a sire to the register. Takes BOTH the clone and the handle, on the
+# crossing door's precedent: the clone is the folio and the handle the second
+# argument.
 #
 # The clone is NAMED rather than stood in, and that is forced rather than
 # chosen. This trampoline normalizes cwd to the tabtarget's own repo root
@@ -635,19 +732,27 @@ jjsl_keuring() {
   fi
 
   # The plan the operator judges from - the Rust door owns its format.
-  "${ZJJSL_VVX}" jjo_keuring --cwd "${z_cwd}" --clone "${z_clone}" --handle "${z_handle}" --dry-run
+  local z_plan_status=0
+  "${ZJJSL_VVX}" jjj_keuring --cwd "${z_cwd}" --clone "${z_clone}" --handle "${z_handle}" --dry-run \
+    || z_plan_status=$?
+  test "${z_plan_status}" -eq 0 \
+    || buc_die_now "jjsl ${JJSB_KEURING_BASE}: the admission plan failed (exit ${z_plan_status}) - see the refusal above"
 
   buc_require "About to ADMIT the sire shown above to the register - every dispatch on this station resolves against it." "${JJSB_KEURING_BASE}"
 
-  "${ZJJSL_VVX}" jjo_keuring --cwd "${z_cwd}" --clone "${z_clone}" --handle "${z_handle}"
+  local z_engine_status=0
+  "${ZJJSL_VVX}" jjj_keuring --cwd "${z_cwd}" --clone "${z_clone}" --handle "${z_handle}" \
+    || z_engine_status=$?
+  test "${z_engine_status}" -eq 0 \
+    || buc_die_now "jjsl ${JJSB_KEURING_BASE}: the admission failed (exit ${z_engine_status}) - see the refusal above"
 }
 
-# Remove a sire from the register (JJS0 jjsuv_turnout). Takes the HANDLE alone,
-# as its folio, and that single value is the whole parting from the admission
-# beside it: an admission records a tree and so must be told which one, while a
-# removal names a row the register already holds every fact about. The clone may
-# not even stand on this station any more, and a door that asked for it would
-# refuse for a reason that has nothing to do with whether the sire may leave.
+# Remove a sire from the register. Takes the HANDLE alone, as its folio, and
+# that single value is the whole parting from the admission beside it: an
+# admission records a tree and so must be told which one, while a removal names
+# a row the register already holds every fact about. The clone may not even
+# stand on this station any more, and a door that asked for it would refuse for
+# a reason that has nothing to do with whether the sire may leave.
 #
 # PWD still travels, for the one job it does at either door: it gives the infield
 # the studbook is derived from.
@@ -666,25 +771,34 @@ jjsl_turnout() {
   fi
 
   # The plan the operator judges from - the Rust door owns its format.
-  "${ZJJSL_VVX}" jjo_turnout --cwd "${z_cwd}" --handle "${z_handle}" --dry-run
+  local z_plan_status=0
+  "${ZJJSL_VVX}" jjj_turnout --cwd "${z_cwd}" --handle "${z_handle}" --dry-run \
+    || z_plan_status=$?
+  test "${z_plan_status}" -eq 0 \
+    || buc_die_now "jjsl ${JJSB_TURNOUT_BASE}: the strike plan failed (exit ${z_plan_status}) - see the refusal above"
 
   buc_require "About to STRIKE the sire shown above from the register - every dispatch on this station resolves against it." "${JJSB_TURNOUT_BASE}"
 
-  "${ZJJSL_VVX}" jjo_turnout --cwd "${z_cwd}" --handle "${z_handle}"
+  local z_engine_status=0
+  "${ZJJSL_VVX}" jjj_turnout --cwd "${z_cwd}" --handle "${z_handle}" \
+    || z_engine_status=$?
+  test "${z_engine_status}" -eq 0 \
+    || buc_die_now "jjsl ${JJSB_TURNOUT_BASE}: the strike failed (exit ${z_engine_status}) - see the refusal above"
 }
 
 # Emplace the estate abuttal on this station: canon over both echoes. The one
 # writer of those copies, so an operator who wants the estate's rules changed
-# edits canon in the studbook and runs this door — never the copies, which the
+# edits canon in the studbook and runs this door — and one who wants the
+# geography changed edits BUK's text at the forge — never the copies, which the
 # working doors would then refuse as drift.
 jjsl_abuttal() {
   zjjsl_sentinel
   zjjsl_abuttal_verify
 
-  zjjsl_abuttal_emplace "${ZJJSL_ABUTTAL_HOME_CANON}"     "${ZJJSL_ABUTTAL_HOME_ECHO}"
-  zjjsl_abuttal_emplace "${ZJJSL_ABUTTAL_PROJECTS_CANON}" "${ZJJSL_ABUTTAL_PROJECTS_ECHO}"
+  zjjsl_abuttal_emplace "${ZJJSL_ABUTTAL_OIKOUMENE_CANON}" "${ZJJSL_ABUTTAL_OIKOUMENE_ECHO}"
+  zjjsl_abuttal_emplace "${ZJJSL_ABUTTAL_INFIELD_CANON}"   "${ZJJSL_ABUTTAL_INFIELD_ECHO}"
 
-  buc_success "Estate abuttal stands at ${ZJJSL_ABUTTAL_HOME_ECHO} and ${ZJJSL_ABUTTAL_PROJECTS_ECHO}"
+  buc_success "Estate abuttal stands at ${ZJJSL_ABUTTAL_OIKOUMENE_ECHO} and ${ZJJSL_ABUTTAL_INFIELD_ECHO}"
 }
 
 # eof
