@@ -25,7 +25,7 @@
 #
 # There are two doors onto that one procedure, and they are not
 # alternatives. A DARK station cannot run a tabtarget at all, so the
-# parcel's own vvi_install.sh stays the rescue door and is reached from
+# parcel's own bpi_install.sh stays the rescue door and is reached from
 # outside the target tree. A LIT station has dispatch, logging and its
 # own regime already standing, and deserves the procedure in its own
 # idiom: that is this door. The target is therefore never an argument —
@@ -60,28 +60,29 @@
 
 set -euo pipefail
 
-source "${BURD_BUK_DIR}/buc_command.sh"
-source "${BURD_BUK_DIR}/buym_yelp.sh"
+source "${BURD_BUK_DIR}/buc_command.sh" || exit 1
+source "${BURD_BUK_DIR}/buym_yelp.sh" || buc_die_now "Failed to source buym_yelp.sh"
 
 ######################################################################
 # Tinder constants
 
-# Where a parcel keeps its brand file and its bundled engine, relative
-# to the parcel root. Both are the parcel's own layout, minted by the
-# release procedure and read by the parcel's bash bootstrap.
-readonly BUPE_brand_relpath="vvbf_brand.json"
-readonly BUPE_engine_dir_relpath="kits/vvk/bin"
-readonly BUPE_engine_stem="vvx-"
+# Where a parcel keeps its record and its bundled engine, relative
+# to the parcel root. Both are the parcel's own layout, laid by the
+# release procedure and read by the parcel's bash bootstrap: the engine
+# is the parcel kit's install binary, standing at the root under its
+# platform suffix.
+readonly BUPE_tamga_relpath="vvmt_tamga.json"
+readonly BUPE_engine_stem="bpx-"
 
-# The engine subcommand that performs the install procedure.
-readonly BUPE_emplace_verb="vvx_emplace"
+# The engine verb that performs the install procedure.
+readonly BUPE_emplace_verb="emplace"
 
 ######################################################################
 # Command Functions
 
 bupe_emplace() {
   buc_doc_brief "Emplace an extracted parcel into this station (the lit-station maintenance door)"
-  buc_doc_param "parcel-dir" "Extracted parcel directory, carrying ${BUPE_brand_relpath} and kits/"
+  buc_doc_param "parcel-dir" "Extracted parcel directory, carrying ${BUPE_tamga_relpath} and kits/"
   buc_doc_shown || return 0
 
   # The folio arrives on the param1 channel: the parcel directory, named
@@ -91,8 +92,8 @@ bupe_emplace() {
   test -n "${z_parcel}" || buc_die_now "Emplacement needs the extracted parcel directory as its argument"
   test -d "${z_parcel}" || buc_die_now "Parcel directory not found: ${z_parcel}"
 
-  local -r z_brand="${z_parcel}/${BUPE_brand_relpath}"
-  test -f "${z_brand}" || buc_die_now "Not an extracted parcel (no ${BUPE_brand_relpath}): ${z_parcel}"
+  local -r z_record="${z_parcel}/${BUPE_tamga_relpath}"
+  test -f "${z_record}" || buc_die_now "Not an extracted parcel (no ${BUPE_tamga_relpath}): ${z_parcel}"
 
   # Platform from bash's own knowledge rather than a spawned uname: the
   # dispatch regime carries the OS it saw, and bash carries the machine
@@ -109,7 +110,7 @@ bupe_emplace() {
     *) buc_die_now "Unsupported platform: ${BURD_OSTYPE}-${HOSTTYPE}" ;;
   esac
 
-  local -r z_engine="${z_parcel}/${BUPE_engine_dir_relpath}/${BUPE_engine_stem}${z_platform}"
+  local -r z_engine="${z_parcel}/${BUPE_engine_stem}${z_platform}"
   test -f "${z_engine}" || buc_die_now "Parcel carries no engine for this platform: ${z_engine}"
   test -x "${z_engine}" || chmod +x "${z_engine}" || buc_die_now "Cannot make parcel engine executable: ${z_engine}"
 

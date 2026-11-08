@@ -36,8 +36,7 @@
 # it is live from the moment it lands. The refusal names the one-line remedy for
 # exactly that reason.
 #
-# Its refusal carries the threshold genre's token (JJS0 jjdz_denegatio; the
-# design is JJSVD-dispatch.adoc jjdd_gnomon).
+# Its refusal carries the threshold genre's token.
 #
 # It carries no BUZ_FOLIO, reads no cwd, and takes a repository root as its
 # argument - so a test drives it against a scratch station by sourcing this file
@@ -56,7 +55,7 @@ ZJJSL_GNOMON_SOURCED=1
 # citation resolved only through the dispatcher would die `unbound variable`
 # under `set -u` on exactly that path. The breviary carries its own guard, so
 # every sibling gate sourcing it too costs nothing.
-source "${BASH_SOURCE[0]%/*}/jjsb_breviary.sh"
+source "${BASH_SOURCE[0]%/*}/jjsb_breviary.sh" || buc_die_now "Failed to source jjsb_breviary.sh"
 
 # The value the remedy names. The gate tests the PROPERTY and not this spelling -
 # the whole -local family satisfies it - so this is the recommendation an operator
@@ -88,7 +87,7 @@ jjsl_gnomon_gate() {
   # remedy would edit when a bad value is already set somewhere.
   local z_lines=""
   local z_status=0
-  z_lines=$(git -C "${z_root}" config --show-scope --show-origin --get-all log.date 2>/dev/null) || z_status=$?
+  z_lines=$(git -C "${z_root}" config --show-scope --show-origin --get-all log.date) || z_status=$?
 
   test "${z_status}" -le 1 \
     || buc_die_now "jjsl ${JJSB_GNOMON_BASE}: cannot read log.date at ${z_root} - git config exited ${z_status}"
@@ -101,7 +100,7 @@ jjsl_gnomon_gate() {
   local z_origin=""
   local z_line=""
   local z_rest=""
-  while IFS= read -r z_line; do
+  while IFS= read -r z_line || test -n "${z_line}"; do
     test -n "${z_line}" || continue
     z_scope="${z_line%%$'\t'*}"
     case "${z_scope}" in

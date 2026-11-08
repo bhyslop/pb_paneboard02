@@ -221,5 +221,5 @@ git log --stat
 
 <!-- Kit guidance: hand-maintained @-include lines. Edit content in the
      @-targets, not here. -->
-@Tools/buk/volis_buk.md
-@Tools/vvk/volis_vvk.md
+@Tools/buk/buai0/buais_buk.md
+@Tools/vvk/vvai0/vvais_vvk.md

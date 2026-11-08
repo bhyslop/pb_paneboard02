@@ -24,6 +24,12 @@
 
 set -euo pipefail
 
+# The gate codes this module rejects with, from the substrate's generated
+# constants, sourced above the inclusion guard so the tinder block stays the run
+# behind it. The sourced file carries its own inclusion guard, so a sibling
+# sourcing it costs nothing.
+source "${BASH_SOURCE[0]%/*}/bubg_breviary.sh" || buc_die_now "Failed to source bubg_breviary.sh"
+
 # Multiple inclusion detection
 test -z "${ZBURE_SOURCED:-}" || buc_die_now "Module bure multiply sourced - check sourcing hierarchy"
 ZBURE_SOURCED=1
@@ -39,7 +45,9 @@ zbure_kindle() {
   # Exception: ambient regime defaults for optional behavioral overrides.
   BURE_VERBOSE="${BURE_VERBOSE:-0}"
   BURE_COLOR="${BURE_COLOR:-auto}"
+  BURE_HYPERLINKS="${BURE_HYPERLINKS:-1}"
   BURE_COUNTDOWN="${BURE_COUNTDOWN:-}"
+  BURE_CONFIRM="${BURE_CONFIRM:-}"
   BURE_TWEAK_NAME="${BURE_TWEAK_NAME:-}"
   BURE_TWEAK_VALUE="${BURE_TWEAK_VALUE:-}"
   BURE_LABEL="${BURE_LABEL:-}"
@@ -50,8 +58,10 @@ zbure_kindle() {
 
   buv_group_enroll "Behavioral Overrides"
   buv_string_enroll  BURE_COUNTDOWN   0  4  "Countdown override (skip to disable)"
+  buv_string_enroll  BURE_CONFIRM     0  4  "Confirmation override (skip passes a confirmation gate unprompted)"
   buv_enum_enroll    BURE_VERBOSE     "Verbosity level" 0 1 2 3
   buv_enum_enroll    BURE_COLOR       "Color mode" auto 0 1
+  buv_enum_enroll    BURE_HYPERLINKS  "Hyperlink mode (0 shows each link's URL beside its text in place of the OSC 8 escape)" 0 1
 
   buv_group_enroll "Tweak Mechanism"
   buv_string_enroll  BURE_TWEAK_NAME  0  64   "Tweak name (buo-sprued; consumer-interpreted)"
@@ -82,7 +92,13 @@ zbure_enforce() {
   # Custom enforce: BURE_COUNTDOWN must be empty or "skip"
   if test -n "${BURE_COUNTDOWN}"; then
     test "${BURE_COUNTDOWN}" = "skip" \
-      || buc_die_now "BURE_COUNTDOWN must be 'skip' or empty, got '${BURE_COUNTDOWN}'"
+      || buc_reject "${BUBG_REGIME_DENTIL}" "BURE_COUNTDOWN must be 'skip' or empty, got '${BURE_COUNTDOWN}'"
+  fi
+
+  # Custom enforce: BURE_CONFIRM must be empty or "skip"
+  if test -n "${BURE_CONFIRM}"; then
+    test "${BURE_CONFIRM}" = "skip" \
+      || buc_reject "${BUBG_REGIME_DENTIL}" "BURE_CONFIRM must be 'skip' or empty, got '${BURE_CONFIRM}'"
   fi
 
   # Custom enforce: BURE_TWEAK_NAME, when set, must carry the buo tweak sprue —
@@ -95,8 +111,8 @@ zbure_enforce() {
   # test/fixture/suite, by design; a suite may reserve the slot for a standing guard.
   if test -n "${BURE_TWEAK_NAME}"; then
     case "${BURE_TWEAK_NAME}" in
-      buo[a-z]*_*) : ;;
-      *) buc_die_now "BURE_TWEAK_NAME must carry the buo sprue (buo<segment>_<name>), got '${BURE_TWEAK_NAME}'" ;;
+      buo[abcdefghijklmnopqrstuvwxyz]*_*) : ;;
+      *) buc_reject "${BUBG_REGIME_DENTIL}" "BURE_TWEAK_NAME must carry the buo sprue (buo<segment>_<name>), got '${BURE_TWEAK_NAME}'" ;;
     esac
   fi
 }

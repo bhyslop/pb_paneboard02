@@ -19,23 +19,22 @@
 # Bash Validation Utility Library
 # Compatible with Bash 3.2 (e.g., macOS default shell)
 
+# The gate codes this module rejects with, from the substrate's generated
+# constants, sourced above the inclusion guard so the tinder block stays the run
+# behind it. The sourced file carries its own inclusion guard, so a sibling
+# sourcing it costs nothing.
+source "${BASH_SOURCE[0]%/*}/bubg_breviary.sh" || buc_die_now "Failed to source bubg_breviary.sh"
+
 # Multiple inclusion guard
-test -z "${ZBUV_SOURCED:-}" || return 0
+test -z "${ZBUV_SOURCED:-}" || buc_die_now "Module buv multiply sourced - check sourcing hierarchy"
 ZBUV_SOURCED=1
 
 # Literal constants — check capture output protocol markers
 readonly BUV_check_gated="gated"
 readonly BUV_check_fail="fail:"
 
-# Source the console utility library
-ZBUV_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
-source "${ZBUV_SCRIPT_DIR}/buc_command.sh"
-source "${ZBUV_SCRIPT_DIR}/buym_yelp.sh"
-# Band tinder + the regime-poison tweak name: buc_reject (buc_command) and the
-# regime-poison seam below both reference BUBC_* constants at runtime. Sourced
-# here so the dependency holds wherever buv is sourced, not only on
-# launcher-dispatched paths; bubc's inclusion guard makes a re-source a no-op.
-source "${ZBUV_SCRIPT_DIR}/bubc_constants.sh"
+# The regime-poison tweak name: the seam below references a BUBC_* constant at
+# runtime, so every top file sourcing this module sources the tinder beside it.
 
 buv_file_exists() {
   zbuv_sentinel
@@ -87,6 +86,10 @@ zbuv_kindle() {
   z_buv_grp_gate_var_roll=()
   z_buv_grp_gate_val_roll=()
 
+  # Koine registry rolls (2 parallel arrays): each scope handed to docker compose, and its carrier
+  z_buv_koine_scope_roll=()
+  z_buv_koine_carrier_roll=()
+
   # Mutable kindle state: regime context (set by buv_regime_enroll / buv_group_enroll / buv_gate_enroll)
   z_buv_current_scope=""
   z_buv_current_group=""
@@ -122,6 +125,10 @@ zbuv_reset_enrollment() {
   z_buv_grp_gate_var_roll=()
   z_buv_grp_gate_val_roll=()
 
+  # Clear koine registry rolls
+  z_buv_koine_scope_roll=()
+  z_buv_koine_carrier_roll=()
+
   # Reset regime context state
   z_buv_current_scope=""
   z_buv_current_group=""
@@ -152,19 +159,29 @@ zbuv_poison_apply() {
 
   local z_spec="${BURE_TWEAK_VALUE:-}"
   test -n "${z_spec}" || buc_die_now "regime poison: BURE_TWEAK_VALUE required ('VAR=value' to set, 'VAR' to unset)"
-  local z_var="${z_spec%%=*}"
-  [[ "${z_var}" =~ ^[A-Z][A-Z0-9_]*$ ]] || buc_die_now "regime poison: invalid variable name '${z_var}'"
+  local -r z_var="${z_spec%%=*}"
+  local -r z_name_lead="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
+  [[ "${z_var}" =~ ^[${z_name_lead}][${z_name_lead}0123456789]*$ ]] \
+    || buc_die_now "regime poison: invalid variable name '${z_var}'"
+  case "${z_var}" in
+    [ABCDEFGHIJKLMNOPQRSTUVWXYZ]*) : ;;
+    *) buc_die_now "regime poison: invalid variable name '${z_var}'" ;;
+  esac
 
   case "${z_var}" in
     "${z_scope}_"*) : ;;
     *) return 0 ;;
   esac
 
+  # The set form assigns without the export attribute, as the file the poison
+  # stands in for would, so the scope sentinel's exported-name rule never
+  # refuses the seam's own poison. printf -v assigns at global scope where a
+  # declare inside this function would scope the name local.
   if test "${z_spec}" = "${z_var}"; then
     unset "${z_var}" || buc_die_now "regime poison: cannot unset ${z_var}"
     buc_log_args "regime poison: unset ${z_var} (scope ${z_scope})"
   else
-    export "${z_var}=${z_spec#*=}" || buc_die_now "regime poison: cannot set ${z_var}"
+    printf -v "${z_var}" '%s' "${z_spec#*=}" || buc_die_now "regime poison: cannot set ${z_var}"
     buc_log_args "regime poison: set ${z_var} (scope ${z_scope})"
   fi
 }
@@ -184,6 +201,23 @@ buv_regime_enroll() {
   z_buv_current_gate_val=""
 
   zbuv_poison_apply "${z_scope}"
+}
+
+# buv_koine_enroll CARRIER — declare the current scope a koine handed to docker compose
+# Compose decodes CARRIER as its env file under a grammar of its own, and no
+# reference fixes where compose resolves a ${ reference, so buv_vet refuses any
+# carrier line carrying one. The declaration is the regime's, never a field's.
+buv_koine_enroll() {
+  zbuv_sentinel
+
+  test -n "${z_buv_current_scope}" || buc_die_now "buv_koine_enroll: call buv_regime_enroll first"
+
+  local -r z_carrier="${1:-}"
+  test -n "${z_carrier}" || buc_die_now "buv_koine_enroll: carrier required"
+  test -f "${z_carrier}" || buc_die_now "buv_koine_enroll: carrier not found: ${z_carrier}"
+
+  z_buv_koine_scope_roll+=("${z_buv_current_scope}")
+  z_buv_koine_carrier_roll+=("${z_carrier}")
 }
 
 # buv_group_enroll TITLE — set current group context
@@ -316,7 +350,7 @@ buv_enum_enroll() {
   zbuv_sentinel
   local z_varname="${1:-}"
   local z_desc="${2:-}"
-  shift 2
+  test "$#" -lt 2 || shift 2
   zbuv_enroll "${z_varname}" "enum" "$*" "" "${z_desc}"
 }
 
@@ -392,285 +426,260 @@ buv_list_domain_enroll() {
 }
 
 # Internal check capture — validates a single enrolled variable by roll index.
-# Returns error detail on stdout (empty = pass).
-# Echo "${BUV_check_gated}" when gate doesn't match (caller decides skip behavior).
-# Echo "${BUV_check_fail}<detail>" on validation failure.
+# Returns error detail on stdout (empty = pass), written once at the end.
+# Writes "${BUV_check_gated}" when gate doesn't match (caller decides skip behavior).
+# Writes "${BUV_check_fail}<detail>" on validation failure.
 zbuv_check_capture() {
   zbuv_sentinel
 
-  local z_idx="${1:-}"
-  local z_varname="${z_buv_varname_roll[$z_idx]}"
-  local z_type="${z_buv_type_roll[$z_idx]}"
-  local z_gate_var="${z_buv_gate_var_roll[$z_idx]}"
-  local z_gate_val="${z_buv_gate_val_roll[$z_idx]}"
-  local z_p1="${z_buv_p1_roll[$z_idx]}"
-  local z_p2="${z_buv_p2_roll[$z_idx]}"
+  local -r z_idx="${1:-}"
+  case "${z_idx}" in ''|*[!0123456789]*) return 1 ;; esac
+  local -r z_varname="${z_buv_varname_roll[10#${z_idx}]}"
+  local -r z_type="${z_buv_type_roll[10#${z_idx}]}"
+  local -r z_gate_var="${z_buv_gate_var_roll[10#${z_idx}]}"
+  local -r z_gate_val="${z_buv_gate_val_roll[10#${z_idx}]}"
+  local -r z_p1="${z_buv_p1_roll[10#${z_idx}]}"
+  local -r z_p2="${z_buv_p2_roll[10#${z_idx}]}"
 
-  # Gating check — if gated and gate doesn't match, skip (pass)
+  local -r z_name_lead="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
+  [[ "${z_varname}" =~ ^[${z_name_lead}][${z_name_lead}0123456789]*$ ]] || return 1
+  local z_gate_actual=""
   if test -n "${z_gate_var}"; then
-    local z_gate_actual="${!z_gate_var:-}"
-    if test "${z_gate_actual}" != "${z_gate_val}"; then
-      echo "${BUV_check_gated}"
-      return 0
-    fi
+    [[ "${z_gate_var}" =~ ^[${z_name_lead}][${z_name_lead}0123456789]*$ ]] || return 1
+    z_gate_actual="${!z_gate_var:-}"
   fi
 
-  # Unset detection — distinguish "not set" from "set but empty".
-  # A min-0 scalar (string|secret|gname|fqin) and every list type pass when
-  # unset: an omitted line reads as a declared vacancy, uniformly across the
-  # four scalar types. A min-1 field that is unset fails loud below. Set-empty
-  # is handled per-type further down.
-  if test -z "${!z_varname+x}"; then
+  # One IPv4 octet, 0 to 255 with no leading zero, so a value this gate admits
+  # reads the same under any arithmetic that consumes it. The digits are spelled
+  # out because a range follows the locale's collation.
+  local -r z_octet_re='(25[012345]|2[01234][0123456789]|1[0123456789][0123456789]|[123456789][0123456789]|[0123456789])'
+  local -r z_ipv4_re='^('"${z_octet_re}"'\.){3}'"${z_octet_re}"'$'
+  local -r z_cidr_re='^('"${z_octet_re}"'\.){3}'"${z_octet_re}"'/([0123456789]|[12][0123456789]|3[012])$'
+
+  local z_verdict=""
+  local z_val=""
+  local z_items=()
+  local z_ii=0
+  local z_item=""
+  local z_item_num=0
+  local z_read_status=0
+
+  if test -n "${z_gate_var}" && test "${z_gate_actual}" != "${z_gate_val}"; then
+    # Gating check — gated and the gate doesn't match: skip (pass)
+    z_verdict="${BUV_check_gated}"
+  elif test -z "${!z_varname+x}"; then
+    # Unset detection — distinguish "not set" from "set but empty".
+    # A min-0 scalar (string|secret|gname|fqin) and every list type pass when
+    # unset: an omitted line reads as a declared vacancy, uniformly across the
+    # four scalar types. A min-1 field that is unset fails loud. Set-empty is
+    # handled per-type below.
     case "${z_type}" in
       string|secret|gname|fqin)
-        if test "${z_p1}" = "0"; then return 0; fi ;;
+        test "${z_p1}" = "0" || z_verdict="${BUV_check_fail}${z_varname} is not set (missing from .env?)" ;;
       list_string|list_ipv4|list_gname|list_cidr|list_domain)
-        return 0 ;;
+        : ;;
+      *)
+        z_verdict="${BUV_check_fail}${z_varname} is not set (missing from .env?)" ;;
     esac
-    echo "${BUV_check_fail}${z_varname} is not set (missing from .env?)"
-    return 0
+  else
+    z_val="${!z_varname:-}"
+    case "${z_type}" in
+      list_string|list_ipv4|list_gname|list_cidr|list_domain)
+        # The whole value is read, every line of it, and split into words.
+        read -r -d '' -a z_items <<< "${z_val}" || z_read_status=$?
+        test "${z_read_status}" -le 1 || return 1
+        ;;
+    esac
+
+    case "${z_type}" in
+
+      string|secret)
+        if test "${z_p1}" = "0" && test -z "${z_val}"; then
+          :
+        elif test -z "${z_val}"; then
+          z_verdict="${BUV_check_fail}${z_varname} must not be empty"
+        elif test "${#z_val}" -lt "${z_p1}"; then
+          z_verdict="${BUV_check_fail}${z_varname} must be at least ${z_p1} chars, got '${z_val}' (${#z_val})"
+        elif test "${#z_val}" -gt "${z_p2}"; then
+          z_verdict="${BUV_check_fail}${z_varname} must be no more than ${z_p2} chars, got '${z_val}' (${#z_val})"
+        fi
+        ;;
+
+      xname)
+        if test -z "${z_val}"; then
+          z_verdict="${BUV_check_fail}${z_varname} must not be empty"
+        elif test "${#z_val}" -lt "${z_p1}"; then
+          z_verdict="${BUV_check_fail}${z_varname} must be at least ${z_p1} chars, got '${z_val}' (${#z_val})"
+        elif test "${#z_val}" -gt "${z_p2}"; then
+          z_verdict="${BUV_check_fail}${z_varname} must be no more than ${z_p2} chars, got '${z_val}' (${#z_val})"
+        elif ! [[ "${z_val}" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
+          z_verdict="${BUV_check_fail}${z_varname} must start with letter and contain only letters, numbers, underscore, hyphen, got '${z_val}'"
+        fi
+        ;;
+
+      gname)
+        if test -z "${z_val}"; then
+          if test "${z_p1}" -gt 0; then
+            z_verdict="${BUV_check_fail}${z_varname} must not be empty"
+          fi
+        elif test "${#z_val}" -lt "${z_p1}"; then
+          z_verdict="${BUV_check_fail}${z_varname} must be at least ${z_p1} chars, got '${z_val}' (${#z_val})"
+        elif test "${#z_val}" -gt "${z_p2}"; then
+          z_verdict="${BUV_check_fail}${z_varname} must be no more than ${z_p2} chars, got '${z_val}' (${#z_val})"
+        elif ! [[ "${z_val}" =~ ^[a-z][a-z0-9-]*[a-z0-9]$ ]]; then
+          z_verdict="${BUV_check_fail}${z_varname} must match ^[a-z][a-z0-9-]*[a-z0-9]$ (lowercase letters, digits, hyphens; start with a letter; end with letter/digit), got '${z_val}'"
+        fi
+        ;;
+
+      fqin)
+        if test -z "${z_val}"; then
+          if test "${z_p1}" -gt 0; then
+            z_verdict="${BUV_check_fail}${z_varname} must not be empty"
+          fi
+        elif test "${#z_val}" -lt "${z_p1}"; then
+          z_verdict="${BUV_check_fail}${z_varname} must be at least ${z_p1} chars, got '${z_val}' (${#z_val})"
+        elif test "${#z_val}" -gt "${z_p2}"; then
+          z_verdict="${BUV_check_fail}${z_varname} must be no more than ${z_p2} chars, got '${z_val}' (${#z_val})"
+        elif ! [[ "${z_val}" =~ ^[a-zA-Z0-9][a-zA-Z0-9:._/@-]*$ ]]; then
+          z_verdict="${BUV_check_fail}${z_varname} must start with letter/number and contain only letters, numbers, colons, dots, underscores, hyphens, forward slashes, at-signs, got '${z_val}'"
+        fi
+        ;;
+
+      bool)
+        if test -z "${z_val}"; then
+          z_verdict="${BUV_check_fail}${z_varname} must not be empty"
+        elif test "${z_val}" != "0" && test "${z_val}" != "1"; then
+          z_verdict="${BUV_check_fail}${z_varname} must be 0 or 1, got: '${z_val}'"
+        fi
+        ;;
+
+      enum)
+        if test -z "${z_val}"; then
+          z_verdict="${BUV_check_fail}${z_varname} must not be empty"
+        else
+          local z_choices=()
+          read -r -a z_choices <<< "${z_p1}" || return 1
+          local z_ci=0
+          local z_found=0
+          for z_ci in "${!z_choices[@]}"; do
+            test "${z_val}" != "${z_choices[${z_ci}]}" || z_found=1
+          done
+          test "${z_found}" = "1" || z_verdict="${BUV_check_fail}${z_varname} must be one of: ${z_p1}, got '${z_val}'"
+        fi
+        ;;
+
+      decimal)
+        if test -z "${z_val}"; then
+          z_verdict="${BUV_check_fail}${z_varname} must not be empty"
+        elif test "${z_val}" -ge "${z_p1}" && test "${z_val}" -le "${z_p2}"; then
+          :
+        else
+          z_verdict="${BUV_check_fail}${z_varname} value '${z_val}' must be between ${z_p1} and ${z_p2}"
+        fi
+        ;;
+
+      odref)
+        local -r z_re='^[a-z0-9.-]+(:[0-9]{2,5})?/([a-z0-9._-]+/)*[a-z0-9._-]+@sha256:[0-9a-f]{64}$'
+        if test -z "${z_val}"; then
+          z_verdict="${BUV_check_fail}${z_varname} must not be empty"
+        elif ! [[ "${z_val}" =~ ${z_re} ]]; then
+          z_verdict="${BUV_check_fail}${z_varname} has invalid image reference format (require host[:port]/repo@sha256:<64hex>), got '${z_val}'"
+        fi
+        ;;
+
+      ipv4)
+        if test -z "${z_val}"; then
+          z_verdict="${BUV_check_fail}${z_varname} must not be empty"
+        elif ! [[ "${z_val}" =~ ${z_ipv4_re} ]]; then
+          z_verdict="${BUV_check_fail}${z_varname} has invalid IPv4 format (four octets of 0 to 255, no leading zero): '${z_val}'"
+        fi
+        ;;
+
+      port)
+        if test -z "${z_val}"; then
+          z_verdict="${BUV_check_fail}${z_varname} must not be empty"
+        elif test "${z_val}" -ge 1 && test "${z_val}" -le 65535; then
+          :
+        else
+          z_verdict="${BUV_check_fail}${z_varname} value '${z_val}' must be between 1 and 65535"
+        fi
+        ;;
+
+      list_string)
+        for z_ii in "${!z_items[@]}"; do
+          z_item="${z_items[${z_ii}]}"
+          z_item_num=$((z_item_num + 1))
+          if test "${#z_item}" -lt "${z_p1}"; then
+            z_verdict="${BUV_check_fail}${z_varname} item #${z_item_num} must be at least ${z_p1} chars, got '${z_item}' (${#z_item})"
+            break
+          fi
+          if test "${#z_item}" -gt "${z_p2}"; then
+            z_verdict="${BUV_check_fail}${z_varname} item #${z_item_num} must be no more than ${z_p2} chars, got '${z_item}' (${#z_item})"
+            break
+          fi
+        done
+        ;;
+
+      list_ipv4)
+        for z_ii in "${!z_items[@]}"; do
+          z_item="${z_items[${z_ii}]}"
+          z_item_num=$((z_item_num + 1))
+          if ! [[ "${z_item}" =~ ${z_ipv4_re} ]]; then
+            z_verdict="${BUV_check_fail}${z_varname} item #${z_item_num} has invalid IPv4 format (four octets of 0 to 255, no leading zero): '${z_item}'"
+            break
+          fi
+        done
+        ;;
+
+      list_gname)
+        for z_ii in "${!z_items[@]}"; do
+          z_item="${z_items[${z_ii}]}"
+          z_item_num=$((z_item_num + 1))
+          if test "${#z_item}" -lt "${z_p1}"; then
+            z_verdict="${BUV_check_fail}${z_varname} item #${z_item_num} must be at least ${z_p1} chars, got '${z_item}' (${#z_item})"
+            break
+          fi
+          if test "${#z_item}" -gt "${z_p2}"; then
+            z_verdict="${BUV_check_fail}${z_varname} item #${z_item_num} must be no more than ${z_p2} chars, got '${z_item}' (${#z_item})"
+            break
+          fi
+          if ! [[ "${z_item}" =~ ^[a-z][a-z0-9-]*[a-z0-9]$ ]]; then
+            z_verdict="${BUV_check_fail}${z_varname} item #${z_item_num} must match ^[a-z][a-z0-9-]*[a-z0-9]$, got '${z_item}'"
+            break
+          fi
+        done
+        ;;
+
+      list_cidr)
+        for z_ii in "${!z_items[@]}"; do
+          z_item="${z_items[${z_ii}]}"
+          z_item_num=$((z_item_num + 1))
+          if ! [[ "${z_item}" =~ ${z_cidr_re} ]]; then
+            z_verdict="${BUV_check_fail}${z_varname} item #${z_item_num} has invalid CIDR format (four octets of 0 to 255, no leading zero, prefix 0 to 32): '${z_item}'"
+            break
+          fi
+        done
+        ;;
+
+      list_domain)
+        for z_ii in "${!z_items[@]}"; do
+          z_item="${z_items[${z_ii}]}"
+          z_item_num=$((z_item_num + 1))
+          if ! [[ "${z_item}" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$ ]]; then
+            z_verdict="${BUV_check_fail}${z_varname} item #${z_item_num} has invalid domain format: '${z_item}'"
+            break
+          fi
+        done
+        ;;
+
+      *)
+        z_verdict="${BUV_check_fail}unknown type: ${z_type}"
+        ;;
+
+    esac
   fi
 
-  local z_val="${!z_varname:-}"
-
-  case "${z_type}" in
-
-    string|secret)
-      if test "${z_p1}" = "0" && test -z "${z_val}"; then
-        return 0
-      fi
-      if test -z "${z_val}"; then
-        echo "${BUV_check_fail}${z_varname} must not be empty"
-        return 0
-      fi
-      if test "${#z_val}" -lt "${z_p1}"; then
-        echo "${BUV_check_fail}${z_varname} must be at least ${z_p1} chars, got '${z_val}' (${#z_val})"
-        return 0
-      fi
-      if test "${#z_val}" -gt "${z_p2}"; then
-        echo "${BUV_check_fail}${z_varname} must be no more than ${z_p2} chars, got '${z_val}' (${#z_val})"
-        return 0
-      fi
-      ;;
-
-    xname)
-      if test -z "${z_val}"; then
-        echo "${BUV_check_fail}${z_varname} must not be empty"
-        return 0
-      fi
-      if test "${#z_val}" -lt "${z_p1}"; then
-        echo "${BUV_check_fail}${z_varname} must be at least ${z_p1} chars, got '${z_val}' (${#z_val})"
-        return 0
-      fi
-      if test "${#z_val}" -gt "${z_p2}"; then
-        echo "${BUV_check_fail}${z_varname} must be no more than ${z_p2} chars, got '${z_val}' (${#z_val})"
-        return 0
-      fi
-      [[ "${z_val}" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]] || {
-        echo "${BUV_check_fail}${z_varname} must start with letter and contain only letters, numbers, underscore, hyphen, got '${z_val}'"
-        return 0
-      }
-      ;;
-
-    gname)
-      if test -z "${z_val}"; then
-        if test "${z_p1}" -gt 0; then
-          echo "${BUV_check_fail}${z_varname} must not be empty"
-          return 0
-        fi
-        return 0
-      fi
-      if test "${#z_val}" -lt "${z_p1}"; then
-        echo "${BUV_check_fail}${z_varname} must be at least ${z_p1} chars, got '${z_val}' (${#z_val})"
-        return 0
-      fi
-      if test "${#z_val}" -gt "${z_p2}"; then
-        echo "${BUV_check_fail}${z_varname} must be no more than ${z_p2} chars, got '${z_val}' (${#z_val})"
-        return 0
-      fi
-      [[ "${z_val}" =~ ^[a-z][a-z0-9-]*[a-z0-9]$ ]] || {
-        echo "${BUV_check_fail}${z_varname} must match ^[a-z][a-z0-9-]*[a-z0-9]$ (lowercase letters, digits, hyphens; start with a letter; end with letter/digit), got '${z_val}'"
-        return 0
-      }
-      ;;
-
-    fqin)
-      if test -z "${z_val}"; then
-        if test "${z_p1}" -gt 0; then
-          echo "${BUV_check_fail}${z_varname} must not be empty"
-          return 0
-        fi
-        return 0
-      fi
-      if test "${#z_val}" -lt "${z_p1}"; then
-        echo "${BUV_check_fail}${z_varname} must be at least ${z_p1} chars, got '${z_val}' (${#z_val})"
-        return 0
-      fi
-      if test "${#z_val}" -gt "${z_p2}"; then
-        echo "${BUV_check_fail}${z_varname} must be no more than ${z_p2} chars, got '${z_val}' (${#z_val})"
-        return 0
-      fi
-      [[ "${z_val}" =~ ^[a-zA-Z0-9][a-zA-Z0-9:._/@-]*$ ]] || {
-        echo "${BUV_check_fail}${z_varname} must start with letter/number and contain only letters, numbers, colons, dots, underscores, hyphens, forward slashes, at-signs, got '${z_val}'"
-        return 0
-      }
-      ;;
-
-    bool)
-      if test -z "${z_val}"; then
-        echo "${BUV_check_fail}${z_varname} must not be empty"
-        return 0
-      fi
-      if test "${z_val}" != "0" && test "${z_val}" != "1"; then
-        echo "${BUV_check_fail}${z_varname} must be 0 or 1, got: '${z_val}'"
-        return 0
-      fi
-      ;;
-
-    enum)
-      if test -z "${z_val}"; then
-        echo "${BUV_check_fail}${z_varname} must not be empty"
-        return 0
-      fi
-      local z_choice
-      local z_found=0
-      for z_choice in ${z_p1}; do
-        if test "${z_val}" = "${z_choice}"; then
-          z_found=1
-          break
-        fi
-      done
-      if test "${z_found}" = "0"; then
-        echo "${BUV_check_fail}${z_varname} must be one of: ${z_p1}, got '${z_val}'"
-        return 0
-      fi
-      ;;
-
-    decimal)
-      if test -z "${z_val}"; then
-        echo "${BUV_check_fail}${z_varname} must not be empty"
-        return 0
-      fi
-      if test "${z_val}" -ge "${z_p1}" && test "${z_val}" -le "${z_p2}"; then
-        return 0
-      fi
-      echo "${BUV_check_fail}${z_varname} value '${z_val}' must be between ${z_p1} and ${z_p2}"
-      return 0
-      ;;
-
-    odref)
-      if test -z "${z_val}"; then
-        echo "${BUV_check_fail}${z_varname} must not be empty"
-        return 0
-      fi
-      local z_re='^[a-z0-9.-]+(:[0-9]{2,5})?/([a-z0-9._-]+/)*[a-z0-9._-]+@sha256:[0-9a-f]{64}$'
-      [[ "${z_val}" =~ ${z_re} ]] || {
-        echo "${BUV_check_fail}${z_varname} has invalid image reference format (require host[:port]/repo@sha256:<64hex>), got '${z_val}'"
-        return 0
-      }
-      ;;
-
-    ipv4)
-      if test -z "${z_val}"; then
-        echo "${BUV_check_fail}${z_varname} must not be empty"
-        return 0
-      fi
-      [[ "${z_val}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || {
-        echo "${BUV_check_fail}${z_varname} has invalid IPv4 format: '${z_val}'"
-        return 0
-      }
-      ;;
-
-    port)
-      if test -z "${z_val}"; then
-        echo "${BUV_check_fail}${z_varname} must not be empty"
-        return 0
-      fi
-      if test "${z_val}" -ge 1 && test "${z_val}" -le 65535; then
-        return 0
-      fi
-      echo "${BUV_check_fail}${z_varname} value '${z_val}' must be between 1 and 65535"
-      return 0
-      ;;
-
-    list_string)
-      local z_item
-      local z_item_num=0
-      for z_item in ${z_val}; do
-        z_item_num=$((z_item_num + 1))
-        if test "${#z_item}" -lt "${z_p1}"; then
-          echo "${BUV_check_fail}${z_varname} item #${z_item_num} must be at least ${z_p1} chars, got '${z_item}' (${#z_item})"
-          return 0
-        fi
-        if test "${#z_item}" -gt "${z_p2}"; then
-          echo "${BUV_check_fail}${z_varname} item #${z_item_num} must be no more than ${z_p2} chars, got '${z_item}' (${#z_item})"
-          return 0
-        fi
-      done
-      ;;
-
-    list_ipv4)
-      local z_item
-      local z_item_num=0
-      for z_item in ${z_val}; do
-        z_item_num=$((z_item_num + 1))
-        [[ "${z_item}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || {
-          echo "${BUV_check_fail}${z_varname} item #${z_item_num} has invalid IPv4 format: '${z_item}'"
-          return 0
-        }
-      done
-      ;;
-
-    list_gname)
-      local z_item
-      local z_item_num=0
-      for z_item in ${z_val}; do
-        z_item_num=$((z_item_num + 1))
-        if test "${#z_item}" -lt "${z_p1}"; then
-          echo "${BUV_check_fail}${z_varname} item #${z_item_num} must be at least ${z_p1} chars, got '${z_item}' (${#z_item})"
-          return 0
-        fi
-        if test "${#z_item}" -gt "${z_p2}"; then
-          echo "${BUV_check_fail}${z_varname} item #${z_item_num} must be no more than ${z_p2} chars, got '${z_item}' (${#z_item})"
-          return 0
-        fi
-        [[ "${z_item}" =~ ^[a-z][a-z0-9-]*[a-z0-9]$ ]] || {
-          echo "${BUV_check_fail}${z_varname} item #${z_item_num} must match ^[a-z][a-z0-9-]*[a-z0-9]$, got '${z_item}'"
-          return 0
-        }
-      done
-      ;;
-
-    list_cidr)
-      local z_item
-      local z_item_num=0
-      for z_item in ${z_val}; do
-        z_item_num=$((z_item_num + 1))
-        [[ "${z_item}" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$ ]] || {
-          echo "${BUV_check_fail}${z_varname} item #${z_item_num} has invalid CIDR format: '${z_item}'"
-          return 0
-        }
-      done
-      ;;
-
-    list_domain)
-      local z_item
-      local z_item_num=0
-      for z_item in ${z_val}; do
-        z_item_num=$((z_item_num + 1))
-        [[ "${z_item}" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$ ]] || {
-          echo "${BUV_check_fail}${z_varname} item #${z_item_num} has invalid domain format: '${z_item}'"
-          return 0
-        }
-      done
-      ;;
-
-    *)
-      echo "${BUV_check_fail}unknown type: ${z_type}"
-      return 0
-      ;;
-
-  esac
+  printf '%s' "${z_verdict}"
 }
 
 # buv_hallmark_format VALUE — validate hallmark string matches [cbg]YYMMDDHHMMSS-rYYMMDDHHMMSS
@@ -683,7 +692,8 @@ buv_hallmark_format() {
     || buc_die_now "Invalid hallmark format: '${z_val}' (expected [cbg]YYMMDDHHMMSS-rYYMMDDHHMMSS)"
 }
 
-# buv_scope_sentinel SCOPE PREFIX — die if any PREFIX_ vars exist that are not enrolled in SCOPE
+# buv_scope_sentinel SCOPE PREFIX — die if any PREFIX_ vars exist that are not enrolled in SCOPE,
+# or if any stands exported that is no hand-off (the exported-name rule)
 # Usage: buv_scope_sentinel RBRN RBRN_
 buv_scope_sentinel() {
   zbuv_sentinel
@@ -697,51 +707,118 @@ buv_scope_sentinel() {
   local z_known=" "
   local z_i
   for z_i in "${!z_buv_scope_roll[@]}"; do
-    test "${z_buv_scope_roll[$z_i]}" = "${z_scope}" || continue
-    z_known="${z_known}${z_buv_varname_roll[$z_i]} "
+    test "${z_buv_scope_roll[${z_i}]}" = "${z_scope}" || continue
+    z_known="${z_known}${z_buv_varname_roll[${z_i}]} "
   done
 
   # Scan environment for unexpected vars with this prefix
+  # compgen answers 1 where no variable wears the prefix, which leaves the
+  # listing empty and nothing to scan; any other status is a failure. This runs
+  # at regime validation, ahead of any temp directory, so the listing is held in
+  # memory: variable names carry no whitespace, so one line split by read holds
+  # them all.
+  local z_listing=""
+  local z_listing_status=0
+  z_listing=$(compgen -v "${z_prefix}") || z_listing_status=$?
+  test "${z_listing_status}" -le 1 || buc_die_now "buv_scope_sentinel: could not list the ${z_prefix} variables"
+  local -r z_newline=$'\n'
+  local -r z_line="${z_listing//"${z_newline}"/ }"
+  local z_names=()
+  read -r -a z_names <<< "${z_line}" || buc_die_now "buv_scope_sentinel: could not split the ${z_prefix} listing"
   local z_unexpected=()
-  local z_var
-  for z_var in $(compgen -v "${z_prefix}"); do
+  local z_n
+  for z_n in "${!z_names[@]}"; do
     case "${z_known}" in
-      *" ${z_var} "*) : ;;
-      *) z_unexpected+=("${z_var}") ;;
+      *" ${z_names[${z_n}]} "*) : ;;
+      *) z_unexpected+=("${z_names[${z_n}]}") ;;
     esac
   done
 
   if test "${#z_unexpected[@]}" -gt 0; then
-    buc_reject "${BUBC_band_enroll}" "Unexpected ${z_prefix}* variables not enrolled in ${z_scope}: ${z_unexpected[*]}"
+    buc_reject "${BUBG_ENROLL_DENTIL}" "Unexpected ${z_prefix}* variables not enrolled in ${z_scope}: ${z_unexpected[*]}"
   fi
+
+  # The second rule: a name of this scope standing exported is refused save the
+  # hand-offs every level declares. The door is named where this process runs
+  # under one, its dispatch file having been read before any kindle.
+  zbuv_exported_rule "${z_prefix}" "${BURD_TARGET:+${BURD_TARGET}, at }the ${z_scope} ${BUBG_BUKRO_KINDLE_PROSOPON}" ""
 }
 
-# buv_docker_env SCOPE ARRAY_VAR — populate ARRAY_VAR with -e VARNAME=val pairs for all enrolled vars in SCOPE
-# Usage: buv_docker_env RBRN ZRBRN_DOCKER_ENV
-buv_docker_env() {
+# buv_export_sentinel DOOR [ADMITTED] — the exported-name rule at a process's entry
+# Applies the scope sentinel's second rule over every family the kit speaks
+# across an exec. A launcher's entry, each workbench's head and buc_execute call
+# it; ADMITTED is the hand-offs that level declares beside those every level
+# declares, space-separated, a word ending in an underscore admitting its family.
+buv_export_sentinel() {
+  buc_doc_brief "Refuse a name of the kit standing exported that this level declares no hand-off for"
+  buc_doc_param "door" "The ${BUBG_TABTARGET_BASE} basename the refusal names"
+  buc_doc_oparm "admitted" "The hand-offs this level declares beside every level's, space-separated"
+  buc_doc_shown || return 0
+
   zbuv_sentinel
 
-  local z_scope="${1:-}"
-  local z_array_var="${2:-}"
-  test -n "${z_scope}"     || buc_die_now "buv_docker_env: scope required"
-  test -n "${z_array_var}" || buc_die_now "buv_docker_env: array variable name required"
-  [[ "${z_array_var}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] \
-    || buc_die_now "buv_docker_env: invalid array variable name: '${z_array_var}'"
+  local -r z_door="${1:-}"
+  local -r z_admitted="${2:-}"
+  test -n "${z_door}" || buc_die_now "buv_export_sentinel: door required"
 
-  eval "${z_array_var}=()"
+  local z_family=""
+  for z_family in BURC_ BURS_ BURD_ BURE_ BURV_ BURX_ BUZ_ BUC_; do
+    zbuv_exported_rule "${z_family}" "${z_door}" "${z_admitted}"
+  done
+}
 
-  local z_i
-  for z_i in "${!z_buv_scope_roll[@]}"; do
-    test "${z_buv_scope_roll[$z_i]}" = "${z_scope}" || continue
-    local z_varname="${z_buv_varname_roll[$z_i]}"
-    local z_val="${!z_varname:-}"
-    eval "${z_array_var}+=(\"-e\" \"${z_varname}=${z_val}\")"
+# zbuv_exported_rule PREFIX WHERE ADMITTED — reject the first name wearing PREFIX
+# that stands exported in this process and is no hand-off
+# The listing is compgen -e: a name that arrived exported keeps its listing after
+# a sourced file reassigns it, so the rule reads the inheritance, never the file.
+# Every level admits the environment regime, the pointer and the kit directory;
+# ADMITTED names what a level declares beside them, a word ending in an
+# underscore admitting its family.
+zbuv_exported_rule() {
+  zbuv_sentinel
+
+  local -r z_prefix="${1:-}"
+  local -r z_where="${2:-}"
+  local -r z_admitted="${3:-}"
+  test -n "${z_prefix}" || buc_die_now "zbuv_exported_rule: prefix required"
+
+  local z_listing=""
+  local z_listing_status=0
+  z_listing=$(compgen -e "${z_prefix}") || z_listing_status=$?
+  test "${z_listing_status}" -le 1 || buc_die_now "zbuv_exported_rule: could not list the exported ${z_prefix} variables"
+  local -r z_newline=$'\n'
+  local -r z_line="${z_listing//"${z_newline}"/ }"
+  local z_names=()
+  read -r -a z_names <<< "${z_line}" || buc_die_now "zbuv_exported_rule: could not split the exported ${z_prefix} listing"
+  test "${#z_names[@]}" -gt 0 || return 0
+
+  local z_words=()
+  read -r -a z_words <<< "${z_admitted}" || buc_die_now "zbuv_exported_rule: could not split the admitted hand-offs"
+
+  local z_n=""
+  local z_w=""
+  local z_handed=""
+  for z_n in "${!z_names[@]}"; do
+    z_handed=""
+    case "${z_names[${z_n}]}" in
+      BURE_*|BURD_BURD_FILE|BURD_BUK_DIR) z_handed=1 ;;
+    esac
+    if test -z "${z_handed}" && test "${#z_words[@]}" -gt 0; then
+      for z_w in "${!z_words[@]}"; do
+        case "${z_words[${z_w}]}" in
+          *_) case "${z_names[${z_n}]}" in "${z_words[${z_w}]}"*) z_handed=1 ;; esac ;;
+          *)  test "${z_names[${z_n}]}" != "${z_words[${z_w}]}" || z_handed=1 ;;
+        esac
+      done
+    fi
+    test -z "${z_handed}" || continue
+    buc_reject "${BUBG_ENROLL_DENTIL}" "${z_names[${z_n}]} arrives exported at ${z_where}, and no value of the kit crosses an exec by inheritance save a hand-off its level declares (the exported-name rule)"
   done
 }
 
 # buv_vet SCOPE — iterate all enrolled vars in scope; reject on first failure
 # A failed value check is the buv enrollment-validation gate firing — it
-# rejects with BUBC_band_enroll so negative tests can assert WHICH layer
+# rejects with BUBG_ENROLL_DENTIL so negative tests can assert WHICH layer
 # refused (the band expansion is unguarded on purpose: a vet failure without
 # the bubc tinder dies loud, never soft).
 buv_vet() {
@@ -753,10 +830,50 @@ buv_vet() {
   local z_i
   local z_err
   for z_i in "${!z_buv_scope_roll[@]}"; do
-    test "${z_buv_scope_roll[$z_i]}" = "${z_scope}" || continue
-    z_err=$(zbuv_check_capture "${z_i}")
-    test -z "${z_err}" || test "${z_err}" = "${BUV_check_gated}" || buc_reject "${BUBC_band_enroll}" "${z_buv_varname_roll[$z_i]}: ${z_err#"${BUV_check_fail}"}"
+    test "${z_buv_scope_roll[${z_i}]}" = "${z_scope}" || continue
+    z_err=$(zbuv_check_capture "${z_i}") || buc_die_now "buv_vet: could not check ${z_buv_varname_roll[${z_i}]}"
+    test -z "${z_err}" || test "${z_err}" = "${BUV_check_gated}" || buc_reject "${BUBG_ENROLL_DENTIL}" "${z_buv_varname_roll[${z_i}]}: ${z_err#"${BUV_check_fail}"}"
   done
+
+  for z_i in "${!z_buv_koine_scope_roll[@]}"; do
+    test "${z_buv_koine_scope_roll[${z_i}]}" = "${z_scope}" || continue
+    zbuv_koine_vet "${z_scope}" "${z_buv_koine_carrier_roll[${z_i}]}"
+  done
+}
+
+# zbuv_koine_vet SCOPE CARRIER — refuse a koine carrier any line of which carries a ${ reference
+# The carrier's text is read because bash expanded every reference when it
+# sourced the carrier, so no sourced value still shows one. The read takes no
+# value from the text: it names the field before a line's first '=' and nothing
+# more, and a blank line or a comment line is no value to either reader.
+zbuv_koine_vet() {
+  zbuv_sentinel
+
+  local -r z_scope="${1:-}"
+  local -r z_carrier="${2:-}"
+  test -n "${z_scope}"   || buc_die_now "zbuv_koine_vet: scope required"
+  test -f "${z_carrier}" || buc_die_now "zbuv_koine_vet: carrier not found: ${z_carrier}"
+
+  local z_lines=()
+  local z_line=""
+  while IFS= read -r z_line || test -n "${z_line}"; do
+    z_lines+=("${z_line}")
+  done < "${z_carrier}" || buc_die_now "zbuv_koine_vet: could not read ${z_carrier}"
+
+  local z_fields=()
+  local z_bare=""
+  local z_n=""
+  for z_n in "${!z_lines[@]}"; do
+    z_bare="${z_lines[${z_n}]#"${z_lines[${z_n}]%%[![:space:]]*}"}"
+    case "${z_bare}" in
+      ''|'#'*) continue ;;
+      *'${'*)  z_fields+=("${z_bare%%=*}") ;;
+    esac
+  done
+
+  if test "${#z_fields[@]}" -gt 0; then
+    buc_reject "${BUBG_ENROLL_DENTIL}" "Regime ${z_scope} is handed to docker compose and carries a \${ reference in: ${z_fields[*]}"
+  fi
 }
 
 # buv_lock SCOPE — make all enrolled variables in scope readonly
@@ -769,8 +886,8 @@ buv_lock() {
 
   local z_i
   for z_i in "${!z_buv_scope_roll[@]}"; do
-    test "${z_buv_scope_roll[$z_i]}" = "${z_scope}" || continue
-    readonly "${z_buv_varname_roll[$z_i]}"
+    test "${z_buv_scope_roll[${z_i}]}" = "${z_scope}" || continue
+    readonly "${z_buv_varname_roll[${z_i}]}"
   done
 }
 
@@ -782,9 +899,9 @@ buv_export_and_lock() {
 
   local z_i
   for z_i in "${!z_buv_scope_roll[@]}"; do
-    test "${z_buv_scope_roll[$z_i]}" = "${z_scope}" || continue
-    export "${z_buv_varname_roll[$z_i]}"
-    readonly "${z_buv_varname_roll[$z_i]}"
+    test "${z_buv_scope_roll[${z_i}]}" = "${z_scope}" || continue
+    export "${z_buv_varname_roll[${z_i}]}"
+    readonly "${z_buv_varname_roll[${z_i}]}"
   done
 }
 
@@ -798,16 +915,19 @@ buv_report() {
   test -n "${z_label}" || buc_die_now "buv_report: label required"
 
   local z_any_failed=0
+  local -r z_name_lead="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
 
   buc_step "${z_label}"
 
   local z_i
   for z_i in "${!z_buv_scope_roll[@]}"; do
-    test "${z_buv_scope_roll[$z_i]}" = "${z_scope}" || continue
+    test "${z_buv_scope_roll[${z_i}]}" = "${z_scope}" || continue
 
-    local z_varname="${z_buv_varname_roll[$z_i]}"
-    local z_type="${z_buv_type_roll[$z_i]}"
-    local z_desc="${z_buv_desc_roll[$z_i]}"
+    local z_varname="${z_buv_varname_roll[${z_i}]}"
+    local z_type="${z_buv_type_roll[${z_i}]}"
+    local z_desc="${z_buv_desc_roll[${z_i}]}"
+    [[ "${z_varname}" =~ ^[${z_name_lead}][${z_name_lead}0123456789]*$ ]] \
+      || buc_die_now "buv_report: invalid variable name: '${z_varname}'"
     local z_val="${!z_varname:-}"
     local z_err
 
@@ -817,7 +937,7 @@ buv_report() {
       z_display_val="(redacted — ${#z_val} chars)"
     fi
 
-    z_err=$(zbuv_check_capture "${z_i}")
+    z_err=$(zbuv_check_capture "${z_i}") || buc_die_now "Could not check ${z_varname}"
     if test -z "${z_err}"; then
       zbuv_req_status "${z_i}"
       if test "${z_buv_req_status}" = "opt" && test -z "${z_val}"; then
@@ -836,34 +956,14 @@ buv_report() {
   return "${z_any_failed}"
 }
 
-# zbuv_group_gate_recite SCOPE TITLE — look up group gate from registry
-# Sets z_buv_grp_gate_var and z_buv_grp_gate_val (empty if ungated).
-zbuv_group_gate_recite() {
-  zbuv_sentinel
-  local z_scope="${1:-}"
-  local z_title="${2:-}"
-
-  z_buv_grp_gate_var=""
-  z_buv_grp_gate_val=""
-
-  local z_s
-  for z_s in "${!z_buv_grp_scope_roll[@]}"; do
-    if test "${z_buv_grp_scope_roll[$z_s]}" = "${z_scope}" \
-      && test "${z_buv_grp_title_roll[$z_s]}" = "${z_title}"; then
-      z_buv_grp_gate_var="${z_buv_grp_gate_var_roll[$z_s]}"
-      z_buv_grp_gate_val="${z_buv_grp_gate_val_roll[$z_s]}"
-      return 0
-    fi
-  done
-}
-
 # zbuv_req_status INDEX — derive req/opt/cond from enrollment data
 # Sets z_buv_req_status.
 zbuv_req_status() {
   zbuv_sentinel
-  local z_idx="${1:-}"
-  local z_gate_var="${z_buv_gate_var_roll[$z_idx]}"
-  local z_p1="${z_buv_p1_roll[$z_idx]}"
+  local -r z_idx="${1:-}"
+  case "${z_idx}" in ''|*[!0123456789]*) buc_die_now "zbuv_req_status: index must be digits, got '${z_idx}'" ;; esac
+  local -r z_gate_var="${z_buv_gate_var_roll[10#${z_idx}]}"
+  local -r z_p1="${z_buv_p1_roll[10#${z_idx}]}"
 
   if test -n "${z_gate_var}"; then
     z_buv_req_status="cond"
@@ -899,21 +999,26 @@ buv_render() {
   local z_varname=""
   local z_type=""
   local z_desc=""
+  local z_grp_gate_var=""
+  local z_grp_gate_val=""
+  local z_s=""
 
-  echo ""
-  buym_format_yawp "${BUYC_BRIGHT_WHITE}" "${z_label}"; echo "${z_buym_format}"
+  echo "" || buc_die_now
+  buym_format_yawp "${BUYC_BRIGHT_WHITE}" "${z_label}"; local -r z_title_line="${z_buym_format}"
+  echo "${z_title_line}" || buc_die_now
   if test -n "${z_file_path}"; then
-    buym_format_yawp "${BUYC_GRAY}" "File: ${z_file_path}"; echo "  ${z_buym_format}"
+    buym_format_yawp "${BUYC_GRAY}" "File: ${z_file_path}"; local -r z_file_line="${z_buym_format}"
+    echo "  ${z_file_line}" || buc_die_now
   fi
-  echo ""
+  echo "" || buc_die_now
 
   for z_i in "${!z_buv_scope_roll[@]}"; do
-    test "${z_buv_scope_roll[$z_i]}" = "${z_scope}" || continue
+    test "${z_buv_scope_roll[${z_i}]}" = "${z_scope}" || continue
 
-    z_group="${z_buv_group_roll[$z_i]}"
-    z_varname="${z_buv_varname_roll[$z_i]}"
-    z_type="${z_buv_type_roll[$z_i]}"
-    z_desc="${z_buv_desc_roll[$z_i]}"
+    z_group="${z_buv_group_roll[${z_i}]}"
+    z_varname="${z_buv_varname_roll[${z_i}]}"
+    z_type="${z_buv_type_roll[${z_i}]}"
+    z_desc="${z_buv_desc_roll[${z_i}]}"
 
     # Group transition — close previous, open new
     if test "${z_group}" != "${z_current_group}"; then
@@ -922,9 +1027,18 @@ buv_render() {
       fi
       z_current_group="${z_group}"
 
-      zbuv_group_gate_recite "${z_scope}" "${z_group}"
-      if test -n "${z_buv_grp_gate_var}"; then
-        bupr_section_begin "${z_group}" "${z_buv_grp_gate_var}" "${z_buv_grp_gate_val}"
+      # The group's gate, looked up in the group registry (empty if ungated)
+      z_grp_gate_var=""
+      z_grp_gate_val=""
+      for z_s in "${!z_buv_grp_scope_roll[@]}"; do
+        test "${z_buv_grp_scope_roll[${z_s}]}" = "${z_scope}" || continue
+        test "${z_buv_grp_title_roll[${z_s}]}" = "${z_group}" || continue
+        z_grp_gate_var="${z_buv_grp_gate_var_roll[${z_s}]}"
+        z_grp_gate_val="${z_buv_grp_gate_val_roll[${z_s}]}"
+        break
+      done
+      if test -n "${z_grp_gate_var}"; then
+        bupr_section_begin "${z_group}" "${z_grp_gate_var}" "${z_grp_gate_val}"
       else
         bupr_section_begin "${z_group}"
       fi

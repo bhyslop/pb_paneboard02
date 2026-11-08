@@ -21,8 +21,8 @@
 
 set -euo pipefail
 
-source "${BURD_BUK_DIR}/buc_command.sh"
-source "${BURD_BUK_DIR}/buym_yelp.sh"
+source "${BURD_BUK_DIR}/buc_command.sh" || exit 1
+source "${BURD_BUK_DIR}/buym_yelp.sh" || buc_die_now "Failed to source buym_yelp.sh"
 
 ######################################################################
 # Command Functions
@@ -50,18 +50,9 @@ zburc_furnish() {
   buc_doc_env_row "BURD_BUK_DIR          " "BUK module directory (dispatch-provided)"
   buc_doc_env_done || return 0
 
-  source "${BURD_BUK_DIR}/buv_validation.sh"
-  source "${BURD_BUK_DIR}/burd_regime.sh"
-  source "${BURD_BUK_DIR}/burc_regime.sh"
-  source "${BURD_BUK_DIR}/bupr_regime.sh"
-
-  zbuv_kindle
-  zburd_kindle
+  source "${BURD_BUK_DIR}/bupr_regime.sh" || buc_die_now "Failed to source bupr_regime.sh"
   zburd_enforce
 
-  source "${BURD_REGIME_FILE}" || buc_die_now "Failed to source BURC: ${BURD_REGIME_FILE}"
-
-  zburc_kindle
   zburc_enforce
 
   zbupr_kindle

@@ -27,6 +27,12 @@
 
 set -euo pipefail
 
+# The gate codes this module rejects with, from the substrate's generated
+# constants, sourced above the inclusion guard so the tinder block stays the run
+# behind it. The sourced file carries its own inclusion guard, so a sibling
+# sourcing it costs nothing.
+source "${BASH_SOURCE[0]%/*}/bubg_breviary.sh" || buc_die_now "Failed to source bubg_breviary.sh"
+
 # Multiple inclusion guard
 test -z "${ZBUG_SOURCED:-}" || buc_die_now "Module bug multiply sourced - check sourcing hierarchy"
 ZBUG_SOURCED=1
@@ -44,6 +50,11 @@ readonly BUG_clean_tree_condition="git working tree carries uncommitted changes 
 # which one.
 readonly BUG_synchrony_condition="git branch does not stand at its published upstream tip"
 
+# Tinder constant, third of the family: the linked-worktree grievance. The
+# condition names the tree the operation was entered from, and the gate's message
+# supplies where the main checkout stands.
+readonly BUG_worktree_condition="git working tree is a linked worktree, not the main checkout"
+
 # Clean-tree gate — the sole clean-tree guard (a deliberate-rejection gate):
 # it buc_rejects the named clean-tree band
 # rather than dying imprecisely, and states the error condition from the
@@ -58,7 +69,7 @@ bug_require_clean_tree_creed() {
 
   buc_step "Verifying clean working tree"
   if ! git diff --quiet || ! git diff --cached --quiet; then
-    buc_reject "${BUBC_band_clean_tree}" "${BUG_clean_tree_condition} — ${z_creed}"
+    buc_reject "${BUBG_CLEAN_DENTIL}" "${BUG_clean_tree_condition} — ${z_creed}"
   fi
 }
 
@@ -90,15 +101,19 @@ bug_require_branch_synchrony_creed() {
   local z_branch=""
   z_branch=$(git rev-parse --abbrev-ref HEAD) || buc_die_now "Failed to resolve current branch"
   test "${z_branch}" != "HEAD" \
-    || buc_reject "${BUBC_band_synchrony}" "${BUG_synchrony_condition}: HEAD is detached, so no branch is published — ${z_creed}"
+    || buc_reject "${BUBG_SYNCHRONY_DENTIL}" "${BUG_synchrony_condition}: HEAD is detached, so no branch is published — ${z_creed}"
 
   local z_remote=""
-  z_remote=$(git config --get "branch.${z_branch}.remote") \
-    || buc_reject "${BUBC_band_synchrony}" "${BUG_synchrony_condition}: branch '${z_branch}' has no configured remote, so nothing on it is published — ${z_creed}"
+  local z_remote_status=0
+  z_remote=$(git config --get "branch.${z_branch}.remote") || z_remote_status=$?
+  test "${z_remote_status}" -eq 0 \
+    || buc_reject "${BUBG_SYNCHRONY_DENTIL}" "${BUG_synchrony_condition}: branch '${z_branch}' has no configured remote, so nothing on it is published — ${z_creed}"
 
   local z_upstream_ref=""
-  z_upstream_ref=$(git config --get "branch.${z_branch}.merge") \
-    || buc_reject "${BUBC_band_synchrony}" "${BUG_synchrony_condition}: branch '${z_branch}' has no configured upstream ref, so nothing on it is published — ${z_creed}"
+  local z_upstream_ref_status=0
+  z_upstream_ref=$(git config --get "branch.${z_branch}.merge") || z_upstream_ref_status=$?
+  test "${z_upstream_ref_status}" -eq 0 \
+    || buc_reject "${BUBG_SYNCHRONY_DENTIL}" "${BUG_synchrony_condition}: branch '${z_branch}' has no configured upstream ref, so nothing on it is published — ${z_creed}"
 
   local z_upstream_name="${z_remote}/${z_upstream_ref#refs/heads/}"
 
@@ -122,7 +137,7 @@ bug_require_branch_synchrony_creed() {
       || buc_die_now "Failed to fetch ${z_upstream_name} though the remote carries it (fetch exit ${z_fetch_status})"
     test "${z_probe_status}" -eq 2 \
       || buc_die_now "Failed to reach ${z_remote} to resolve ${z_upstream_name} (fetch exit ${z_fetch_status}, ls-remote exit ${z_probe_status})"
-    buc_reject "${BUBC_band_synchrony}" "${BUG_synchrony_condition}: the remote carries no ${z_upstream_name}, so branch '${z_branch}' has published nothing — ${z_creed}"
+    buc_reject "${BUBG_SYNCHRONY_DENTIL}" "${BUG_synchrony_condition}: the remote carries no ${z_upstream_name}, so branch '${z_branch}' has published nothing — ${z_creed}"
   fi
 
   local z_local_tip=""
@@ -145,8 +160,43 @@ bug_require_branch_synchrony_creed() {
     z_relation="behind"
   fi
 
-  buc_reject "${BUBC_band_synchrony}" \
+  buc_reject "${BUBG_SYNCHRONY_DENTIL}" \
     "${BUG_synchrony_condition}: '${z_branch}' is ${z_relation} ${z_upstream_name} (local ${z_local_tip}, fetched ${z_remote_tip}) — ${z_creed}"
+}
+
+# Linked-worktree gate — the third deliberate-rejection gate, independent of the
+# clean-tree and branch-synchrony gates above. An operation that allocates a
+# resource shared across every clone (a release number, a serial) and is entered from a
+# linked worktree allocates against a branch its sibling worktrees never see, so
+# two of them hand out the same value and the collision surfaces only later, as
+# a merge conflict on the file that recorded it.
+#
+# The reading is git's own: the repository's git directory and its common
+# directory are one directory at a main checkout and part at a linked worktree,
+# where the git directory stands beneath the common directory's `worktrees`
+# directory. The main checkout is the parent of the common directory, which is
+# what the refusal names. BUG holds no opinion on WHY the operation belongs at
+# the main checkout — the caller supplies its rationale as a creed, appended to
+# the condition, so the opinion stays kit-side and BUG stays kit-agnostic.
+# Args: <creed>  (the caller's rationale for demanding the main checkout)
+bug_require_main_worktree_creed() {
+  buc_doc_brief "Refuse an operation entered from a linked worktree, naming the main worktree and the caller's creed"
+  buc_doc_param "creed" "The caller's rationale for demanding the main worktree"
+  buc_doc_shown || return 0
+
+  local -r z_creed="${1:-}"
+  test -n "${z_creed}" || buc_die_now "bug_require_main_worktree_creed: creed (rationale) required"
+
+  buc_step "Verifying the operation is entered from the main checkout"
+
+  local z_git_dir=""
+  z_git_dir=$(git rev-parse --path-format=absolute --git-dir) || buc_die_now "Failed to resolve the git directory"
+  local z_common_dir=""
+  z_common_dir=$(git rev-parse --path-format=absolute --git-common-dir) || buc_die_now "Failed to resolve the git common directory"
+
+  test "${z_git_dir}" != "${z_common_dir}" || return 0
+
+  buc_reject "${BUBG_WORKTREE_DENTIL}" "${BUG_worktree_condition}: this tree is a linked worktree of the main checkout at ${z_common_dir%/*} — ${z_creed}"
 }
 
 # eof

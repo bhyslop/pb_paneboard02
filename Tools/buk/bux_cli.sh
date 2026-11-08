@@ -21,9 +21,8 @@
 
 set -euo pipefail
 
-source "${BURD_BUK_DIR}/buc_command.sh"
-source "${BURD_BUK_DIR}/buym_yelp.sh"
-source "${BURD_BUK_DIR}/bubc_constants.sh"
+source "${BURD_BUK_DIR}/buc_command.sh" || exit 1
+source "${BURD_BUK_DIR}/buym_yelp.sh" || buc_die_now "Failed to source buym_yelp.sh"
 
 ######################################################################
 # Command Functions
@@ -33,7 +32,7 @@ bux_delay() {
   buc_doc_shown || return 0
 
   buc_step "Delay: sleeping 20 seconds"
-  sleep 20
+  sleep 20 || buc_die_now "sleep failed"
   buc_step "Delay: complete"
 }
 
@@ -41,11 +40,10 @@ bux_band_chain() {
   buc_doc_brief "Raise a band rejection beneath a die chain (self-test survival fixture)"
   buc_doc_shown || return 0
 
-  buc_step "Band chain: raising self-test code ${BUBC_band_selftest} beneath a capture"
-  local z_out
-  z_out=$(buc_reject "${BUBC_band_selftest}" "deliberate self-test rejection") \
-    || buc_die_now "band chain: origin rejected beneath capture"
-  buc_die_now "band chain: rejection failed to propagate (captured: '${z_out}')"
+  buc_step "Band chain: raising self-test code ${BUBG_SELFTEST_DENTIL} inside an isolation subshell"
+  ( buc_reject "${BUBG_SELFTEST_DENTIL}" "deliberate self-test rejection" ) \
+    || buc_die_now "band chain: origin rejected inside isolation subshell"
+  buc_die_now "band chain: rejection failed to propagate"
 }
 
 ######################################################################

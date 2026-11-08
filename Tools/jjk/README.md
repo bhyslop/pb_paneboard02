@@ -12,8 +12,8 @@ You do three things with it. You break work into **heats** — bounded initiativ
 with an end you can name — and each heat into **paces**, the discrete actions
 that get it done. You open a session by typing a door at your shell, which
 stands up a working area for one pace and launches Claude Code inside it. And
-you talk to that session in a small vocabulary of verbs — *mount*, *notch*,
-*wrap* — that it turns into changes to the record.
+you talk to that session in a small vocabulary of verbs — *notch*, *wrap*,
+*slate* — that it turns into changes to the record.
 
 Nothing about this is autonomous. Every session you get is one you asked for.
 
@@ -36,8 +36,6 @@ What the studbook holds, per heat:
   says what done looks like and points at what the session should read.
 - The **steeplechase** — the running journal. Every commit, every wrap, every
   structural change, in order, with the reasoning the session wrote at the time.
-- Two aggregates, `jji_itch.md` and `jjz_scar.md`, for work you are deliberately
-  not doing now and work you have deliberately closed.
 
 You never edit these files by hand. A session reads and writes them through
 commands, and every command commits its own change.
@@ -54,10 +52,9 @@ digit is for.
 
 | Door | What it opens |
 |------|---------------|
-| `jjw-s.Saddle.sh` | **Saddle** — a working session on one pace. Name a pace and you get that pace; name a heat and you get its next actionable pace. |
-| `jjw-l.Lunge.sh` | **Lunge** — a groom session on one heat or one pace: assessment with no working area, for reading and planning rather than doing. |
-| `jjw-p.PlanHeats.sh` | **Ostler** — the planning seat over any number of heats, where dockets are cut and refined. Naming no heat opens it over everything at once. |
-| `jjw-o.Oversee.sh` | **Drover** — the ruling seat above a wave of working sessions. It reads what those sessions reported and rules on whether anything further is warranted. |
+| `jjw-s.Saddle.sh` | **Saddle** — a strapper: the session that works one pace. Name a pace and you get that pace; name a heat and you get its next actionable pace. |
+| `jjw-p.PlanHeats.sh` | **Ostler** — the planning seat, where dockets are cut and refined. Naming nothing opens it over everything at once; naming one tropa key opens it on the heats that tropa's waybill names. |
+| `jjw-o.Oversee.sh` | **Drover** — the ruling seat above a wave of strappers, on one tropa. It reads what those strappers reported and rules on whether anything further is warranted. Naming no tropa lists the roster, each key beside its blurb, and opens nothing. |
 | `jjw-i.InstantWork.sh` | **Vaquero** — a seat for work you want to do right now. Name a heat and then a repository; the session writes up the job itself, does the work, and closes before the chat ends. Both are required, and the repository must be one the heat already works in. |
 | `jjw-c.CheckLock.sh` | Report every lock the studbook holds and who holds it. Read-only. |
 
@@ -99,9 +96,10 @@ trunk stays legible.
 Inside a session you speak verbs. Say the word and the session runs the command
 behind it.
 
-The loop is three verbs long. You *mount* to begin — the session reads the
-pace's docket and its heat's paddock, states the goal in a sentence, and
-proposes an approach before touching anything. You work together. You *notch*
+The loop is two verbs long. The session begins on its own — it reads the
+orders the saddle composed, the pace's docket and its heat's paddock, states the
+goal in a sentence, and proposes an approach before touching anything. You work
+together. You *notch*
 whenever there is progress worth committing, and *wrap* when the pace is done.
 A session never wraps on its own; it asks you first.
 
@@ -156,8 +154,6 @@ thing it is.
 | `jjezs_` | The headers on messages passed between a session and the record |
 | `jjls_` | The branch a billet stands on |
 | `jjqb_` | The directories of a kraal |
-| `jji_` | The deferred-work aggregate, `jji_itch.md` |
-| `jjz_` | The closed-work aggregate, `jjz_scar.md` |
 
 ## Installation
 
@@ -185,8 +181,7 @@ own speech.
 - **curry** — Revise a heat's paddock. Currying is grooming with a curry comb: working over the whole animal, not one spot.
 - **dight** — Change a pace's readable name. An old word for arraying or adorning.
 - **docket** — What one pace must accomplish. It states what done looks like and points at what to read; it does not prescribe how.
-- **drover** — A ruling session standing above a wave of working sessions. It works no code and holds no pace: it reads what those sessions reported and rules on whether anything further is warranted. It opens no session of its own — you do that.
-- **estancia** — The planning seat opened over no particular heat: the console for everything at once. An estancia is the great ranch house.
+- **drover** — A ruling session standing above a wave of strappers. It works no code and holds no pace: it reads what those strappers reported and rules on whether anything further is warranted. It opens no session of its own — you do that.
 - **fettle** — What could start right now, and what is holding everything else back. Asks only about the waits between paces, so a pace with nothing before it is ready even if it needs your attention to run.
 - **firemark** — A heat's permanent identity: `₣` and two characters, as in `₣CJ`. A firemark is a brand burned into the hide.
 - **foray** — Run work on another machine.
@@ -195,17 +190,14 @@ own speech.
 - **groom** — Review a heat: its shape, its remaining paces, and whether anything its paddock calls for was never turned into a pace. Grooming is tending the horse, not riding it.
 - **heat** — A bounded initiative with an end you can name, three to fifty paces long. It is either racing or stabled, and when its work is done it retires.
 - **hopple** — Make paces wait on another pace. Hopples are the straps that keep a horse from wandering.
-- **itch** — Work worth remembering and not worth doing now, whatever its size. It is a reminder to you and carries no authority: nothing acts on an itch until you say so.
 - **kind** — What a pace *is*, as distinct from what tier it runs at: a lope, a poort, or neither. A pace carries one kind at most.
 - **kraal** — Everything one session stands in: its seat, its working area, and any read-only companions. A kraal is a stock enclosure, and it is torn down when the session ends.
 - **lope** — A pace whose work is a conversation with you rather than something to execute. It finishes when the thinking settles, when the answer turns out to be a few small changes, or when the question turns out to have been the wrong one.
-- **lunge** — Open a session that reads and plans but does not work: no working area, deliberately. Lunging is working a horse from the ground on a long line.
-- **mount** — Take up a pace: read its docket and its heat's paddock, state the goal, and propose an approach before anything is touched.
 - **muck** — Destroy a working area left standing behind a session that did not clean up. Mucking out is exactly what it sounds like, and it is confirmed before it runs.
 - **muster** — List the heats.
 - **nominate** — Start a heat. Yours alone; a session may recommend one and never creates one unasked.
-- **notch** — Commit progress mid-pace, with a message saying what was accomplished. A notch is a tally cut into a stick.
-- **ostler** — The planning seat, over any number of heats: where dockets are cut, refined and designated. An ostler is the inn's horse-keeper, who tends every horse and rides none.
+- **notch** — Commit progress mid-pace, with a message saying what was accomplished. A notch is a mark cut into a stick.
+- **ostler** — The planning seat, over the whole estate or one tropa: where dockets are cut, refined and designated. An ostler is the inn's horse-keeper, who tends every horse and rides none.
 - **outfooted** — A copy that has fallen behind the original it tracks, with no changes of its own. Archaic racing usage: beaten on pure speed, nothing wrong with the horse.
 - **outspan** — A session's seat: where it sits and keeps its scratch. It holds no repository and dies with its kraal. Outspanning is unyoking the team at the end of a stage.
 - **overlanded** — A copy whose update has no simple recipe — an installer or a transform someone has to conduct. Overlanding is driving stock the long way, by a route that has to be known.
@@ -221,8 +213,7 @@ own speech.
 - **riem** — Report which repository a pace belongs to, or audit every pace that names none. A riem is the thong tying one ox into the team, so an ox with no riem is exactly what the audit hunts.
 - **ringer** — A copy that tracks an original elsewhere. A ringer is a horse run under another's name.
 - **rodear** — Write the registry of copied files. Yours alone; a session recommends and stops. A rodear is the roundup where cattle are sorted between owners.
-- **saddle** — Open a working session on a pace.
-- **scar** — Work deliberately closed, kept because something was learned. Not shelved, not pending: closed, in `jjz_scar.md`.
+- **saddle** — Open a strapper on a pace: the session that works it.
 - **scout** — Search the record.
 - **shied** — A copy holding content its original never had: diverged, not merely behind. Copying over it would destroy work, so it is always reported rather than fixed. The horse swerved off the line.
 - **silks** — A readable name, for people rather than for lookups. Silks change freely, which is why nothing resolves by them; they are a rider's racing colours.
@@ -231,8 +222,10 @@ own speech.
 - **spook** — Something in the workflow itself that snagged — a stale pointer, a confusing docket, a verb that fought you. Reported at wrap, so it can be fixed rather than re-suffered.
 - **stabled** — A heat that is paused: still live, still planned against, but nobody is working it. The other state is racing.
 - **steeplechase** — A heat's running journal: every commit and every closure in order, each carrying the reasoning written at the time.
+- **strapper** — The session a saddle opens, working one pace and answering for no other; resuming that pace's working area opens one too. A strapper is the racing hand assigned to one horse for race day.
 - **studbook** — The repository the whole plan lives in, shared by every project you work on and separate from all of them.
 - **taproot** — The authoritative copy of a file or tree that others track.
+- **tropa** — The share of the work one drover rules, named by a key from a fixed roster. Which heats it covers is written in its waybill, and two may overlap, which is warned against. A tropa is a drove of stock on the road under one driver.
 - **unbridle** — Lift a pace's tier designation, returning it to undesignated.
 - **unfurl** — Put an image on the viewer, or replace one already there.
 - **unhopple** — Lift a wait between paces.

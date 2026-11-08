@@ -20,7 +20,12 @@
 # BURD Regime - Bash Utility Regime Dispatch Module
 #
 # BURD is an ephemeral regime — variables are constructed by bud_dispatch.sh during
-# tabtarget execution, not sourced from a file.
+# tabtarget execution and written once to the run's dispatch file (burd.env in
+# its temp dir, copied into its output dir). The pointer BURD_BURD_FILE names
+# that file, and the command module sources it and kindles this regime in every
+# coordinator and CLI below the dispatch. Dispatch's own internals (the
+# coordinator, the command and the argument list among them) are ZBUD_
+# variables of the dispatch process and never enter the regime.
 
 set -euo pipefail
 
@@ -31,7 +36,7 @@ ZBURD_SOURCED=1
 # The surface forms of the governed words this module speaks, so an enrollment
 # description below expands a constant instead of spelling the word. The sourced
 # file carries its own inclusion guard, so a sibling sourcing it costs nothing.
-source "${BASH_SOURCE[0]%/*}/bubg_breviary.sh"
+source "${BASH_SOURCE[0]%/*}/bubg_breviary.sh" || buc_die_now "Failed to source bubg_breviary.sh"
 
 ######################################################################
 # Internal Functions (zburd_*)
@@ -46,55 +51,49 @@ zburd_kindle() {
 
   buv_regime_enroll BURD
 
-  buv_group_enroll "Launcher Configuration"
+  buv_group_enroll "${BUBG_LAUNCHER_BASE_LETTRINE} Configuration"
   buv_string_enroll  BURD_CONFIG_DIR            1  256  "Path to the ${BURD_MOORINGS_DIR}/ configuration directory"
   buv_string_enroll  BURD_MOORINGS_DIR          1  256  "Basename of the config directory (repo-root-relative, for operator-facing display)"
   buv_string_enroll  BURD_REGIME_FILE           1  256  "Path to the BURC regime configuration file"
   buv_string_enroll  BURD_STATION_FILE          1  256  "Path to the developer's BURS station file"
-  buv_string_enroll  BURD_COORDINATOR_SCRIPT    1  256  "Path to the coordinator script for this tabtarget"
-  buv_string_enroll  BURD_LAUNCHER              1  256  "Launcher basename (e.g. launcher.rbw_workbench.sh), set by the tabtarget"
+  buv_string_enroll  BURD_LAUNCHER              1  256  "${BUBG_LAUNCHER_BASE_LETTRINE} basename (e.g. launcher.rbw_workbench.sh), the first word of the ${BUBG_TABTARGET_POSSESSIVE} configuration line"
+  buv_string_enroll  BURD_SEAT                  1  512  "The directory whose tt/ the tabtarget was reached through, absolute and symlink-resolved"
+  buv_string_enroll  BURD_BURD_FILE             1  512  "Path to this run's dispatch file, the pointer a coordinator sources it through"
   buv_string_enroll  BURD_TERM_COLS             1    8  "Terminal column width at dispatch time"
 
   buv_group_enroll "Directory Paths"
   buv_string_enroll  BURD_TOOLS_DIR             1  256  "Tools directory path (from BURC)"
   buv_string_enroll  BURD_BUK_DIR               1  256  "BUK directory path (derived)"
   buv_string_enroll  BURD_TABTARGET_DIR         1  256  "Tabtarget directory path (from BURC)"
-  buv_string_enroll  BURD_TACKROOM              0  512  "Station-shared tool store root, carried across the dispatch exec boundary from BURS_TACKROOM so a kit's CLI can read it (empty where the station declares none)"
+  buv_string_enroll  BURD_TACKROOM              0  512  "Tool store root, carried across the dispatch exec boundary from BURS_TACKROOM so a kit's CLI can read it, absolutized against the project root (empty where the station declares none)"
 
   buv_group_enroll "Computed State"
   buv_string_enroll  BURD_NOW_STAMP             1   64  "Timestamp string computed at dispatch time"
   buv_string_enroll  BURD_NOW_EPOCH             1   16  "UTC epoch seconds from same date invocation as BURD_NOW_STAMP"
   buv_string_enroll  BURD_TEMP_DIR              1  256  "Temporary directory for this invocation"
-  buv_string_enroll  BURD_LOOSEBOX_DIR          1  256  "This checkout's ${BUBG_LOOSEBOX_ROOT_DIR_BASE}, keyed on its dirname beneath the ${BUBG_LOOSEBOX_ROOT_DIR_BASE} root"
+  buv_string_enroll  BURD_LOOSEBOX_DIR          1  256  "This checkout's ${BUBG_LOOSEBOX_BASE}, keyed on its dirname beneath the ${BUBG_LOOSEBOX_BASE} root"
+  buv_string_enroll  BURD_LOOSEBOX_ROOT_DIR     1  512  "The ${BUBG_LOOSEBOX_BASE} root this dispatch folded, absolute, recorded so a door handing a child the same root reads it rather than deriving it"
   buv_string_enroll  BURD_OUTPUT_DIR            1  256  "Output directory for this invocation (current/)"
   buv_string_enroll  BURD_PREVIOUS_DIR          1  256  "Prior dispatch's output directory (previous/), promoted from current/ at dispatch start"
   buv_string_enroll  BURD_TRANSCRIPT            1  256  "Path to transcript file for this invocation"
   buv_string_enroll  BURD_GIT_CONTEXT           1  128  "Git context string at dispatch time"
   buv_string_enroll  BURD_OSTYPE                1   32  "Operating-system type at dispatch time (e.g. cygwin, linux-gnu, darwin) — lets native binaries learn the platform bash already knows"
   buv_enum_enroll    BURD_COLOR                     "Resolved color verdict (0/1), computed once at dispatch time from BURE_COLOR/NO_COLOR/tty detection" 0 1
+  buv_enum_enroll    BURD_HYPERLINKS                "Resolved hyperlink verdict (0/1), computed once at dispatch time from BURE_HYPERLINKS; 0 renders the URL beside the link text in place of the OSC 8 escape" 0 1
+  buv_string_enroll  BURD_LABEL                 0  120  "Correlation label taken from BURE_LABEL, written empty where none was handed"
 
   buv_group_enroll "Parsed Tabtarget"
   buv_string_enroll  BURD_TARGET                1  256  "Target parsed from tabtarget filename"
-  buv_string_enroll  BURD_COMMAND               1   64  "Command parsed from tabtarget filename"
-  buv_string_enroll  BURD_TOKEN_1               1   64  "First token parsed from tabtarget filename"
-  buv_string_enroll  BURD_TOKEN_2               1  128  "Second token parsed from tabtarget filename"
-  buv_string_enroll  BURD_TOKEN_3               0   64  "Third token (optional)"
-  buv_string_enroll  BURD_TOKEN_4               0   64  "Fourth token (optional)"
-  buv_string_enroll  BURD_TOKEN_5               0   64  "Fifth token (optional)"
+  buv_string_enroll  BURD_TOKEN_3               0   64  "Third token parsed from tabtarget filename, the zipper's imprint folio (optional)"
 
   buv_group_enroll "Caller Options"
-  buv_string_enroll  BURD_NO_LOG                0   16  "Disable logging when set"
-  buv_string_enroll  BURD_INTERACTIVE           0   16  "Interactive mode flag when set"
-  buv_string_enroll  BURD_AMANUENSIS            0   16  "Coordinator writes the log family itself when set: dispatch composes and exports the three names, creates no file and tees nothing"
-  buv_string_enroll  BURD_OUTRIDER              0   16  "Declares this tabtarget carriable onto a dispatched seat: the dispatcher reads the line off the stub, copies the door byte-identical, and the copy enters this tree through the seat's own trampoline. The dispatch itself does nothing with the value"
+  buv_string_enroll  BURD_NO_LOG                0   16  "Keep no ${BUBG_STATION_LOG_BASE} when set (the configuration word buuc_nolog)"
+  buv_string_enroll  BURD_INTERACTIVE           0   16  "Interactive mode flag when set (the configuration word buuc_interactive)"
 
-  buv_group_enroll "Log Paths"
-  buv_string_enroll  BURD_LOG_LAST              0  256  "Path to last-run log file"
-  buv_string_enroll  BURD_LOG_SAME              0  256  "Path to same-command log file"
-  buv_string_enroll  BURD_LOG_HIST              0  256  "Path to historical log file"
-
-  # BURD_CLI_ARGS is an array — enroll as optional string for scope_sentinel awareness
-  buv_string_enroll  BURD_CLI_ARGS              0 9999  "CLI arguments (array, validated separately)"
+  buv_group_enroll "${BUBG_STATION_LOG_BASE_LETTRINE} Paths"
+  buv_string_enroll  BURD_LOG_LAST              0  256  "Path to the last member of the ${BUBG_STATION_LOG_BASE}, standing under the buuc_ownlog mode alone"
+  buv_string_enroll  BURD_LOG_SAME              0  256  "Path to the same member of the ${BUBG_STATION_LOG_BASE}, standing under the buuc_ownlog mode alone"
+  buv_string_enroll  BURD_LOG_HIST              0  256  "Path to the historical member of the ${BUBG_STATION_LOG_BASE}, standing wherever one is kept"
 
   # Guard against unexpected BURD_ variables not in enrollment
   buv_scope_sentinel BURD BURD_
@@ -117,8 +116,8 @@ zburd_enforce() {
 
   # Custom enforce: log paths must be set when logging is active
   if test -z "${BURD_NO_LOG:-}" && test -n "${BURD_LOG_LAST:-}"; then
-    test -n "${BURD_LOG_SAME:-}" || buc_die_now "BURD_LOG_SAME required when logging is active"
-    test -n "${BURD_LOG_HIST:-}" || buc_die_now "BURD_LOG_HIST required when logging is active"
+    test -n "${BURD_LOG_SAME:-}" || buc_reject "${BUBG_REGIME_DENTIL}" "BURD_LOG_SAME required while a ${BUBG_STATION_LOG_BASE} is kept"
+    test -n "${BURD_LOG_HIST:-}" || buc_reject "${BUBG_REGIME_DENTIL}" "BURD_LOG_HIST required while a ${BUBG_STATION_LOG_BASE} is kept"
   fi
 }
 

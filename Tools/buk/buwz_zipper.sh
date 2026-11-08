@@ -22,7 +22,7 @@
 set -euo pipefail
 
 # Multiple inclusion guard
-test -z "${ZBUWZ_SOURCED:-}" || return 0
+test -z "${ZBUWZ_SOURCED:-}" || buc_die_now "Module buwz multiply sourced - check sourcing hierarchy"
 ZBUWZ_SOURCED=1
 
 ######################################################################
@@ -42,12 +42,17 @@ zbuwz_kindle() {
 
   # TabTarget subsystem (buut_cli.sh)
   local z_mod="buut_cli.sh"
-  buz_enroll BUWZ_TT_LIST_LAUNCHERS      "buw-tt-ll"  "${z_mod}" "buut_list_launchers"               ""  "List all registered launchers"
-  buz_enroll BUWZ_TT_BATCH_LOGGING       "buw-tt-cbl" "${z_mod}" "buut_tabtarget_batch_logging"      "param1"  "Create batch tabtarget with logging"
-  buz_enroll BUWZ_TT_BATCH_NOLOG         "buw-tt-cbn" "${z_mod}" "buut_tabtarget_batch_nolog"        "param1"  "Create batch tabtarget without logging"
-  buz_enroll BUWZ_TT_INTERACTIVE_LOGGING "buw-tt-cil" "${z_mod}" "buut_tabtarget_interactive_logging" "param1"  "Create interactive tabtarget with logging"
-  buz_enroll BUWZ_TT_INTERACTIVE_NOLOG   "buw-tt-cin" "${z_mod}" "buut_tabtarget_interactive_nolog"  "param1"  "Create interactive tabtarget without logging"
-  buz_enroll BUWZ_TT_LAUNCHER            "buw-tt-cl"  "${z_mod}" "buut_launcher"                     "param1"  "Create launcher script"
+  buz_enroll BUWZ_TT_LIST_LAUNCHERS      "buw-tt-ll"  "${z_mod}" "buut_list_launchers"               ""  "List all registered ${BUBG_LAUNCHER_PLURAL}"
+  buz_enroll BUWZ_TT_BATCH_LOGGING       "buw-tt-cbl" "${z_mod}" "buut_tabtarget_batch_logging"      "param1"  "Create batch tabtarget keeping a ${BUBG_STATION_LOG_BASE}"
+  buz_enroll BUWZ_TT_BATCH_NOLOG         "buw-tt-cbn" "${z_mod}" "buut_tabtarget_batch_nolog"        "param1"  "Create batch tabtarget keeping no ${BUBG_STATION_LOG_BASE}"
+  buz_enroll BUWZ_TT_BATCH_AMANUENSIS    "buw-tt-cbo" "${z_mod}" "buut_tabtarget_batch_amanuensis"   "param1"  "Create batch tabtarget whose command writes its own record"
+  buz_enroll BUWZ_TT_INTERACTIVE_LOGGING "buw-tt-cil" "${z_mod}" "buut_tabtarget_interactive_logging" "param1"  "Create interactive tabtarget keeping a ${BUBG_STATION_LOG_BASE}"
+  buz_enroll BUWZ_TT_INTERACTIVE_NOLOG   "buw-tt-cin" "${z_mod}" "buut_tabtarget_interactive_nolog"  "param1"  "Create interactive tabtarget keeping no ${BUBG_STATION_LOG_BASE}"
+  buz_enroll BUWZ_TT_LAUNCHER            "buw-tt-cl"  "${z_mod}" "buut_launcher"                     "param1"  "Create ${BUBG_LAUNCHER_BASE} stub"
+
+  # The roll call (buur_cli.sh): every installed kit's enrollments against the
+  # doors standing in this repository's tabtarget directory
+  buz_enroll BUWZ_TT_ROLL_CALL           "buw-tt-rc"  "buur_cli.sh" "buur_roll_call"              ""        "Name each door no installed kit enrolls (red), and each enrolled door not standing"
 
   # Config Regime subsystem (burc_cli.sh)
   z_mod="burc_cli.sh"

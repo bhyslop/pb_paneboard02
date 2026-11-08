@@ -28,11 +28,14 @@ source "${PBW_SCRIPT_DIR}/../buk/buc_command.sh"
 # buc's logging path reaches buyf_strip_yawp, so yelp must accompany it — this
 # workbench previously sourced buc alone and would have failed inside buc_die_now.
 source "${PBW_SCRIPT_DIR}/../buk/buym_yelp.sh"
-source "${PBW_SCRIPT_DIR}/../buk/bubc_constants.sh"
 source "${PBW_SCRIPT_DIR}/../buk/bug_git.sh"
 
 # Show filename on each displayed line
 buc_context "${0##*/}"
+
+# The workbench's head: a name of the kit standing exported is refused save
+# the hand-offs every level declares.
+buv_export_sentinel "${BURD_TARGET}"
 
 # Verbose output if BURE_VERBOSE is set
 pbw_show() {

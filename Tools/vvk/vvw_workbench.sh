@@ -17,7 +17,9 @@
 #
 # Author: Brad Hyslop <bhyslop@scaleinvariant.org>
 #
-# VVW Workbench - Routes VVK management commands
+# VVW Workbench - Routes VVK management commands via zipper registry
+#
+# All commands dispatch via buz_exec_lookup (see vvz_zipper.sh for colophon mapping).
 
 set -euo pipefail
 
@@ -25,51 +27,34 @@ set -euo pipefail
 VVW_SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
 
 # Source dependencies
-source "${BURD_BUK_DIR}/buc_command.sh"
-source "${BURD_BUK_DIR}/buv_validation.sh"
-source "${BURD_BUK_DIR}/burd_regime.sh"
-source "${BURD_BUK_DIR}/buym_yelp.sh"
+source "${BURD_BUK_DIR}/buc_command.sh" || exit 1
+source "${BURD_BUK_DIR}/buym_yelp.sh" || exit 1
+
+# The band's range, its gate codes and the verdict codes, from the substrate's
+# generated constants, sourced at this process's entry. The sourced file carries
+# its own inclusion guard, so a sibling sourcing it costs nothing.
+source "${BASH_SOURCE[0]%/*}/../buk/bubg_breviary.sh" || buc_die_now "Failed to source bubg_breviary.sh"
+source "${BURD_BUK_DIR}/buz_zipper.sh" || buc_die_now "Failed to source buz_zipper.sh"
+source "${VVW_SCRIPT_DIR}/vvz_zipper.sh" || buc_die_now "Failed to source vvz_zipper.sh"
 
 # Show filename on each displayed line
 buc_context "${0##*/}"
 
-# Verify dispatch completed
-zbuv_kindle
-zburd_kindle
+# The workbench's head: a name of the kit standing exported is refused save
+# the hand-offs every level declares.
+buv_export_sentinel "${BURD_TARGET}"
 
-# Simple routing function
-vvw_route() {
-  local z_command="${1:-}"
-  shift || true
+# Kindle the zipper registry; the command module kindled the dispatch regime
+zbuz_kindle
+zvvz_kindle
 
+vvw_main() {
+  local -r z_command="${1:-}"
+  test "$#" -eq 0 || shift
   test -n "${z_command}" || buc_die_now "No command specified"
 
   zburd_sentinel
-
-  # Route based on command
-  local z_vvb_cli="${VVW_SCRIPT_DIR}/vvb_cli.sh"
-
-  case "${z_command}" in
-
-    # Run VVX binary - primary command
-    vvw-r)  exec "${z_vvb_cli}" vvb_run "$@" ;;
-
-    # Four-tier model probe - station diagnostic, on demand
-    vvw-mp) exec "${z_vvb_cli}" vvb_run vvx_model_probe "$@" ;;
-
-    # Show platform
-    vvx-p)  exec "${z_vvb_cli}" vvb_platform "$@" ;;
-
-    # Unknown command
-    *)   buc_die_now "Unknown command: ${z_command}" ;;
-  esac
-}
-
-vvw_main() {
-  local z_command="${1:-}"
-  shift || true
-
-  vvw_route "${z_command}" "$@"
+  buz_exec_lookup "${z_command}" "${VVW_SCRIPT_DIR}" "$@"
 }
 
 vvw_main "$@"

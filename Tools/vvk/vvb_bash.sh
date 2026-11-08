@@ -65,6 +65,7 @@ zvvb_kindle() {
   # Public export - canonical VVX binary (unsuffixed, platform-independent path)
   readonly VVB_VVX_BINARY="${VVB_BIN_DIR}/vvx"
 
+  readonly ZVVB_CMD_NAME_MODEL_PROBE="vvx_model_probe"
   readonly ZVVB_KINDLED=1
 }
 
@@ -94,24 +95,30 @@ vvb_run() {
   buc_log_args "Locating VVX binary"
 
   local z_binary=""
-  z_binary=$(zvvb_binary_path_capture) || buc_die_now "VVX binary not found for platform $(uname -s)-$(uname -m)"
+  local z_binary_status=0
+  z_binary=$(zvvb_binary_path_capture) || z_binary_status=$?
+  if test "${z_binary_status}" -ne 0; then
+    local z_os=""
+    z_os=$(uname -s) || buc_die_now "VVX binary not found, and uname could not name this platform's system"
+    local z_machine=""
+    z_machine=$(uname -m) || buc_die_now "VVX binary not found, and uname could not name this platform's machine"
+    buc_die_now "VVX binary not found for platform ${z_os}-${z_machine}"
+  fi
 
   buc_log_args "Binary: ${z_binary}"
   buc_log_args "Arguments: $*"
 
-  exec "${z_binary}" "$@"
+  exec "${z_binary}" "$@" || buc_die_now "Could not exec ${z_binary}"
 }
 
-vvb_platform() {
+vvb_model_probe() {
   zvvb_sentinel
 
-  buc_doc_brief "Display detected platform identifier"
+  buc_doc_brief "Probe the four model tiers from this station, on demand"
+  buc_doc_param "..." "Arguments passed to the probe after its own subcommand"
   buc_doc_shown || return 0
 
-  local z_platform=""
-  z_platform=$(zvvb_platform_capture) || buc_die_now "Unsupported platform: $(uname -s)-$(uname -m)"
-
-  echo "${z_platform}"
+  vvb_run "${ZVVB_CMD_NAME_MODEL_PROBE}" "$@"
 }
 
 # eof
