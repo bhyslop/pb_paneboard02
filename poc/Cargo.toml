@@ -14,8 +14,8 @@ single-instance = "0.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSString", "NSArray", "NSDictionary"] }
-objc2-app-kit = { version = "0.3", features = ["NSWorkspace", "NSScreen", "NSRunningApplication"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSArray", "NSDictionary", "NSValue", "NSGeometry"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace", "NSScreen", "NSRunningApplication", "NSApplication", "NSResponder", "NSGraphics", "NSColorSpace"] }
 block2 = "0.6"
 
 # No debug info in dev builds: it is most of target/ (~1.6 GB with it on).
